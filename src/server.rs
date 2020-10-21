@@ -13,9 +13,11 @@ impl Say for MySay {
     // our rpc impelemented as function
     async fn send(&self, request: Request<SayRequest>) -> Result<Response<SayResponse>, Status> {
         // returning a response as SayResponse message as defined in .proto
+        let message = format!("hello {}", request.get_ref().name);
+        println!("Responding with message: {}", message);
         Ok(Response::new(SayResponse {
             // reading data from request which is awrapper around our SayRequest message defined in .proto
-            message: format!("hello {}", request.get_ref().name),
+            message: message, 
         }))
     }
 }
