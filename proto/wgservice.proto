@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package wgservice;
+
+service WireGuardService {
+  rpc CreateInterface(CreateInterfaceRequest) returns (CreateInterfaceResponse);
+  rpc AssignAddr(AssignAddrRequest) returns (AssignAddrResponse);
+}
+
+message CreateInterfaceRequest {
+  string name = 1;
+}
+
+message CreateInterfaceResponse {
+  int32 status = 1;
+}
+
+message AssignAddrRequest {
+    string interface = 1;
+    string addr = 2;
+}
+
+message AssignAddrResponse {
+   int32 status = 1; 
+}

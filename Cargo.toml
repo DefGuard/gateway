@@ -20,3 +20,7 @@ path = "src/server.rs"
 [[bin]]
 name = "client"
 path = "src/client.rs"
+
+[[bin]]
+name = "wgserver"
+path = "src/wgserver.rs"
