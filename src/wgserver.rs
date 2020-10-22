@@ -8,7 +8,11 @@ mod wgservice;
 #[derive(Default)]
 pub struct WGServer {}
 
-fn create_interface(name: &String) -> i32 {
+async fn create_interface(name: String) -> i32 {
+    0
+}
+
+async fn assign_addr(interface: String, addr: String) -> i32 {
     0
 }
 
@@ -16,7 +20,7 @@ fn create_interface(name: &String) -> i32 {
 impl WireGuardService for WGServer {
     async fn create_interface(&self, request: Request<CreateInterfaceRequest>) -> Result<Response<CreateInterfaceResponse>, Status> {
         // TODO: start service
-        let status = create_interface(&request.get_ref().name);
+        let status = create_interface(request.get_ref().name.clone()).await;
         println!("Create interface status: {}", status);
         Ok(Response::new(CreateInterfaceResponse {
             status: status, 
@@ -24,10 +28,14 @@ impl WireGuardService for WGServer {
     }
 
     async fn assign_addr(&self, request: Request<AssignAddrRequest>) -> Result<Response<AssignAddrResponse>, Status> {
+        let unpacked = request.get_ref(); 
+        // FIXME: get rid of the clones
+        let status = assign_addr(unpacked.clone().interface , unpacked.clone().addr).await;
+        println!("Assign addr status: {}", status);
         Ok(Response::new(AssignAddrResponse {
-            status: 0,
+            status: status, 
         }))
-    }
+   }
 }
 
 #[tokio::main]
