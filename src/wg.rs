@@ -1,7 +1,7 @@
 use boringtun::device::drop_privileges::*;
 use boringtun::device::*;
 use boringtun::noise::Verbosity;
-use daemonize::Daemonize;  // FIXME: remove
+use daemonize::Daemonize; // FIXME: remove
 use std::fs::File;
 use std::os::unix::net::UnixDatagram;
 use std::process::exit;
@@ -10,7 +10,7 @@ pub fn create_interface(name: &String) {
     let background = false;
     let tun_name = name;
     let n_threads = 4;
-    let log_level = Verbosity::None;  // "silent" / "info" / "debug"
+    let log_level = Verbosity::None; // "silent" / "info" / "debug"
     let log = "/tmp/boringtun.log";
     let err_log = "/tmp/boringtun_err.log";
     let use_connected_socket = true;

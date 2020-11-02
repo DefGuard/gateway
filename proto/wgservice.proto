@@ -3,7 +3,7 @@ syntax = "proto3";
 package wgservice;
 
 service WireGuardService {
-  rpc CreateInterface(CreateInterfaceRequest) returns (CreateInterfaceResponse);
+  rpc CreateInterface(CreateInterfaceRequest) returns (CreateInterfaceResponse); 
   rpc AssignAddr(AssignAddrRequest) returns (AssignAddrResponse);
 }
 
