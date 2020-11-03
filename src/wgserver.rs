@@ -3,12 +3,12 @@ use tonic::{transport::Server, Request, Response, Status};
 mod wgservice;
 use wgservice::wire_guard_service_server::{WireGuardService, WireGuardServiceServer};
 use wgservice::{
-    AssignAddrRequest, AssignAddrResponse, CreateInterfaceRequest, CreateInterfaceResponse,
+    AssignAddrRequest, AssignAddrResponse, CreateInterfaceRequest, CreateInterfaceResponse, SetPrivateKeyRequest, SetPrivateKeyResponse
 };
 mod wg;
 use wg::create_interface;
 mod utils;
-use utils::assign_addr;
+use utils::{assign_addr, set_private_key};
 
 // defining a struct for our service
 #[derive(Default)]
@@ -38,6 +38,18 @@ impl WireGuardService for WGServer {
         let status = assign_addr(&unpacked.interface, &unpacked.addr).unwrap();
         println!("{:?}", status);
         Ok(Response::new(AssignAddrResponse {
+            status: status.code().unwrap(),
+        }))
+    }
+
+    async fn set_private_key(
+        &self,
+        request: Request<SetPrivateKeyRequest>,
+    ) -> Result<Response<SetPrivateKeyResponse>, Status> {
+        let unpacked = request.get_ref();
+        let status = set_private_key(&unpacked.interface, &unpacked.key).unwrap();
+        println!("{:?}", status);
+        Ok(Response::new(SetPrivateKeyResponse {
             status: status.code().unwrap(),
         }))
     }

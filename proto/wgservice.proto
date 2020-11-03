@@ -5,6 +5,7 @@ package wgservice;
 service WireGuardService {
   rpc CreateInterface(CreateInterfaceRequest) returns (CreateInterfaceResponse); 
   rpc AssignAddr(AssignAddrRequest) returns (AssignAddrResponse);
+  rpc SetPrivateKey(SetPrivateKeyRequest) returns (SetPrivateKeyResponse);
 }
 
 message CreateInterfaceRequest {
@@ -22,4 +23,13 @@ message AssignAddrRequest {
 
 message AssignAddrResponse {
    int32 status = 1; 
+}
+
+message SetPrivateKeyRequest {
+  string interface = 1;
+  string key = 2;
+}
+
+message SetPrivateKeyResponse {
+  int32 status = 1;
 }
