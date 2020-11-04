@@ -48,3 +48,16 @@ pub fn set_link_down(
     println!("{:?}", command);
     command.status()
 }
+
+pub fn set_peer(
+    interface: &str,
+    pubkey: &str,
+    allowed_ips: &str, 
+    endpoint: &str,
+) -> Result<std::process::ExitStatus, std::io::Error> {
+    // FIXME: don't use sudo
+    let mut command = Command::new("sudo");
+    command.args(&["wg", "set", interface, "peer", pubkey, "allowed-ips", allowed_ips, "endpoint", endpoint]);
+    println!("{:?}", command);
+    command.status()
+}

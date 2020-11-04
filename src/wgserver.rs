@@ -4,12 +4,13 @@ mod wgservice;
 use wgservice::wire_guard_service_server::{WireGuardService, WireGuardServiceServer};
 use wgservice::{
     AssignAddrRequest, AssignAddrResponse, CreateInterfaceRequest, CreateInterfaceResponse,
-    SetPrivateKeyRequest, SetPrivateKeyResponse, SetLinkRequest, SetLinkResponse, 
+    SetLinkRequest, SetLinkResponse, SetPeerRequest, SetPeerResponse, SetPrivateKeyRequest,
+    SetPrivateKeyResponse,
 };
 mod wg;
 use wg::create_interface;
 mod utils;
-use utils::{assign_addr, set_private_key, set_link_up, set_link_down};
+use utils::{assign_addr, set_link_down, set_link_up, set_private_key, set_peer};
 
 // defining a struct for our service
 #[derive(Default)]
@@ -68,6 +69,23 @@ impl WireGuardService for WGServer {
         };
         println!("{:?}", status);
         Ok(Response::new(SetLinkResponse {
+            status: status.code().unwrap(),
+        }))
+    }
+    
+    async fn set_peer(
+        &self,
+        request: Request<SetPeerRequest>,
+    ) -> Result<Response<SetPeerResponse>, Status> {
+        let unpacked = request.get_ref();
+        let status = set_peer(
+            &unpacked.interface,
+            &unpacked.pubkey,
+            &unpacked.allowed_ips,
+            &unpacked.endpoint,
+        ).unwrap();
+        println!("{:?}", status);
+        Ok(Response::new(SetPeerResponse {
             status: status.code().unwrap(),
         }))
     }

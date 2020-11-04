@@ -7,6 +7,7 @@ service WireGuardService {
   rpc AssignAddr(AssignAddrRequest) returns (AssignAddrResponse);
   rpc SetPrivateKey(SetPrivateKeyRequest) returns (SetPrivateKeyResponse);
   rpc SetLink(SetLinkRequest) returns (SetLinkResponse);
+  rpc SetPeer(SetPeerRequest) returns (SetPeerResponse);
 }
 
 message CreateInterfaceRequest { string name = 1; }
@@ -39,3 +40,14 @@ message SetLinkRequest {
 }
 
 message SetLinkResponse { int32 status = 1; }
+
+message SetPeerRequest {
+  string interface = 1;
+  string pubkey = 2;
+  string allowed_ips = 3; // FIXME: should be an array
+  string endpoint = 4;
+}
+
+message SetPeerResponse {
+  int32 status = 1;
+}
