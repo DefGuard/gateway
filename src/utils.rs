@@ -6,7 +6,6 @@ pub fn assign_addr(
     interface: &str,
     addr: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
-    println!("{:?}", Command::new("whoami").output());
     // FIXME: don't use sudo
     let mut command = Command::new("sudo");
     command.args(&["ip", "addr", "add", addr, "dev", interface]);
@@ -28,4 +27,24 @@ pub fn set_private_key(
     let status = command.status();
     fs::remove_file(path)?;
     status
+}
+
+pub fn set_link_up(
+    interface: &str,
+) -> Result<std::process::ExitStatus, std::io::Error> {
+    // FIXME: don't use sudo
+    let mut command = Command::new("sudo");
+    command.args(&["ip", "link", "set", interface, "up"]);
+    println!("{:?}", command);
+    command.status()
+}
+
+pub fn set_link_down(
+    interface: &str,
+) -> Result<std::process::ExitStatus, std::io::Error> {
+    // FIXME: don't use sudo
+    let mut command = Command::new("sudo");
+    command.args(&["ip", "link", "set", interface, "down"]);
+    println!("{:?}", command);
+    command.status()
 }

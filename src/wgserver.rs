@@ -3,12 +3,13 @@ use tonic::{transport::Server, Request, Response, Status};
 mod wgservice;
 use wgservice::wire_guard_service_server::{WireGuardService, WireGuardServiceServer};
 use wgservice::{
-    AssignAddrRequest, AssignAddrResponse, CreateInterfaceRequest, CreateInterfaceResponse, SetPrivateKeyRequest, SetPrivateKeyResponse
+    AssignAddrRequest, AssignAddrResponse, CreateInterfaceRequest, CreateInterfaceResponse,
+    SetPrivateKeyRequest, SetPrivateKeyResponse, SetLinkRequest, SetLinkResponse, 
 };
 mod wg;
 use wg::create_interface;
 mod utils;
-use utils::{assign_addr, set_private_key};
+use utils::{assign_addr, set_private_key, set_link_up, set_link_down};
 
 // defining a struct for our service
 #[derive(Default)]
@@ -50,6 +51,23 @@ impl WireGuardService for WGServer {
         let status = set_private_key(&unpacked.interface, &unpacked.key).unwrap();
         println!("{:?}", status);
         Ok(Response::new(SetPrivateKeyResponse {
+            status: status.code().unwrap(),
+        }))
+    }
+
+    async fn set_link(
+        &self,
+        request: Request<SetLinkRequest>,
+    ) -> Result<Response<SetLinkResponse>, Status> {
+        let unpacked = request.get_ref();
+        let status = match unpacked.operation {
+            // FIXME: can we use enum types defined in protos?
+            0 => set_link_up(&unpacked.interface).unwrap(),
+            1 => set_link_down(&unpacked.interface).unwrap(),
+            operation => panic!("Undefined operation: {:?}", operation),
+        };
+        println!("{:?}", status);
+        Ok(Response::new(SetLinkResponse {
             status: status.code().unwrap(),
         }))
     }
