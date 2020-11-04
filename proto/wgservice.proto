@@ -45,7 +45,7 @@ message SetPeerRequest {
   string interface = 1;
   string pubkey = 2;
   string allowed_ips = 3; // FIXME: should be an array
-  string endpoint = 4;
+  string endpoint = 4; // FIXME: use more relevant data structure (ip + port)
 }
 
 message SetPeerResponse {

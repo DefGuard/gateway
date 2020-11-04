@@ -1,16 +1,21 @@
-use std::process::Command;
+use std::process::{Command, ExitStatus};
+use std::io;
 use std::fs;
 use uuid::Uuid;
+
+fn run_command(command: &str, args: &[&str]) -> Result<ExitStatus, io::Error> {
+    let mut command = Command::new(command);
+    command.args(args);
+    println!("Running command: {:?}", command);
+    command.status()
+}
 
 pub fn assign_addr(
     interface: &str,
     addr: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     // FIXME: don't use sudo
-    let mut command = Command::new("sudo");
-    command.args(&["ip", "addr", "add", addr, "dev", interface]);
-    println!("{:?}", command);
-    command.status()
+    run_command("sudo", &["ip", "addr", "add", addr, "dev", interface])
 }
 
 pub fn set_private_key(
@@ -21,10 +26,7 @@ pub fn set_private_key(
     let path = &format!("/tmp/{}", Uuid::new_v4());
     fs::write(path, key)?;
     // FIXME: don't use sudo
-    let mut command = Command::new("sudo");
-    command.args(&["wg", "set", interface, "private-key", path]);
-    println!("{:?}", command);
-    let status = command.status();
+    let status = run_command("sudo", &["wg", "set", interface, "private-key", path]);
     fs::remove_file(path)?;
     status
 }
@@ -33,20 +35,14 @@ pub fn set_link_up(
     interface: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     // FIXME: don't use sudo
-    let mut command = Command::new("sudo");
-    command.args(&["ip", "link", "set", interface, "up"]);
-    println!("{:?}", command);
-    command.status()
+    run_command("sudo", &["ip", "link", "set", interface, "up"])
 }
 
 pub fn set_link_down(
     interface: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     // FIXME: don't use sudo
-    let mut command = Command::new("sudo");
-    command.args(&["ip", "link", "set", interface, "down"]);
-    println!("{:?}", command);
-    command.status()
+    run_command("sudo", &["ip", "link", "set", interface, "down"])
 }
 
 pub fn set_peer(
@@ -56,8 +52,5 @@ pub fn set_peer(
     endpoint: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     // FIXME: don't use sudo
-    let mut command = Command::new("sudo");
-    command.args(&["wg", "set", interface, "peer", pubkey, "allowed-ips", allowed_ips, "endpoint", endpoint]);
-    println!("{:?}", command);
-    command.status()
+    run_command("sudo", &["wg", "set", interface, "peer", pubkey, "allowed-ips", allowed_ips, "endpoint", endpoint])
 }
