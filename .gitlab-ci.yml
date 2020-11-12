@@ -1,0 +1,29 @@
+variables:
+  REGISTRY: registry.teonite.net
+
+services:
+  - docker:dind
+
+stages:
+  - build
+  - deploy
+
+build_and_push:
+  stage: build
+  only:
+    - master
+  tags:
+    - docker
+  script:
+    - docker build . -t ${REGISTRY}/orion/wireguard:${CI_PIPELINE_ID}
+    - docker login --username "${REGISTRY_USER}" --password "${REGISTRY_SECRET}" ${REGISTRY}
+    - docker push ${REGISTRY}/orion/wireguard:${CI_PIPELINE_ID}
+
+build:
+  stage: build
+  except:
+    - master
+  tags:
+    - docker
+  script:
+    - docker build . -t ${REGISTRY}/orion/wireguard:${CI_PIPELINE_ID}
