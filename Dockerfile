@@ -1,9 +1,5 @@
 FROM rust:1.47.0-slim as planner
 WORKDIR app
-# We only pay the installation cost once, 
-# it will be cached from the second build onwards
-# To ensure a reproducible build consider pinning 
-# the cargo-chef version with `--version X.X.X`
 RUN cargo install cargo-chef --version 0.1.6
 COPY . .
 RUN cargo chef prepare  --recipe-path recipe.json
@@ -26,4 +22,4 @@ RUN cargo build --release --bin wgserver
 FROM rust:1.47.0-slim as runtime
 WORKDIR app
 COPY --from=builder /app/target/release/wgserver /usr/local/bin
-ENTRYPOINT ["./usr/local/bin/wgserver"]
+ENTRYPOINT ["/usr/local/bin/wgserver"]
