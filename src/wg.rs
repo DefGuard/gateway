@@ -4,7 +4,7 @@ use boringtun::noise::Verbosity;
 use std::os::unix::net::UnixDatagram;
 use std::process::exit;
 
-pub fn create_interface(name: &String) {
+pub fn create_interface(name: &str) {
     let tun_name = name;
     let n_threads = 4;
     let log_level = Verbosity::None; // "silent" / "info" / "debug"

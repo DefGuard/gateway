@@ -37,7 +37,7 @@ impl WireGuardService for WGServer {
         request: Request<AssignAddrRequest>,
     ) -> Result<Response<AssignAddrResponse>, Status> {
         let unpacked = request.get_ref();
-        let status = assign_addr(&unpacked.interface, &unpacked.addr).unwrap();
+        let status = assign_addr(&unpacked.interface, &unpacked.addr)?;
         println!("{:?}", status);
         Ok(Response::new(AssignAddrResponse {
             status: status.code().unwrap(),
@@ -49,7 +49,7 @@ impl WireGuardService for WGServer {
         request: Request<SetPrivateKeyRequest>,
     ) -> Result<Response<SetPrivateKeyResponse>, Status> {
         let unpacked = request.get_ref();
-        let status = set_private_key(&unpacked.interface, &unpacked.key).unwrap();
+        let status = set_private_key(&unpacked.interface, &unpacked.key)?;
         println!("{:?}", status);
         Ok(Response::new(SetPrivateKeyResponse {
             status: status.code().unwrap(),
@@ -63,8 +63,8 @@ impl WireGuardService for WGServer {
         let unpacked = request.get_ref();
         let status = match unpacked.operation {
             // FIXME: can we use enum types defined in protos?
-            0 => set_link_up(&unpacked.interface).unwrap(),
-            1 => set_link_down(&unpacked.interface).unwrap(),
+            0 => set_link_up(&unpacked.interface)?,
+            1 => set_link_down(&unpacked.interface)?,
             operation => panic!("Undefined operation: {:?}", operation),
         };
         println!("{:?}", status);
@@ -83,7 +83,7 @@ impl WireGuardService for WGServer {
             &unpacked.pubkey,
             &unpacked.allowed_ips,
             &unpacked.endpoint,
-        ).unwrap();
+        )?;
         println!("{:?}", status);
         Ok(Response::new(SetPeerResponse {
             status: status.code().unwrap(),
@@ -93,7 +93,7 @@ impl WireGuardService for WGServer {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::]:50051".parse().unwrap();
+    let addr = "[::]:50051".parse()?;
     let wg = WGServer::default();
     println!("Server listening on {}", addr);
     Server::builder()
