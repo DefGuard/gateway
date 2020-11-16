@@ -1,3 +1,3 @@
 [submodule "proto"]
 	path = proto
-	url = git@git.teonite.net:orion/proto.git
+	url = ../proto.git
