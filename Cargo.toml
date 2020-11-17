@@ -6,13 +6,12 @@ edition = "2018"
 
 [dependencies]
 prost = "0.6.1"
-tonic = {version="0.2.0",features = ["tls"]}
-tokio = {version="0.2.18",features = ["stream", "macros"]}
-futures = "0.3"
-daemonize = "0.4.1"
+tonic = {version="0.3.1",features = ["tls"]}
+tokio = {version="0.2.23",features = ["stream", "macros"]}
+futures = "0.3.8"
 boringtun = { git = "https://github.com/cloudflare/boringtun.git", rev = "2660747" }
-clap = { version = "2.33", default-features=false, features = ["suggestions"] }
+clap = { version = "2.33.3", default-features=false, features = ["suggestions"] }
 uuid = { version = "0.8.1", features = ["v4"] }
 
 [build-dependencies]
-tonic-build = "0.2.0"
+tonic-build = "0.3.1"
