@@ -30,8 +30,7 @@ pub fn create_interface(name: &str) {
     let mut device_handle = match DeviceHandle::new(&tun_name, config) {
         Ok(d) => d,
         Err(e) => {
-            // Notify parent that tunnel initialization failed
-            eprintln!("Failed to initialize tunnel: {:?}", e);
+            log::error!("Failed to initialize tunnel: {:?}", e);
             sock.send(&[0]).unwrap();
             exit(1);
         }
@@ -39,7 +38,7 @@ pub fn create_interface(name: &str) {
 
     if enable_drop_privileges {
         if let Err(e) = drop_privileges() {
-            eprintln!("Failed to drop privileges: {:?}", e);
+            log::error!("Failed to drop privileges: {:?}", e);
             sock.send(&[0]).unwrap();
             exit(1);
         }

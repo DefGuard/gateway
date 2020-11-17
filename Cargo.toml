@@ -12,6 +12,9 @@ futures = "0.3.8"
 boringtun = { git = "https://github.com/cloudflare/boringtun.git", rev = "2660747" }
 clap = { version = "2.33.3", default-features=false, features = ["suggestions"] }
 uuid = { version = "0.8.1", features = ["v4"] }
+log = "0.4.11"
+fern = { version = "0.6.0", features = ["colored"] }
+chrono = "0.4.19"
 
 [build-dependencies]
 tonic-build = "0.3.1"

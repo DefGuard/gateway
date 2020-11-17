@@ -20,12 +20,14 @@ impl WireGuardService for WGServer {
         &self,
         request: Request<CreateInterfaceRequest>,
     ) -> Result<Response<CreateInterfaceResponse>, Status> {
-        let interface_name = request.get_ref().name.clone();
+        let request = request.get_ref();
+        log::debug!("Creating interface {:?}", &request);
+        let interface_name = request.name.clone();
         thread::spawn(move || {
             // FIXME: error handling
             create_interface(&interface_name);
         });
-        println!("Created interface {}", request.get_ref().name);
+        log::info!("Created interface {:?}", &request);
         // FIXME: pass status from system call
         Ok(Response::new(CreateInterfaceResponse { status: 0 }))
     }
@@ -34,9 +36,11 @@ impl WireGuardService for WGServer {
         &self,
         request: Request<AssignAddrRequest>,
     ) -> Result<Response<AssignAddrResponse>, Status> {
-        let unpacked = request.get_ref();
-        let status = assign_addr(&unpacked.interface, &unpacked.addr)?;
-        println!("{:?}", status);
+        let request = request.get_ref();
+        log::debug!("Assigning address {:?}", &request);
+        // FIXME: implement real error handling once service responses are implemented
+        let status = assign_addr(&request.interface, &request.addr)?;
+        log::info!("Assigned address {:?}", &request); 
         Ok(Response::new(AssignAddrResponse {
             status: status.code().unwrap(),
         }))
@@ -46,9 +50,10 @@ impl WireGuardService for WGServer {
         &self,
         request: Request<SetPrivateKeyRequest>,
     ) -> Result<Response<SetPrivateKeyResponse>, Status> {
-        let unpacked = request.get_ref();
-        let status = set_private_key(&unpacked.interface, &unpacked.key)?;
-        println!("{:?}", status);
+        let request = request.get_ref();
+        log::debug!("Setting private key on interface {}", &request.interface);
+        let status = set_private_key(&request.interface, &request.key)?;
+        log::info!("Set private key on interface {}", &request.interface);
         Ok(Response::new(SetPrivateKeyResponse {
             status: status.code().unwrap(),
         }))
@@ -58,14 +63,15 @@ impl WireGuardService for WGServer {
         &self,
         request: Request<SetLinkRequest>,
     ) -> Result<Response<SetLinkResponse>, Status> {
-        let unpacked = request.get_ref();
-        let status = match unpacked.operation {
+        let request = request.get_ref();
+        log::debug!("Setting interface {:?}", &request);
+        let status = match request.operation {
             // FIXME: can we use enum types defined in protos?
-            0 => set_link_up(&unpacked.interface)?,
-            1 => set_link_down(&unpacked.interface)?,
+            0 => set_link_down(&request.interface)?,
+            1 => set_link_up(&request.interface)?,
             operation => panic!("Undefined operation: {:?}", operation),
         };
-        println!("{:?}", status);
+        log::info!("Set interface {:?}", &request);
         Ok(Response::new(SetLinkResponse {
             status: status.code().unwrap(),
         }))
@@ -75,14 +81,15 @@ impl WireGuardService for WGServer {
         &self,
         request: Request<SetPeerRequest>,
     ) -> Result<Response<SetPeerResponse>, Status> {
-        let unpacked = request.get_ref();
+        let request = request.get_ref();
+        log::debug!("Setting peer {:?}", &request);
         let status = set_peer(
-            &unpacked.interface,
-            &unpacked.pubkey,
-            &unpacked.allowed_ips,
-            &unpacked.endpoint,
+            &request.interface,
+            &request.pubkey,
+            &request.allowed_ips,
+            &request.endpoint,
         )?;
-        println!("{:?}", status);
+        log::info!("Set peer {:?}", &request);
         Ok(Response::new(SetPeerResponse {
             status: status.code().unwrap(),
         }))
