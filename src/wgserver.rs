@@ -1,14 +1,13 @@
 use crate::wgservice::wire_guard_service_server::WireGuardService;
 use crate::wgservice::{
-    AssignAddrRequest, AssignAddrResponse, CreateInterfaceRequest, CreateInterfaceResponse,
-    SetLinkRequest, SetLinkResponse, SetPeerRequest, SetPeerResponse, SetPrivateKeyRequest,
-    SetPrivateKeyResponse,
+    AssignAddrRequest, CreateInterfaceRequest, SetLinkRequest, SetPeerRequest,
+    SetPrivateKeyRequest, Status,
 };
 use crate::wireguard::{
     assign_addr, create_interface, set_link_down, set_link_up, set_peer, set_private_key,
 };
 use std::thread;
-use tonic::{Request, Response, Status};
+use tonic::{Request, Response, Status as TonicStatus};
 
 // defining a struct for our service
 #[derive(Default)]
@@ -19,8 +18,8 @@ impl WireGuardService for WGServer {
     async fn create_interface(
         &self,
         request: Request<CreateInterfaceRequest>,
-    ) -> Result<Response<CreateInterfaceResponse>, Status> {
-        let request = request.get_ref();
+    ) -> Result<Response<Status>, TonicStatus> {
+        let request = request.into_inner();
         log::debug!("Creating interface {:?}", &request);
         let interface_name = request.name.clone();
         thread::spawn(move || {
@@ -29,41 +28,46 @@ impl WireGuardService for WGServer {
         });
         log::info!("Created interface {:?}", &request);
         // FIXME: pass status from system call
-        Ok(Response::new(CreateInterfaceResponse { status: 0 }))
+        Ok(Response::new(Status {
+            code: 0,
+            message: String::new(),
+        }))
     }
 
     async fn assign_addr(
         &self,
         request: Request<AssignAddrRequest>,
-    ) -> Result<Response<AssignAddrResponse>, Status> {
-        let request = request.get_ref();
+    ) -> Result<Response<Status>, TonicStatus> {
+        let request = request.into_inner();
         log::debug!("Assigning address {:?}", &request);
         // FIXME: implement real error handling once service responses are implemented
         let status = assign_addr(&request.interface, &request.addr)?;
-        log::info!("Assigned address {:?}", &request); 
-        Ok(Response::new(AssignAddrResponse {
-            status: status.code().unwrap(),
+        log::info!("Assigned address {:?}", &request);
+        Ok(Response::new(Status {
+            code: status.code().unwrap(),
+            message: String::new(),
         }))
     }
 
     async fn set_private_key(
         &self,
         request: Request<SetPrivateKeyRequest>,
-    ) -> Result<Response<SetPrivateKeyResponse>, Status> {
-        let request = request.get_ref();
-        log::debug!("Setting private key on interface {}", &request.interface);
+    ) -> Result<Response<Status>, TonicStatus> {
+        let request = request.into_inner();
+        log::debug!("Setting prvate key on interface {}", &request.interface);
         let status = set_private_key(&request.interface, &request.key)?;
         log::info!("Set private key on interface {}", &request.interface);
-        Ok(Response::new(SetPrivateKeyResponse {
-            status: status.code().unwrap(),
+        Ok(Response::new(Status {
+            code: status.code().unwrap(),
+            message: String::new(),
         }))
     }
 
     async fn set_link(
         &self,
         request: Request<SetLinkRequest>,
-    ) -> Result<Response<SetLinkResponse>, Status> {
-        let request = request.get_ref();
+    ) -> Result<Response<Status>, TonicStatus> {
+        let request = request.into_inner();
         log::debug!("Setting interface {:?}", &request);
         let status = match request.operation {
             // FIXME: can we use enum types defined in protos?
@@ -72,16 +76,17 @@ impl WireGuardService for WGServer {
             operation => panic!("Undefined operation: {:?}", operation),
         };
         log::info!("Set interface {:?}", &request);
-        Ok(Response::new(SetLinkResponse {
-            status: status.code().unwrap(),
+        Ok(Response::new(Status {
+            code: status.code().unwrap(),
+            message: String::new(),
         }))
     }
 
     async fn set_peer(
         &self,
         request: Request<SetPeerRequest>,
-    ) -> Result<Response<SetPeerResponse>, Status> {
-        let request = request.get_ref();
+    ) -> Result<Response<Status>, TonicStatus> {
+        let request = request.into_inner();
         log::debug!("Setting peer {:?}", &request);
         let status = set_peer(
             &request.interface,
@@ -90,8 +95,9 @@ impl WireGuardService for WGServer {
             &request.endpoint,
         )?;
         log::info!("Set peer {:?}", &request);
-        Ok(Response::new(SetPeerResponse {
-            status: status.code().unwrap(),
+        Ok(Response::new(Status {
+            code: status.code().unwrap(),
+            message: String::new(),
         }))
     }
 }
