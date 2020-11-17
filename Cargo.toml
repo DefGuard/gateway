@@ -16,7 +16,3 @@ uuid = { version = "0.8.1", features = ["v4"] }
 
 [build-dependencies]
 tonic-build = "0.2.0"
-
-[[bin]]
-name = "wgserver"
-path = "src/wgserver.rs"

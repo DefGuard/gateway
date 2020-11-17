@@ -17,9 +17,9 @@ COPY . .
 COPY --from=cacher /app/target target
 COPY --from=cacher /usr/local/cargo /usr/local/cargo
 RUN rustup component add rustfmt
-RUN cargo build --release --bin wgserver
+RUN cargo build --release
 
 FROM rust:1.47.0-slim as runtime
 WORKDIR app
-COPY --from=builder /app/target/release/wgserver /usr/local/bin
-ENTRYPOINT ["/usr/local/bin/wgserver"]
+COPY --from=builder /app/target/release/orion-wireguard /usr/local/bin
+ENTRYPOINT ["/usr/local/bin/orion-wireguard"]
