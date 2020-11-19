@@ -1,11 +1,11 @@
+use std::fs;
 use std::os::unix::net::UnixDatagram;
 use std::process::exit;
-use std::fs;
-use uuid::Uuid;
+use uuid::Uuid;use crate::utils::run_command;
+
 use boringtun::device::drop_privileges::*;
 use boringtun::device::*;
 use boringtun::noise::Verbosity;
-use crate::utils::run_command;
 
 pub fn create_interface(name: &str) {
     let tun_name = name;
@@ -58,7 +58,7 @@ pub fn assign_addr(
 
 pub fn set_private_key(
     interface: &str,
-    key: &str 
+    key: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     // FIXME: don't write private keys to file
     let path = &format!("/tmp/{}", Uuid::new_v4());
@@ -69,16 +69,12 @@ pub fn set_private_key(
     status
 }
 
-pub fn set_link_up(
-    interface: &str,
-) -> Result<std::process::ExitStatus, std::io::Error> {
+pub fn set_link_up(interface: &str) -> Result<std::process::ExitStatus, std::io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "set", interface, "up"])
 }
 
-pub fn set_link_down(
-    interface: &str,
-) -> Result<std::process::ExitStatus, std::io::Error> {
+pub fn set_link_down(interface: &str) -> Result<std::process::ExitStatus, std::io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "set", interface, "down"])
 }
@@ -86,9 +82,22 @@ pub fn set_link_down(
 pub fn set_peer(
     interface: &str,
     pubkey: &str,
-    allowed_ips: &str, 
+    allowed_ips: &str,
     endpoint: &str,
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     // FIXME: don't use sudo
-    run_command("sudo", &["wg", "set", interface, "peer", pubkey, "allowed-ips", allowed_ips, "endpoint", endpoint])
+    run_command(
+        "sudo",
+        &[
+            "wg",
+            "set",
+            interface,
+            "peer",
+            pubkey,
+            "allowed-ips",
+            allowed_ips,
+            "endpoint",
+            endpoint,
+        ],
+    )
 }
