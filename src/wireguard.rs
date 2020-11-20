@@ -1,13 +1,15 @@
+use crate::utils::run_command;
 use std::fs;
 use std::os::unix::net::UnixDatagram;
-use std::process::exit;
-use uuid::Uuid;use crate::utils::run_command;
+use std::process::{ExitStatus, exit};
+use std::io;
+use uuid::Uuid;
 
 use boringtun::device::drop_privileges::*;
 use boringtun::device::*;
 use boringtun::noise::Verbosity;
 
-pub fn create_interface(name: &str) {
+pub fn _create_interface_userspace(name: &str) {
     let tun_name = name;
     let n_threads = 4;
     let log_level = Verbosity::None; // "silent" / "info" / "debug"
@@ -48,10 +50,15 @@ pub fn create_interface(name: &str) {
     device_handle.wait();
 }
 
+pub fn create_interface(name: &str) -> Result<ExitStatus, io::Error> {
+    // FIXME: don't use sudo
+    run_command("sudo", &["ip", "link", "add", name, "type", "wireguard"])
+}
+
 pub fn assign_addr(
     interface: &str,
     addr: &str,
-) -> Result<std::process::ExitStatus, std::io::Error> {
+) -> Result<ExitStatus, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "addr", "add", addr, "dev", interface])
 }
@@ -59,7 +66,7 @@ pub fn assign_addr(
 pub fn set_private_key(
     interface: &str,
     key: &str,
-) -> Result<std::process::ExitStatus, std::io::Error> {
+) -> Result<ExitStatus, io::Error> {
     // FIXME: don't write private keys to file
     let path = &format!("/tmp/{}", Uuid::new_v4());
     fs::write(path, key)?;
@@ -69,12 +76,12 @@ pub fn set_private_key(
     status
 }
 
-pub fn set_link_up(interface: &str) -> Result<std::process::ExitStatus, std::io::Error> {
+pub fn set_link_up(interface: &str) -> Result<ExitStatus, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "set", interface, "up"])
 }
 
-pub fn set_link_down(interface: &str) -> Result<std::process::ExitStatus, std::io::Error> {
+pub fn set_link_down(interface: &str) -> Result<ExitStatus, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "set", interface, "down"])
 }
@@ -84,7 +91,7 @@ pub fn set_peer(
     pubkey: &str,
     allowed_ips: &str,
     endpoint: &str,
-) -> Result<std::process::ExitStatus, std::io::Error> {
+) -> Result<ExitStatus, io::Error> {
     // FIXME: don't use sudo
     run_command(
         "sudo",

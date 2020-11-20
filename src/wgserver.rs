@@ -1,4 +1,3 @@
-use std::{thread};
 use tonic::{Request, Response, Status as TonicStatus};
 
 use crate::wgservice::wire_guard_service_server::WireGuardService;
@@ -22,17 +21,27 @@ impl WireGuardService for WGServer {
     ) -> Result<Response<Status>, TonicStatus> {
         let request = request.into_inner();
         log::debug!("Creating interface {:?}", &request);
-        let interface_name = request.name.clone();
-        // FIXME: error handling
-        thread::spawn(move || {
-            create_interface(&interface_name);
-        });
-        log::info!("Created interface {:?}", &request);
-        // FIXME: pass status from system call
-        Ok(Response::new(Status {
-            code: 0,
-            message: String::new(),
-        }))
+        let status = create_interface(&request.name)?;
+        match status.code() {
+            Some(0) | None => {
+                log::info!("Created interface {:?}", &request);
+                Ok(Response::new(Status {
+                    code: 0,
+                    message: String::new(),
+                }))
+            }
+            Some(code) => {
+                log::error!(
+                    "Failed to create interface {:?}. Error code: {}",
+                    &request,
+                    code
+                );
+                Ok(Response::new(Status {
+                    code: code,
+                    message: String::from("Command returned non-zero exit status"),
+                }))
+            }
+        }
     }
 
     async fn assign_addr(
