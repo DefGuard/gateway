@@ -1,7 +1,7 @@
 use crate::utils::run_command;
 use std::fs;
 use std::os::unix::net::UnixDatagram;
-use std::process::{ExitStatus, exit};
+use std::process::{Output, exit};
 use std::io;
 use uuid::Uuid;
 
@@ -50,7 +50,7 @@ pub fn _create_interface_userspace(name: &str) {
     device_handle.wait();
 }
 
-pub fn create_interface(name: &str) -> Result<ExitStatus, io::Error> {
+pub fn create_interface(name: &str) -> Result<Output, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "add", name, "type", "wireguard"])
 }
@@ -58,7 +58,7 @@ pub fn create_interface(name: &str) -> Result<ExitStatus, io::Error> {
 pub fn assign_addr(
     interface: &str,
     addr: &str,
-) -> Result<ExitStatus, io::Error> {
+) -> Result<Output, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "addr", "add", addr, "dev", interface])
 }
@@ -66,7 +66,7 @@ pub fn assign_addr(
 pub fn set_private_key(
     interface: &str,
     key: &str,
-) -> Result<ExitStatus, io::Error> {
+) -> Result<Output, io::Error> {
     // FIXME: don't write private keys to file
     let path = &format!("/tmp/{}", Uuid::new_v4());
     fs::write(path, key)?;
@@ -76,12 +76,12 @@ pub fn set_private_key(
     status
 }
 
-pub fn set_link_up(interface: &str) -> Result<ExitStatus, io::Error> {
+pub fn set_link_up(interface: &str) -> Result<Output, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "set", interface, "up"])
 }
 
-pub fn set_link_down(interface: &str) -> Result<ExitStatus, io::Error> {
+pub fn set_link_down(interface: &str) -> Result<Output, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "set", interface, "down"])
 }
@@ -91,7 +91,7 @@ pub fn set_peer(
     pubkey: &str,
     allowed_ips: &str,
     endpoint: &str,
-) -> Result<ExitStatus, io::Error> {
+) -> Result<Output, io::Error> {
     // FIXME: don't use sudo
     run_command(
         "sudo",
@@ -107,4 +107,9 @@ pub fn set_peer(
             endpoint,
         ],
     )
+}
+
+pub fn interface_stats(interface: &str) -> Result<Output, io::Error> {
+    // FIXME: don't use sudo
+    run_command("sudo", &["wg", "show", interface, "transfer"])
 }
