@@ -19,6 +19,10 @@ pub struct WGServer {}
 
 #[tonic::async_trait]
 impl WireGuardService for WGServer {
+    /// Handles wireguard interface creation.
+    /// 
+    /// Uses unserspace wireguard implementation if ORI_USERSPACE 
+    /// environment variable is set to true.
     async fn create_interface(
         &self,
         request: Request<CreateInterfaceRequest>,
@@ -63,6 +67,7 @@ impl WireGuardService for WGServer {
         }
     }
 
+    /// Handles interface address assignment.
     async fn assign_addr(
         &self,
         request: Request<AssignAddrRequest>,
@@ -92,6 +97,7 @@ impl WireGuardService for WGServer {
         }
     }
 
+    /// Handles interface private key assignment.
     async fn set_private_key(
         &self,
         request: Request<SetPrivateKeyRequest>,
@@ -120,6 +126,7 @@ impl WireGuardService for WGServer {
         }
     }
 
+    /// Handles interface up / down operations.
     async fn set_link(
         &self,
         request: Request<SetLinkRequest>,
@@ -155,6 +162,7 @@ impl WireGuardService for WGServer {
         }
     }
 
+    /// Handles peer assignment.
     async fn set_peer(
         &self,
         request: Request<SetPeerRequest>,
@@ -185,6 +193,7 @@ impl WireGuardService for WGServer {
         }
     }
 
+    /// Handles interface statistics.
     async fn interface_stats(
         &self,
         request: Request<InterfaceStatsRequest>,

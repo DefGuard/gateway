@@ -9,6 +9,11 @@ use boringtun::device::drop_privileges::*;
 use boringtun::device::*;
 use boringtun::noise::Verbosity;
 
+/// Creates wireguard interface using userspace implementation.
+/// 
+/// # Arguments
+/// 
+/// * `name` - Interface name
 pub fn create_interface_userspace(name: &str) {
     let tun_name = name;
     let n_threads = 4;
@@ -50,11 +55,22 @@ pub fn create_interface_userspace(name: &str) {
     device_handle.wait();
 }
 
+/// Creates wireguard interface.
+/// 
+/// # Arguments
+/// 
+/// * `name` - Interface name
 pub fn create_interface(name: &str) -> Result<Output, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "add", name, "type", "wireguard"])
 }
 
+/// Assigns address to interface.
+/// 
+/// # Arguments
+/// 
+/// * `interface` - Interface name
+/// * `addr` - Address to assign to interface
 pub fn assign_addr(
     interface: &str,
     addr: &str,
@@ -63,6 +79,12 @@ pub fn assign_addr(
     run_command("sudo", &["ip", "addr", "add", addr, "dev", interface])
 }
 
+/// Assigns private key to interface
+/// 
+/// # Arguments
+/// 
+/// * `interface` - Interface name
+/// * ` key` - Private key to assign to interface
 pub fn set_private_key(
     interface: &str,
     key: &str,
@@ -76,16 +98,34 @@ pub fn set_private_key(
     status
 }
 
+/// Starts an interface
+/// 
+/// # Arguments
+/// 
+/// * `interface` - Interface to start
 pub fn set_link_up(interface: &str) -> Result<Output, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "set", interface, "up"])
 }
 
+/// Stops an interface
+/// 
+/// # Arguments
+/// 
+/// * `interface` - Interface to stop
 pub fn set_link_down(interface: &str) -> Result<Output, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["ip", "link", "set", interface, "down"])
 }
 
+/// Sets wireguard interface peer
+/// 
+/// # Arguments
+/// 
+/// * `interface` - WireGuard interface
+/// * `pubkey` - Peer public key
+/// * `allowed_ips` - Peer allowed IPs/masks, e.g. 10.0.0.1/24
+/// * `endpoint` - Peer endpoint, e.g. 192.168.1.10:54545
 pub fn set_peer(
     interface: &str,
     pubkey: &str,
@@ -109,6 +149,11 @@ pub fn set_peer(
     )
 }
 
+/// Displays interface statistics
+/// 
+/// # Arguments
+/// 
+/// * `interface` - Interface name
 pub fn interface_stats(interface: &str) -> Result<Output, io::Error> {
     // FIXME: don't use sudo
     run_command("sudo", &["wg", "show", interface, "transfer"])

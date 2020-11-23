@@ -2,6 +2,12 @@ use crate::wgservice::PeerStats;
 use std::process::{Command, Output};
 use std::{io, str};
 
+/// Runs specified command.
+/// 
+/// # Arguments
+/// 
+/// * `command` - Command to run
+/// * `args` - Command arguments
 pub fn run_command(command: &str, args: &[&str]) -> Result<Output, io::Error> {
     let mut command = Command::new(command);
     command.args(args);
@@ -11,6 +17,7 @@ pub fn run_command(command: &str, args: &[&str]) -> Result<Output, io::Error> {
     output
 }
 
+/// Parses peer statistics from a line of `wg show INTERFACE transfer` command.
 fn parse_peer_stats(line: &str) -> PeerStats {
     let mut split = line.split("\t");
     let peer = String::from(split.next().unwrap_or(""));
@@ -19,10 +26,12 @@ fn parse_peer_stats(line: &str) -> PeerStats {
     PeerStats {peer, received, sent}
 }
 
+/// Parses peer statistics from `wg show INTERFACE transfer` command output.
 pub fn parse_wg_stats(stdout: &str) -> Vec<PeerStats> {
     stdout.lines().map(parse_peer_stats).collect()
 }
 
+/// Transforms vector of bytes to String.
 pub fn bytes_to_string(bytes: &Vec<u8>) -> String {
     String::from(std::str::from_utf8(bytes).unwrap_or(""))
 }
