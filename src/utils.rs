@@ -22,3 +22,7 @@ fn parse_peer_stats(line: &str) -> PeerStats {
 pub fn parse_wg_stats(stdout: &str) -> Vec<PeerStats> {
     stdout.lines().map(parse_peer_stats).collect()
 }
+
+pub fn bytes_to_string(bytes: &Vec<u8>) -> String {
+    String::from(std::str::from_utf8(bytes).unwrap_or(""))
+}

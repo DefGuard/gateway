@@ -9,7 +9,7 @@ use crate::wireguard::{
     assign_addr, create_interface, interface_stats, set_link_down, set_link_up, set_peer,
     set_private_key,
 };
-use crate::utils::parse_wg_stats;
+use crate::utils::{bytes_to_string, parse_wg_stats};
 
 // defining a struct for our service
 #[derive(Default)]
@@ -40,7 +40,7 @@ impl WireGuardService for WGServer {
                 );
                 Ok(Response::new(Status {
                     code: code,
-                    message: String::from("Command returned non-zero exit status"),
+                    message: bytes_to_string(&output.stderr),
                 }))
             }
         }
@@ -69,7 +69,7 @@ impl WireGuardService for WGServer {
                 );
                 Ok(Response::new(Status {
                     code: code,
-                    message: String::from("Command returned non-zero exit status"),
+                    message: bytes_to_string(&output.stderr),
                 }))
             }
         }
@@ -97,7 +97,7 @@ impl WireGuardService for WGServer {
                 );
                 Ok(Response::new(Status {
                     code: code,
-                    message: String::from("Command returned non-zero exit status"),
+                    message: bytes_to_string(&output.stderr),
                 }))
             }
         }
@@ -132,7 +132,7 @@ impl WireGuardService for WGServer {
                 log::error!("Failed to set interface {:?}", &request);
                 Ok(Response::new(Status {
                     code: code,
-                    message: String::from("Command returned non-zero exit status"),
+                    message: bytes_to_string(&output.stderr),
                 }))
             }
         }
@@ -162,7 +162,7 @@ impl WireGuardService for WGServer {
                 log::error!("Failed to set peer {:?}", &request);
                 Ok(Response::new(Status {
                     code: code,
-                    message: String::from("Command returned non-zero exit status"),
+                    message: bytes_to_string(&output.stderr),
                 }))
             }
         }
@@ -190,7 +190,7 @@ impl WireGuardService for WGServer {
                 Ok(Response::new(InterfaceStatsResponse {
                     code: code,
                     stats: vec![],
-                    message: String::from("Command returned non-zero exit status"),
+                    message: bytes_to_string(&output.stderr),
                 }))
             }
         }
