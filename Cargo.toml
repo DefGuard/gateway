@@ -15,6 +15,7 @@ uuid = { version = "0.8.1", features = ["v4"] }
 log = "0.4.11"
 fern = { version = "0.6.0", features = ["colored"] }
 chrono = "0.4.19"
+envconfig = "0.9.1"
 
 [build-dependencies]
 tonic-build = "0.3.1"

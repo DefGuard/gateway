@@ -233,6 +233,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
+name = "envconfig"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c0ef0470da909709515ab175d5d12f1b20932f758f731589e1ff198561ab9ca"
+dependencies = [
+ "envconfig_derive",
+]
+
+[[package]]
+name = "envconfig_derive"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ca7511366e70d25663dbc2501911beae6064d51687214794efd2d8f5ad73440"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "error-chain"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -694,6 +714,7 @@ dependencies = [
  "boringtun",
  "chrono",
  "clap",
+ "envconfig",
  "fern",
  "futures",
  "log",
