@@ -9,7 +9,7 @@ use boringtun::device::drop_privileges::*;
 use boringtun::device::*;
 use boringtun::noise::Verbosity;
 
-pub fn _create_interface_userspace(name: &str) {
+pub fn create_interface_userspace(name: &str) {
     let tun_name = name;
     let n_threads = 4;
     let log_level = Verbosity::None; // "silent" / "info" / "debug"

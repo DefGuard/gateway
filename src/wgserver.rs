@@ -1,15 +1,17 @@
 use tonic::{Request, Response, Status as TonicStatus};
-
+use envconfig::Envconfig;
+use std::thread;
 use crate::wgservice::wire_guard_service_server::WireGuardService;
 use crate::wgservice::{
     AssignAddrRequest, CreateInterfaceRequest, InterfaceStatsRequest, InterfaceStatsResponse,
     SetLinkRequest, SetPeerRequest, SetPrivateKeyRequest, Status,
 };
 use crate::wireguard::{
-    assign_addr, create_interface, interface_stats, set_link_down, set_link_up, set_peer,
+    assign_addr, create_interface, create_interface_userspace, interface_stats, set_link_down, set_link_up, set_peer,
     set_private_key,
 };
 use crate::utils::{bytes_to_string, parse_wg_stats};
+use crate::Config;
 
 // defining a struct for our service
 #[derive(Default)]
@@ -22,7 +24,22 @@ impl WireGuardService for WGServer {
         request: Request<CreateInterfaceRequest>,
     ) -> Result<Response<Status>, TonicStatus> {
         let request = request.into_inner();
+        let userspace = match Config::init_from_env() {
+            Ok(config) => config.userspace,
+            Err(_) => false
+        };
         log::debug!("Creating interface {:?}", &request);
+        if userspace {
+            let ifname = request.name.clone();
+            thread::spawn(move || {
+                create_interface_userspace(&ifname);
+            });
+            log::info!("Created interface {:?}", &request);
+            return Ok(Response::new(Status {
+                code: 0,
+                message: String::new(),
+            }))
+        }
         let output = create_interface(&request.name)?;
         match output.status.code() {
             Some(0) | None => {
