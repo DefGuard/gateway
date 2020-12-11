@@ -9,6 +9,7 @@ mod logger;
 mod wgserver;
 mod wgservice;
 mod wireguard;
+mod error;
 
 #[derive(Debug, Envconfig)]
 pub struct Config {

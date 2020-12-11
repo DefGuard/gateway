@@ -1,13 +1,14 @@
-use crate::utils::run_command;
 use std::fs;
 use std::os::unix::net::UnixDatagram;
 use std::process::{Output, exit};
-use std::io;
 use uuid::Uuid;
-
 use boringtun::device::drop_privileges::*;
 use boringtun::device::*;
 use boringtun::noise::Verbosity;
+use crate::utils::run_command;
+use crate::error::OriWireGuardError;
+
+type WGResult = Result<Output, OriWireGuardError>;
 
 /// Creates wireguard interface using userspace implementation.
 /// 
@@ -60,9 +61,9 @@ pub fn create_interface_userspace(name: &str) {
 /// # Arguments
 /// 
 /// * `name` - Interface name
-pub fn create_interface(name: &str) -> Result<Output, io::Error> {
+pub fn create_interface(name: &str) -> WGResult {
     // FIXME: don't use sudo
-    run_command("sudo", &["ip", "link", "add", name, "type", "wireguard"])
+    Ok(run_command("sudo", &["ip", "link", "add", name, "type", "wireguard"])?)
 }
 
 /// Assigns address to interface.
@@ -74,9 +75,9 @@ pub fn create_interface(name: &str) -> Result<Output, io::Error> {
 pub fn assign_addr(
     interface: &str,
     addr: &str,
-) -> Result<Output, io::Error> {
+) -> WGResult {
     // FIXME: don't use sudo
-    run_command("sudo", &["ip", "addr", "add", addr, "dev", interface])
+    Ok(run_command("sudo", &["ip", "addr", "add", addr, "dev", interface])?)
 }
 
 /// Assigns private key to interface
@@ -84,18 +85,18 @@ pub fn assign_addr(
 /// # Arguments
 /// 
 /// * `interface` - Interface name
-/// * ` key` - Private key to assign to interface
+/// * `key` - Private key to assign to interface
 pub fn set_private_key(
     interface: &str,
     key: &str,
-) -> Result<Output, io::Error> {
+) -> WGResult {
     // FIXME: don't write private keys to file
     let path = &format!("/tmp/{}", Uuid::new_v4());
     fs::write(path, key)?;
     // FIXME: don't use sudo
     let status = run_command("sudo", &["wg", "set", interface, "private-key", path]);
     fs::remove_file(path)?;
-    status
+    Ok(status?)
 }
 
 /// Starts an interface
@@ -103,9 +104,9 @@ pub fn set_private_key(
 /// # Arguments
 /// 
 /// * `interface` - Interface to start
-pub fn set_link_up(interface: &str) -> Result<Output, io::Error> {
+pub fn set_link_up(interface: &str) -> WGResult {
     // FIXME: don't use sudo
-    run_command("sudo", &["ip", "link", "set", interface, "up"])
+    Ok(run_command("sudo", &["ip", "link", "set", interface, "up"])?)
 }
 
 /// Stops an interface
@@ -113,9 +114,9 @@ pub fn set_link_up(interface: &str) -> Result<Output, io::Error> {
 /// # Arguments
 /// 
 /// * `interface` - Interface to stop
-pub fn set_link_down(interface: &str) -> Result<Output, io::Error> {
+pub fn set_link_down(interface: &str) -> WGResult {
     // FIXME: don't use sudo
-    run_command("sudo", &["ip", "link", "set", interface, "down"])
+    Ok(run_command("sudo", &["ip", "link", "set", interface, "down"])?)
 }
 
 /// Sets wireguard interface peer
@@ -131,9 +132,9 @@ pub fn set_peer(
     pubkey: &str,
     allowed_ips: &str,
     endpoint: &str,
-) -> Result<Output, io::Error> {
+) -> WGResult {
     // FIXME: don't use sudo
-    run_command(
+    Ok(run_command(
         "sudo",
         &[
             "wg",
@@ -146,7 +147,7 @@ pub fn set_peer(
             "endpoint",
             endpoint,
         ],
-    )
+    )?)
 }
 
 /// Displays interface statistics
@@ -154,7 +155,7 @@ pub fn set_peer(
 /// # Arguments
 /// 
 /// * `interface` - Interface name
-pub fn interface_stats(interface: &str) -> Result<Output, io::Error> {
+pub fn interface_stats(interface: &str) -> WGResult {
     // FIXME: don't use sudo
-    run_command("sudo", &["wg", "show", interface, "transfer"])
+    Ok(run_command("sudo", &["wg", "show", interface, "transfer"])?)
 }

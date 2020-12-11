@@ -1,7 +1,7 @@
 use tonic::{Request, Response, Status as TonicStatus};
 use envconfig::Envconfig;
 use std::thread;
-use crate::wgservice::wire_guard_service_server::WireGuardService;
+use crate::{error::OriWireGuardError, wgservice::wire_guard_service_server::WireGuardService};
 use crate::wgservice::{
     AssignAddrRequest, CreateInterfaceRequest, InterfaceStatsRequest, InterfaceStatsResponse,
     SetLinkRequest, SetPeerRequest, SetPrivateKeyRequest, Status,
@@ -13,9 +13,16 @@ use crate::wireguard::{
 use crate::utils::{bytes_to_string, parse_wg_stats};
 use crate::Config;
 
-// defining a struct for our service
 #[derive(Default)]
 pub struct WGServer {}
+
+impl From<OriWireGuardError> for TonicStatus {
+    fn from(err: OriWireGuardError) -> Self {
+        match err {
+            OriWireGuardError::CommandExecutionFailed {..} => TonicStatus::unknown("Command execution failed")
+        }
+    }
+}
 
 #[tonic::async_trait]
 impl WireGuardService for WGServer {
