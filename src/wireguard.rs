@@ -5,12 +5,13 @@ use uuid::Uuid;
 use boringtun::device::drop_privileges::*;
 use boringtun::device::*;
 use boringtun::noise::Verbosity;
-use crate::utils::run_command;
+use crate::utils::{run_command, bytes_to_string};
 use crate::error::OriWireGuardError;
 
-type WGResult = Result<Output, OriWireGuardError>;
+type Result = std::result::Result<String, OriWireGuardError>;
 
 /// Creates wireguard interface using userspace implementation.
+/// https://github.com/cloudflare/boringtun
 /// 
 /// # Arguments
 /// 
@@ -56,14 +57,27 @@ pub fn create_interface_userspace(name: &str) {
     device_handle.wait();
 }
 
+/// Checks if command exited successfully, returns CommandExecutionError with stderr if not.
+///
+/// # Arguments
+/// 
+/// * `output` - command output 
+fn map_output(output: &Output) -> Result {
+    match output.status.code() {
+        Some(0) | None => Ok(std::str::from_utf8(&output.stdout).unwrap_or("").to_string()),
+        _ => Err(OriWireGuardError::CommandExecutionError {stderr: bytes_to_string(&output.stderr)}),
+    }
+}
+
 /// Creates wireguard interface.
 /// 
 /// # Arguments
 /// 
 /// * `name` - Interface name
-pub fn create_interface(name: &str) -> WGResult {
+pub fn create_interface(name: &str) -> Result {
     // FIXME: don't use sudo
-    Ok(run_command("sudo", &["ip", "link", "add", name, "type", "wireguard"])?)
+    let output = run_command("sudo", &["ip", "link", "add", name, "type", "wireguard"])?;
+    map_output(&output)
 }
 
 /// Assigns address to interface.
@@ -75,9 +89,10 @@ pub fn create_interface(name: &str) -> WGResult {
 pub fn assign_addr(
     interface: &str,
     addr: &str,
-) -> WGResult {
+) -> Result {
     // FIXME: don't use sudo
-    Ok(run_command("sudo", &["ip", "addr", "add", addr, "dev", interface])?)
+    let output = run_command("sudo", &["ip", "addr", "add", addr, "dev", interface])?;
+    map_output(&output)
 }
 
 /// Assigns private key to interface
@@ -89,14 +104,14 @@ pub fn assign_addr(
 pub fn set_private_key(
     interface: &str,
     key: &str,
-) -> WGResult {
+) -> Result {
     // FIXME: don't write private keys to file
     let path = &format!("/tmp/{}", Uuid::new_v4());
     fs::write(path, key)?;
     // FIXME: don't use sudo
-    let status = run_command("sudo", &["wg", "set", interface, "private-key", path]);
+    let output = run_command("sudo", &["wg", "set", interface, "private-key", path])?;
     fs::remove_file(path)?;
-    Ok(status?)
+    map_output(&output)
 }
 
 /// Starts an interface
@@ -104,9 +119,10 @@ pub fn set_private_key(
 /// # Arguments
 /// 
 /// * `interface` - Interface to start
-pub fn set_link_up(interface: &str) -> WGResult {
+pub fn set_link_up(interface: &str) -> Result {
     // FIXME: don't use sudo
-    Ok(run_command("sudo", &["ip", "link", "set", interface, "up"])?)
+    let output = run_command("sudo", &["ip", "link", "set", interface, "up"])?;
+    map_output(&output)
 }
 
 /// Stops an interface
@@ -114,9 +130,10 @@ pub fn set_link_up(interface: &str) -> WGResult {
 /// # Arguments
 /// 
 /// * `interface` - Interface to stop
-pub fn set_link_down(interface: &str) -> WGResult {
+pub fn set_link_down(interface: &str) -> Result {
     // FIXME: don't use sudo
-    Ok(run_command("sudo", &["ip", "link", "set", interface, "down"])?)
+    let output = run_command("sudo", &["ip", "link", "set", interface, "down"])?;
+    map_output(&output)
 }
 
 /// Sets wireguard interface peer
@@ -132,9 +149,9 @@ pub fn set_peer(
     pubkey: &str,
     allowed_ips: &str,
     endpoint: &str,
-) -> WGResult {
+) -> Result {
     // FIXME: don't use sudo
-    Ok(run_command(
+    let output = run_command(
         "sudo",
         &[
             "wg",
@@ -147,7 +164,8 @@ pub fn set_peer(
             "endpoint",
             endpoint,
         ],
-    )?)
+    )?;
+    map_output(&output)
 }
 
 /// Displays interface statistics
@@ -155,7 +173,8 @@ pub fn set_peer(
 /// # Arguments
 /// 
 /// * `interface` - Interface name
-pub fn interface_stats(interface: &str) -> WGResult {
+pub fn interface_stats(interface: &str) -> Result {
     // FIXME: don't use sudo
-    Ok(run_command("sudo", &["wg", "show", interface, "transfer"])?)
+    let output = run_command("sudo", &["wg", "show", interface, "transfer"])?;
+    map_output(&output)
 }

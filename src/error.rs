@@ -7,4 +7,9 @@ pub enum OriWireGuardError {
         #[from]
         source: std::io::Error,
     },
+
+    #[error("Command returned error status")]
+    CommandExecutionError {
+        stderr: String
+    },
 }
