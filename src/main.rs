@@ -1,31 +1,31 @@
-use envconfig::Envconfig;
-
+use structopt::StructOpt;
 use tonic::transport::Server;
 use wgserver::WGServer;
 use wgservice::wire_guard_service_server::WireGuardServiceServer;
 
+mod error;
 mod utils;
-mod logger;
 mod wgserver;
 mod wgservice;
 mod wireguard;
-mod error;
 
-#[derive(Debug, Envconfig)]
+#[derive(StructOpt, Debug)]
+#[structopt(name = "wireguard-gateway")]
 pub struct Config {
-    #[envconfig(from = "ORI_USERSPACE", default = "false")]
-    pub userspace: bool,
+    #[structopt(long, short = "u", env = "DEFGUARD_USERSPACE")]
+    userspace: bool,
 
-    #[envconfig(from = "ORI_PORT", default = "50051")]
-    pub port: u16,
+    #[structopt(long, short = "p", env = "DEFGUARD_PORT", default_value = "50051")]
+    port: u16,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // setup fern logging
-    logger::setup()?;
+    env_logger::init_from_env(
+        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
+    );
 
-    let config = Config::init_from_env()?;
+    let config = Config::from_args();
     log::debug!("Starting server with config: {:?}", config);
     let addr = format!("[::]:{}", config.port).parse()?;
     let wg = WGServer::default();

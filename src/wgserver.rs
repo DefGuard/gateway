@@ -1,5 +1,5 @@
 use tonic::{Request, Response, Status as TonicStatus};
-use envconfig::Envconfig;
+use structopt::StructOpt;
 use std::thread;
 use crate::{error::OriWireGuardError, wgservice::wire_guard_service_server::WireGuardService};
 use crate::wgservice::{
@@ -12,6 +12,7 @@ use crate::wireguard::{
 };
 use crate::utils::parse_wg_stats;
 use crate::Config;
+
 
 #[derive(Default)]
 pub struct WGServer {}
@@ -36,11 +37,8 @@ impl WireGuardService for WGServer {
         request: Request<CreateInterfaceRequest>,
     ) -> Result<Response<Status>, TonicStatus> {
         let request = request.into_inner();
-        let userspace = match Config::init_from_env() {
-            Ok(config) => config.userspace,
-            Err(_) => false
-        };
-        if userspace {
+        // FIXME: pass config from main
+        if Config::from_args().userspace {
             log::debug!("Creating userspace interface {:?}", &request);
             let ifname = request.name.clone();
             thread::spawn(move || {
