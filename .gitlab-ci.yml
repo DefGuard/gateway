@@ -2,29 +2,38 @@ variables:
   GIT_SUBMODULE_STRATEGY: recursive
   REGISTRY: registry.teonite.net
 
-services:
-  - docker:dind
+default:
+  tags:
+    - kubernetes
 
 stages:
   - build
-  - deploy
 
-build_and_push:
+.build-image:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"${REGISTRY}\":{\"username\":\"${REGISTRY_USER}\",\"password\":\"${REGISTRY_SECRET}\"}}}" > /kaniko/.docker/config.json
+
+build_master:
   stage: build
   only:
     - master
-  tags:
-    - docker
   script:
-    - docker build . -t ${REGISTRY}/orion/wireguard:${CI_PIPELINE_ID}
-    - docker login --username "${REGISTRY_USER}" --password "${REGISTRY_SECRET}" ${REGISTRY}
-    - docker push ${REGISTRY}/orion/wireguard:${CI_PIPELINE_ID}
+    - /kaniko/executor --context ${CI_PROJECT_DIR} --dockerfile ${CI_PROJECT_DIR}/Dockerfile
+      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:${CI_PIPELINE_ID}
+      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:latest
+
 
 build:
-  stage: build
+  extends: .build-image
+  script:
+    - /kaniko/executor --context ${CI_PROJECT_DIR} --dockerfile ${CI_PROJECT_DIR}/Dockerfile
+      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:${CI_PIPELINE_ID}
+      --single-snapshot
   except:
     - master
-  tags:
-    - docker
-  script:
-    - docker build . -t ${REGISTRY}/orion/wireguard:${CI_PIPELINE_ID}
+
