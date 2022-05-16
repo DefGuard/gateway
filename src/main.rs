@@ -1,22 +1,39 @@
+use gateway::run_gateway_client;
 use structopt::StructOpt;
-use tonic::transport::Server;
-use wgserver::WGServer;
-use wgservice::wire_guard_service_server::WireGuardServiceServer;
 
 mod error;
+mod gateway;
 mod utils;
-mod wgserver;
-mod wgservice;
 mod wireguard;
 
 #[derive(StructOpt, Debug)]
-#[structopt(name = "wireguard-gateway")]
+#[structopt(name = "vpn-gateway", about = "DefGuard VPN gateway service")]
 pub struct Config {
-    #[structopt(long, short = "u", env = "DEFGUARD_USERSPACE")]
+    #[structopt(
+        long,
+        short = "u",
+        env = "DEFGUARD_USERSPACE",
+        help = "Use userspace wireguard implementation, useful on systems without native wireguard support"
+    )]
     userspace: bool,
 
-    #[structopt(long, short = "p", env = "DEFGUARD_PORT", default_value = "50051")]
-    port: u16,
+    #[structopt(
+        long,
+        short = "g",
+        env = "DEFGUARD_GRPC_URL",
+        default_value = "https://localhost:50055",
+        help = "DefGuard server GRPC endpoint URL"
+    )]
+    grpc_url: String,
+
+    #[structopt(
+        long,
+        short = "p",
+        env = "DEFGUARD_STATS_PERIOD",
+        default_value = "60",
+        help = "Defines how often (seconds) should interface statistics be sent to DefGuard server"
+    )]
+    stats_period: u64,
 }
 
 #[tokio::main]
@@ -26,14 +43,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let config = Config::from_args();
-    log::debug!("Starting server with config: {:?}", config);
-    let addr = format!("[::]:{}", config.port).parse()?;
-    let wg = WGServer::default();
-    log::debug!("Started server with config: {:?}", config);
-    log::info!("Server listening on {}", addr);
-    Server::builder()
-        .add_service(WireGuardServiceServer::new(wg))
-        .serve(addr)
-        .await?;
+    log::info!(
+        "Starting wireguard gateway with configuration: {:?}",
+        config
+    );
+    run_gateway_client(&config).await?;
     Ok(())
 }
