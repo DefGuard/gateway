@@ -9,7 +9,5 @@ pub enum OriWireGuardError {
     },
 
     #[error("Command returned error status")]
-    CommandExecutionError {
-        stderr: String
-    },
+    CommandExecutionError { stderr: String },
 }

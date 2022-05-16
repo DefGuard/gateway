@@ -6,8 +6,8 @@ edition = "2021"
 
 [dependencies]
 prost = "0.6.1"
-tonic = {version="0.3.1",features = ["tls"]}
-tokio = {version="0.2.23",features = ["stream", "macros"]}
+tonic = { version="0.3.1",features = ["tls"] }
+tokio = { version="0.2.23",features = ["stream", "macros"] }
 futures = "0.3.21"
 boringtun = { git = "https://github.com/cloudflare/boringtun.git", rev = "2660747" }
 uuid = { version = "0.8.2", features = ["v4"] }
@@ -16,6 +16,7 @@ env_logger = "0.9.0"
 structopt = "0.3.26"
 chrono = "0.4.19"
 thiserror = "1.0.30"
+async-stream = "0.3.3"
 
 [build-dependencies]
 tonic-build = "0.3.1"
