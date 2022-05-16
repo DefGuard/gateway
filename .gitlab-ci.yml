@@ -20,6 +20,7 @@ stages:
 
 build_master:
   stage: build
+  extends: .build-image
   only:
     - master
   script:
