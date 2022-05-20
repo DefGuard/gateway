@@ -1557,25 +1557,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
-name = "vpn-gateway"
-version = "0.1.0"
-dependencies = [
- "async-stream 0.3.3",
- "boringtun",
- "chrono",
- "env_logger",
- "futures",
- "log",
- "prost",
- "structopt",
- "thiserror",
- "tokio",
- "tonic",
- "tonic-build",
- "uuid",
-]
-
-[[package]]
 name = "walkdir"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1733,6 +1714,25 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "wireguard-gateway"
+version = "0.1.0"
+dependencies = [
+ "async-stream 0.3.3",
+ "boringtun",
+ "chrono",
+ "env_logger",
+ "futures",
+ "log",
+ "prost",
+ "structopt",
+ "thiserror",
+ "tokio",
+ "tonic",
+ "tonic-build",
+ "uuid",
+]
 
 [[package]]
 name = "ws2_32-sys"

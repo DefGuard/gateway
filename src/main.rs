@@ -36,6 +36,8 @@ pub struct Config {
     stats_period: u64,
 }
 
+pub const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init_from_env(
@@ -44,7 +46,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::from_args();
     log::info!(
-        "Starting wireguard gateway with configuration: {:?}",
+        "Starting wireguard gateway version {} with configuration: {:?}",
+        VERSION.unwrap_or("0.0.0"),
         config
     );
     run_gateway_client(&config).await?;
