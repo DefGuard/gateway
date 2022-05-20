@@ -28,6 +28,17 @@ build_master:
       --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:${CI_PIPELINE_ID}
       --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:latest
 
+build_tagged:
+  stage: build
+  extends: .build-image
+  only:
+    - tags
+  except:
+    - branches
+  script:
+    - /kaniko/executor --context ${CI_PROJECT_DIR} --dockerfile ${CI_PROJECT_DIR}/Dockerfile
+      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:${CI_COMMIT_TAG}
+      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:latest
 
 build:
   extends: .build-image
