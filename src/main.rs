@@ -34,6 +34,13 @@ pub struct Config {
         help = "Defines how often (seconds) should interface statistics be sent to DefGuard server"
     )]
     stats_period: u64,
+    #[structopt(
+        long,
+        short = "t",
+        env = "DEFGUARD_TOKEN",
+        help = "Token received on Defguard after completing network wizard"
+    )]
+    token: String,
 }
 
 pub const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");

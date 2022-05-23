@@ -10,6 +10,7 @@ use gateway_service_client::GatewayServiceClient;
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::delay_for};
 use tonic::transport::Channel;
+use tonic::{Request, Status};
 
 /// Creates an async stream that periodically yields wireguard interface statistics.
 fn stats_stream(
@@ -39,7 +40,22 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
     let channel = Channel::from_shared(config.grpc_url.to_owned())?
         .connect()
         .await?;
-    let client = Arc::new(Mutex::new(GatewayServiceClient::new(channel)));
+    let token = config.token.clone();
+
+    let jwt_auth_interceptor = move |mut req: Request<()>| -> Result<Request<()>, Status> {
+        req.metadata_mut().insert(
+            "authorization",
+            token
+                .parse()
+                .map_err(|_| Status::unknown("Token parsing error"))?,
+        );
+        Ok(req)
+    };
+
+    let client = Arc::new(Mutex::new(GatewayServiceClient::with_interceptor(
+        channel,
+        jwt_auth_interceptor,
+    )));
     let moved_client = Arc::clone(&client);
     let stats_period = config.stats_period;
     tokio::spawn(async move {
