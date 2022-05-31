@@ -5,18 +5,18 @@ authors = ["Jacek Chmielewski <jchmielewski@teonite.com>"]
 edition = "2021"
 
 [dependencies]
-prost = "0.6.1"
-tonic = { version="0.3.1",features = ["tls"] }
-tokio = { version="0.2.23",features = ["stream", "macros"] }
+prost = "0.10.4"
+tonic = "0.7.2"
+tokio = { version = "1.18.2", features = ["macros", "rt-multi-thread"] }
 futures = "0.3.21"
 boringtun = { git = "https://github.com/cloudflare/boringtun.git", rev = "2660747" }
-uuid = { version = "0.8.2", features = ["v4"] }
-log = "0.4.16"
+uuid = { version = "1.1.0", features = ["v4"] }
+log = "0.4.17"
 env_logger = "0.9.0"
 structopt = "0.3.26"
 chrono = "0.4.19"
-thiserror = "1.0.30"
+thiserror = "1.0.31"
 async-stream = "0.3.3"
 
 [build-dependencies]
-tonic-build = "0.3.1"
+tonic-build = "0.7.2"
