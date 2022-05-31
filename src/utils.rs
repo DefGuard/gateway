@@ -11,9 +11,9 @@ use std::{io, str};
 pub fn run_command(command: &str, args: &[&str]) -> Result<Output, io::Error> {
     let mut command = Command::new(command);
     command.args(args);
-    log::debug!("Running command: {:?}", command);
+    debug!("Running command: {:?}", command);
     let output = command.output();
-    log::info!("Ran command {:?}", command);
+    info!("Ran command {:?}", command);
     output
 }
 

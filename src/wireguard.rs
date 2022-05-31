@@ -40,7 +40,7 @@ pub fn create_interface_userspace(name: &str) -> Result {
     let mut device_handle = match DeviceHandle::new(tun_name, config) {
         Ok(d) => d,
         Err(e) => {
-            log::error!("Failed to initialize tunnel: {:?}", e);
+            error!("Failed to initialize tunnel: {:?}", e);
             sock.send(&[0]).unwrap();
             exit(1);
         }
@@ -48,7 +48,7 @@ pub fn create_interface_userspace(name: &str) -> Result {
 
     if enable_drop_privileges {
         if let Err(e) = drop_privileges() {
-            log::error!("Failed to drop privileges: {:?}", e);
+            error!("Failed to drop privileges: {:?}", e);
             sock.send(&[0]).unwrap();
             exit(1);
         }
@@ -144,6 +144,7 @@ pub fn set_link_up(interface: &str) -> Result {
 /// # Arguments
 ///
 /// * `interface` - Interface to stop
+#[allow(dead_code)]
 pub fn set_link_down(interface: &str) -> Result {
     // FIXME: don't use sudo
     let output = run_command("sudo", &["ip", "link", "set", interface, "down"])?;

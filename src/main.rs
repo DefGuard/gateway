@@ -6,6 +6,9 @@ mod gateway;
 mod utils;
 mod wireguard;
 
+#[macro_use]
+extern crate log;
+
 #[derive(StructOpt, Debug)]
 #[structopt(name = "vpn-gateway", about = "DefGuard VPN gateway service")]
 pub struct Config {
@@ -52,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let config = Config::from_args();
-    log::info!(
+    info!(
         "Starting wireguard gateway version {} with configuration: {:?}",
         VERSION.unwrap_or("0.0.0"),
         config
