@@ -1,51 +1,66 @@
 variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
   GIT_SUBMODULE_STRATEGY: recursive
   REGISTRY: registry.teonite.net
+  IMAGE_TAG: ${CI_PIPELINE_ID}
 
 default:
   tags:
     - kubernetes
 
+services:
+  - docker:stable-dind
+
 stages:
+  - compile
   - build
 
 .build-image:
   stage: build
-  image:
-    name: gcr.io/kaniko-project/executor:debug
-    entrypoint: [""]
+  image: docker:stable
   before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"${REGISTRY}\":{\"username\":\"${REGISTRY_USER}\",\"password\":\"${REGISTRY_SECRET}\"}}}" > /kaniko/.docker/config.json
+    - docker login -u "${REGISTRY_USER}" -p "${REGISTRY_SECRET}" ${REGISTRY}
+  after_script:
+    - docker logout ${REGISTRY}
 
-build_master:
-  stage: build
+compile:
+  image: rust:latest
+  stage: compile
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - target/
+  artifacts:
+    expire_in: 1 hour
+    name: "$CI_COMMIT_REF_NAME"
+    paths:
+      - build
+  before_script:
+    - rustc --version
+    - cargo --version
+    - apt-get update && apt-get -y install cmake g++
+  script:
+    - mkdir -p build
+    - cargo test --locked --no-fail-fast
+    - cargo install --locked --path . --root build
+
+build-latest:
   extends: .build-image
+  script:
+    - docker build --pull -f Dockerfile.ci -t ${REGISTRY}/defguard/wireguard:${IMAGE_TAG} .
+    - docker tag ${REGISTRY}/defguard/wireguard:${IMAGE_TAG} ${REGISTRY}/defguard/wireguard:latest
+    - docker push ${REGISTRY}/defguard/wireguard:${IMAGE_TAG}
+    - docker push ${REGISTRY}/defguard/wireguard:latest
   only:
     - master
-  script:
-    - /kaniko/executor --context ${CI_PROJECT_DIR} --dockerfile ${CI_PROJECT_DIR}/Dockerfile
-      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:${CI_PIPELINE_ID}
-      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:latest
-
-build_tagged:
-  stage: build
-  extends: .build-image
-  only:
-    - tags
-  except:
-    - branches
-  script:
-    - /kaniko/executor --context ${CI_PROJECT_DIR} --dockerfile ${CI_PROJECT_DIR}/Dockerfile
-      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:${CI_COMMIT_TAG}
-      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:latest
 
 build:
   extends: .build-image
   script:
-    - /kaniko/executor --context ${CI_PROJECT_DIR} --dockerfile ${CI_PROJECT_DIR}/Dockerfile
-      --destination ${REGISTRY}/defguard/${CI_PROJECT_NAME}:${CI_PIPELINE_ID}
-      --single-snapshot
+    - docker build --pull --network host -f Dockerfile.ci -t ${REGISTRY}/defguard/wireguard:${IMAGE_TAG} .
+    - docker push ${REGISTRY}/defguard/wireguard:${IMAGE_TAG}
   except:
     - master
-
