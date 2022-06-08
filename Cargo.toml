@@ -1,22 +1,29 @@
 [package]
 name = "wireguard-gateway"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jacek Chmielewski <jchmielewski@teonite.com>"]
 edition = "2021"
 
 [dependencies]
-prost = "0.10.4"
-tonic = "0.7.2"
-tokio = { version = "1.18.2", features = ["macros", "rt-multi-thread"] }
-futures = "0.3.21"
-boringtun = { git = "https://github.com/cloudflare/boringtun.git", rev = "2660747" }
-uuid = { version = "1.1.0", features = ["v4"] }
-log = "0.4.17"
-env_logger = "0.9.0"
-structopt = "0.3.26"
-chrono = "0.4.19"
-thiserror = "1.0.31"
-async-stream = "0.3.3"
+async-stream = "0.3"
+boringtun = "0.4"
+chrono = "0.4"
+clap = { version = "3.1", features = ["derive", "env"] }
+env_logger = "0.9"
+log = "0.4"
+prost = "0.10"
+thiserror = "1.0"
+tonic = "0.7"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio-stream = { version = "0.1", features = [] }
+uuid = { version = "1.1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-std", "io-util"] }
 
 [build-dependencies]
-tonic-build = "0.7.2"
+tonic-build = "0.7"
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"

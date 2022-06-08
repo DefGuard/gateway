@@ -8,26 +8,32 @@ use std::{io, str};
 ///
 /// * `command` - Command to run
 /// * `args` - Command arguments
-pub fn run_command(command: &str, args: &[&str]) -> Result<Output, io::Error> {
-    let mut command = Command::new(command);
-    command.args(args);
-    debug!("Running command: {:?}", command);
-    let output = command.output();
-    info!("Ran command {:?}", command);
+pub fn run_command(args: &[&str]) -> Result<Output, io::Error> {
+    debug!("Running command: {:?}", args);
+    let output = Command::new("sudo").args(args).output();
+    info!("Ran command {:?}", args);
     output
 }
 
 /// Parses peer statistics from a line of `wg show INTERFACE dump` command.
 fn parse_peer_stats(line: &str) -> PeerStats {
     let mut split = line.split('\t');
-    let public_key = split.next().unwrap_or("").to_owned();
+    let public_key = split.next().unwrap_or_default().to_owned();
     split.next(); // private key, equals (none) for peers
-    let endpoint = split.next().unwrap_or("").to_owned();
-    let allowed_ips = split.next().unwrap_or("").to_owned();
-    let latest_handshake = split.next().unwrap_or("0").parse::<i64>().unwrap_or(0);
-    let download = split.next().unwrap_or("0").parse::<i64>().unwrap_or(0);
-    let upload = split.next().unwrap_or("0").parse::<i64>().unwrap_or(0);
-    let keepalive_interval = split.next().unwrap_or("0").parse::<i64>().unwrap_or(0);
+    let endpoint = split.next().unwrap_or_default().to_owned();
+    let allowed_ips = split.next().unwrap_or_default().to_owned();
+    let latest_handshake = split
+        .next()
+        .map_or(0, |num| num.parse().unwrap_or_default());
+    let download = split
+        .next()
+        .map_or(0, |num| num.parse().unwrap_or_default());
+    let upload = split
+        .next()
+        .map_or(0, |num| num.parse().unwrap_or_default());
+    let keepalive_interval = split
+        .next()
+        .map_or(0, |num| num.parse().unwrap_or_default());
 
     PeerStats {
         public_key,
@@ -43,11 +49,6 @@ fn parse_peer_stats(line: &str) -> PeerStats {
 /// Parses peer statistics from `wg show INTERFACE dump` command output.
 pub fn parse_wg_stats(stdout: &str) -> Vec<PeerStats> {
     stdout.lines().skip(1).map(parse_peer_stats).collect()
-}
-
-/// Transforms vector of bytes to String.
-pub fn bytes_to_string(bytes: &[u8]) -> String {
-    String::from(std::str::from_utf8(bytes).unwrap_or(""))
 }
 
 #[cfg(test)]

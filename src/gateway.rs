@@ -5,11 +5,12 @@ use crate::{
     wireguard::{delete_interface, interface_stats, setup_interface},
     Config,
 };
-use futures::TryStreamExt;
 use gateway_service_client::GatewayServiceClient;
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
-use tonic::{codegen::InterceptedService, transport::Channel, Request, Status};
+use tonic::{
+    codegen::InterceptedService, metadata::MetadataValue, transport::Channel, Request, Status,
+};
 
 /// Starts tokio thread collecting stats and sending them to backend service via GRPC
 fn spawn_stats_thread(
@@ -24,11 +25,12 @@ fn spawn_stats_thread(
         >,
     >,
     period: Duration,
+    if_name: String,
 ) {
     // Create an async stream that periodically yields wireguard interface statistics.
     let stats_stream = async_stream::stream! {
         loop {
-            let stats = interface_stats("defguard");
+            let stats = interface_stats(&if_name);
             match stats {
                 Ok(stats) => {
                     for s in parse_wg_stats(&stats) {
@@ -56,14 +58,10 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
         .connect()
         .await?;
 
-    let token = config.token.clone();
+    let token = MetadataValue::try_from(&config.token)
+        .map_err(|_| Status::unknown("Token parsing error"))?;
     let jwt_auth_interceptor = move |mut req: Request<()>| -> Result<Request<()>, Status> {
-        req.metadata_mut().insert(
-            "authorization",
-            token
-                .parse()
-                .map_err(|_| Status::unknown("Token parsing error"))?,
-        );
+        req.metadata_mut().insert("authorization", token.clone());
         Ok(req)
     };
 
@@ -73,16 +71,18 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
     )));
     let mut config_stream = client.lock().await.config(()).await?.into_inner();
     let stats_period = Duration::from_secs(config.stats_period);
-    spawn_stats_thread(Arc::clone(&client), stats_period);
+    spawn_stats_thread(Arc::clone(&client), stats_period, config.if_name.clone());
     loop {
-        match config_stream.try_next().await {
+        match config_stream.message().await {
             Ok(Some(configuration)) => {
                 debug!(
                     "Received configuration, reconfiguring wireguard interface: {:?}",
                     configuration
                 );
-                let _r = delete_interface("defguard");
-                setup_interface("defguard", config.userspace, &configuration)?;
+                if !config.userspace {
+                    let _ = delete_interface(&config.if_name);
+                }
+                setup_interface(&config.if_name, config.userspace, &configuration)?;
                 info!("Reconfigured wireguard interface: {:?}", configuration);
             }
             Ok(None) => {
@@ -90,7 +90,7 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
                     // Server is back online, get new config stream...
                     config_stream = config_response.into_inner();
                     // ...and restart stats stream
-                    spawn_stats_thread(Arc::clone(&client), stats_period);
+                    spawn_stats_thread(Arc::clone(&client), stats_period, config.if_name.clone());
                     info!("Reconnect successful");
                 }
                 sleep(Duration::from_secs(1)).await;

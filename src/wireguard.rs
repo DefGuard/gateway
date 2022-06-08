@@ -1,15 +1,10 @@
-use crate::error::OriWireGuardError;
-use crate::gateway::Configuration;
-use crate::utils::{bytes_to_string, run_command};
-use boringtun::device::drop_privileges::*;
-use boringtun::device::*;
-use boringtun::noise::Verbosity;
-use std::fs;
-use std::os::unix::net::UnixDatagram;
-use std::process::{exit, Output};
+use crate::{error::OriWireGuardError, gateway::Configuration, utils::run_command};
+use boringtun::{
+    device::drop_privileges::drop_privileges,
+    device::{DeviceConfig, DeviceHandle},
+};
+use std::{fs, process::Output};
 use uuid::Uuid;
-
-type Result = std::result::Result<String, OriWireGuardError>;
 
 /// Creates wireguard interface using userspace implementation.
 /// https://github.com/cloudflare/boringtun
@@ -17,46 +12,24 @@ type Result = std::result::Result<String, OriWireGuardError>;
 /// # Arguments
 ///
 /// * `name` - Interface name
-pub fn create_interface_userspace(name: &str) -> Result {
-    let tun_name = name;
-    let n_threads = 4;
-    let log_level = Verbosity::None; // "silent" / "info" / "debug"
-    let use_connected_socket = true;
-    let use_multi_queue = true;
+pub fn create_interface_userspace(ifname: &str) -> Result<(), OriWireGuardError> {
     let enable_drop_privileges = true;
 
-    // Create a socketpair to communicate between forked processes
-    let (sock, _) = UnixDatagram::pair().unwrap();
-    let _ = sock.set_nonblocking(true);
+    let config = DeviceConfig::default();
 
-    let config = DeviceConfig {
-        n_threads,
-        log_level,
-        use_connected_socket,
-        #[cfg(target_os = "linux")]
-        use_multi_queue,
-    };
-
-    let mut device_handle = match DeviceHandle::new(tun_name, config) {
-        Ok(d) => d,
-        Err(e) => {
-            error!("Failed to initialize tunnel: {:?}", e);
-            sock.send(&[0]).unwrap();
-            exit(1);
-        }
-    };
+    let mut device_handle =
+        DeviceHandle::new(ifname, config).map_err(OriWireGuardError::BorningTun)?;
 
     if enable_drop_privileges {
         if let Err(e) = drop_privileges() {
             error!("Failed to drop privileges: {:?}", e);
-            sock.send(&[0]).unwrap();
-            exit(1);
         }
     }
 
-    drop(sock);
-    device_handle.wait();
-    Ok(String::new())
+    tokio::spawn(async move {
+        device_handle.wait();
+    });
+    Ok(())
 }
 
 /// Checks if command exited successfully, returns CommandExecutionError with stderr if not.
@@ -64,14 +37,13 @@ pub fn create_interface_userspace(name: &str) -> Result {
 /// # Arguments
 ///
 /// * `output` - command output
-fn map_output(output: &Output) -> Result {
-    match output.status.code() {
-        Some(0) | None => Ok(std::str::from_utf8(&output.stdout)
-            .unwrap_or("")
-            .to_string()),
-        _ => Err(OriWireGuardError::CommandExecutionError {
-            stderr: bytes_to_string(&output.stderr),
-        }),
+fn map_output(output: &Output) -> Result<String, OriWireGuardError> {
+    if output.status.success() {
+        Ok(String::from_utf8(output.stdout.clone()).unwrap_or_default())
+    } else {
+        Err(OriWireGuardError::CommandExecutionError {
+            stderr: String::from_utf8(output.stderr.clone()).unwrap_or_default(),
+        })
     }
 }
 
@@ -80,9 +52,12 @@ fn map_output(output: &Output) -> Result {
 /// # Arguments
 ///
 /// * `name` - Interface name
-pub fn create_interface(name: &str) -> Result {
-    // FIXME: don't use sudo
-    let output = run_command("sudo", &["ip", "link", "add", name, "type", "wireguard"])?;
+pub fn create_interface(ifname: &str) -> Result<String, OriWireGuardError> {
+    let output = if cfg!(target_os = "linux") {
+        run_command(&["ip", "link", "add", ifname, "type", "wireguard"])
+    } else {
+        run_command(&["ifconfig", "create", ifname])
+    }?;
     map_output(&output)
 }
 
@@ -92,9 +67,12 @@ pub fn create_interface(name: &str) -> Result {
 ///
 /// * `interface` - Interface name
 /// * `addr` - Address to assign to interface
-pub fn assign_addr(interface: &str, addr: &str) -> Result {
-    // FIXME: don't use sudo
-    let output = run_command("sudo", &["ip", "addr", "add", addr, "dev", interface])?;
+pub fn assign_addr(ifname: &str, addr: &str) -> Result<String, OriWireGuardError> {
+    let output = if cfg!(target_os = "linux") {
+        run_command(&["ip", "addr", "add", addr, "dev", ifname])
+    } else {
+        run_command(&["ifconfig", ifname, addr, addr])
+    }?;
     map_output(&output)
 }
 
@@ -104,12 +82,11 @@ pub fn assign_addr(interface: &str, addr: &str) -> Result {
 ///
 /// * `interface` - Interface name
 /// * `key` - Private key to assign to interface
-pub fn set_private_key(interface: &str, key: &str) -> Result {
+pub fn set_private_key(ifname: &str, key: &str) -> Result<String, OriWireGuardError> {
     // FIXME: don't write private keys to file
     let path = &format!("/tmp/{}", Uuid::new_v4());
     fs::write(path, key)?;
-    // FIXME: don't use sudo
-    let output = run_command("sudo", &["wg", "set", interface, "private-key", path])?;
+    let output = run_command(&["wg", "set", ifname, "private-key", path])?;
     fs::remove_file(path)?;
     map_output(&output)
 }
@@ -120,11 +97,8 @@ pub fn set_private_key(interface: &str, key: &str) -> Result {
 ///
 /// * `interface` - Interface name
 /// * `port` - Port to assign to interface
-pub fn set_port(interface: &str, port: u16) -> Result {
-    let output = run_command(
-        "sudo",
-        &["wg", "set", interface, "listen-port", &port.to_string()],
-    )?;
+pub fn set_port(interface: &str, port: u16) -> Result<String, OriWireGuardError> {
+    let output = run_command(&["wg", "set", interface, "listen-port", &port.to_string()])?;
     map_output(&output)
 }
 
@@ -133,9 +107,12 @@ pub fn set_port(interface: &str, port: u16) -> Result {
 /// # Arguments
 ///
 /// * `interface` - Interface to start
-pub fn set_link_up(interface: &str) -> Result {
-    // FIXME: don't use sudo
-    let output = run_command("sudo", &["ip", "link", "set", interface, "up"])?;
+pub fn set_link_up(ifname: &str) -> Result<String, OriWireGuardError> {
+    let output = if cfg!(target_os = "linux") {
+        run_command(&["ip", "link", "set", ifname, "up"])
+    } else {
+        run_command(&["ifconfig", ifname, "up"])
+    }?;
     map_output(&output)
 }
 
@@ -145,9 +122,12 @@ pub fn set_link_up(interface: &str) -> Result {
 ///
 /// * `interface` - Interface to stop
 #[allow(dead_code)]
-pub fn set_link_down(interface: &str) -> Result {
-    // FIXME: don't use sudo
-    let output = run_command("sudo", &["ip", "link", "set", interface, "down"])?;
+pub fn set_link_down(ifname: &str) -> Result<String, OriWireGuardError> {
+    let output = if cfg!(target_os = "linux") {
+        run_command(&["ip", "link", "set", ifname, "down"])
+    } else {
+        run_command(&["ifconfig", ifname, "down"])
+    }?;
     map_output(&output)
 }
 
@@ -159,20 +139,20 @@ pub fn set_link_down(interface: &str) -> Result {
 /// * `pubkey` - Peer public key
 /// * `allowed_ips` - Peer allowed IPs/masks, e.g. 10.0.0.1/24
 /// * `endpoint` - Peer endpoint, e.g. 192.168.1.10:54545
-pub fn set_peer(interface: &str, pubkey: &str, allowed_ips: &[String]) -> Result {
-    // FIXME: don't use sudo
-    let output = run_command(
-        "sudo",
-        &[
-            "wg",
-            "set",
-            interface,
-            "peer",
-            pubkey,
-            "allowed-ips",
-            &allowed_ips.join(" "),
-        ],
-    )?;
+pub fn set_peer(
+    interface: &str,
+    pubkey: &str,
+    allowed_ips: &[String],
+) -> Result<String, OriWireGuardError> {
+    let output = run_command(&[
+        "wg",
+        "set",
+        interface,
+        "peer",
+        pubkey,
+        "allowed-ips",
+        &allowed_ips.join(" "),
+    ])?;
     map_output(&output)
 }
 
@@ -181,18 +161,22 @@ pub fn set_peer(interface: &str, pubkey: &str, allowed_ips: &[String]) -> Result
 /// # Arguments
 ///
 /// * `interface` - Interface name
-pub fn interface_stats(interface: &str) -> Result {
-    // FIXME: don't use sudo
-    let output = run_command("sudo", &["wg", "show", interface, "dump"])?;
+pub fn interface_stats(interface: &str) -> Result<String, OriWireGuardError> {
+    let output = run_command(&["wg", "show", interface, "dump"])?;
     map_output(&output)
 }
 
 /// Helper method performing interface configuration
-pub fn setup_interface(name: &str, userspace: bool, config: &Configuration) -> Result {
-    match userspace {
-        true => create_interface_userspace(name),
-        false => create_interface(name),
-    }?;
+pub fn setup_interface(
+    name: &str,
+    userspace: bool,
+    config: &Configuration,
+) -> Result<(), OriWireGuardError> {
+    if userspace {
+        create_interface_userspace(name)?;
+    } else {
+        create_interface(name)?;
+    }
 
     assign_addr(name, &config.address)?;
     set_private_key(name, &config.prvkey)?;
@@ -202,11 +186,15 @@ pub fn setup_interface(name: &str, userspace: bool, config: &Configuration) -> R
         set_peer(name, &peer.pubkey, &peer.allowed_ips)?;
     }
 
-    Ok(String::new())
+    Ok(())
 }
 
 /// Helper method - deletes specified interface
-pub fn delete_interface(name: &str) -> Result {
-    let output = run_command("sudo", &["ip", "link", "delete", name])?;
+pub fn delete_interface(ifname: &str) -> Result<String, OriWireGuardError> {
+    let output = if cfg!(target_os = "linux") {
+        run_command(&["ip", "link", "delete", ifname])
+    } else {
+        run_command(&["ifconfig", "destroy", ifname])
+    }?;
     map_output(&output)
 }
