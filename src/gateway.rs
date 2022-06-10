@@ -54,9 +54,7 @@ fn spawn_stats_thread(
 /// Sends wireguard interface statistics periodically.
 pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Connecting to DefGuard GRPC endpoint: {}", config.grpc_url);
-    let channel = Channel::from_shared(config.grpc_url.to_owned())?
-        .connect()
-        .await?;
+    let channel = Channel::from_shared(config.grpc_url.to_owned())?.connect_lazy();
 
     let token = MetadataValue::try_from(&config.token)
         .map_err(|_| Status::unknown("Token parsing error"))?;
@@ -69,9 +67,17 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
         channel,
         jwt_auth_interceptor,
     )));
-    let mut config_stream = client.lock().await.config(()).await?.into_inner();
+
     let stats_period = Duration::from_secs(config.stats_period);
-    spawn_stats_thread(Arc::clone(&client), stats_period, config.if_name.clone());
+    let mut config_stream = loop {
+        if let Ok(stream) = client.lock().await.config(()).await {
+            spawn_stats_thread(Arc::clone(&client), stats_period, config.if_name.clone());
+            break stream.into_inner();
+        } else {
+            error!("Couldn't connect to server, retrying");
+        }
+        sleep(Duration::from_secs(1)).await;
+    };
     loop {
         match config_stream.message().await {
             Ok(Some(configuration)) => {
