@@ -1,8 +1,9 @@
 tonic::include_proto!("gateway");
 
+#[cfg(target_os = "linux")]
+use crate::wireguard::netlink::delete_interface;
 use crate::{
-    utils::parse_wg_stats,
-    wireguard::{delete_interface, interface_stats, setup_interface},
+    wireguard::{setup_interface, wgapi::WGApi},
     Config,
 };
 use gateway_service_client::GatewayServiceClient;
@@ -12,7 +13,7 @@ use tonic::{
     codegen::InterceptedService, metadata::MetadataValue, transport::Channel, Request, Status,
 };
 
-/// Starts tokio thread collecting stats and sending them to backend service via GRPC
+/// Starts tokio thread collecting stats and sending them to backend service via gRPC.
 fn spawn_stats_thread(
     client: Arc<
         Mutex<
@@ -25,19 +26,20 @@ fn spawn_stats_thread(
         >,
     >,
     period: Duration,
-    if_name: String,
+    ifname: String,
+    userspace: bool,
 ) {
     // Create an async stream that periodically yields wireguard interface statistics.
     let stats_stream = async_stream::stream! {
+        let api = WGApi::new(ifname, userspace);
         loop {
-            let stats = interface_stats(&if_name);
-            match stats {
-                Ok(stats) => {
-                    for s in parse_wg_stats(&stats) {
-                        yield s;
+            match api.read_configuration() {
+                Ok(host) => {
+                    for peer in host.peers {
+                        yield peer.into();
                     }
                 },
-                Err(err) => error!("Failed to retrieve wireguard interface stats {}", err),
+                Err(err) => error!("Failed to retrieve WireGuard interface stats {}", err),
             }
             sleep(period).await;
         }
@@ -71,7 +73,12 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
     let stats_period = Duration::from_secs(config.stats_period);
     let mut config_stream = loop {
         if let Ok(stream) = client.lock().await.config(()).await {
-            spawn_stats_thread(Arc::clone(&client), stats_period, config.if_name.clone());
+            spawn_stats_thread(
+                Arc::clone(&client),
+                stats_period,
+                config.if_name.clone(),
+                config.userspace,
+            );
             break stream.into_inner();
         } else {
             error!("Couldn't connect to server, retrying");
@@ -86,6 +93,7 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
                     configuration
                 );
                 if !config.userspace {
+                    #[cfg(target_os = "linux")]
                     let _ = delete_interface(&config.if_name);
                 }
                 setup_interface(&config.if_name, config.userspace, &configuration)?;
@@ -96,7 +104,12 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
                     // Server is back online, get new config stream...
                     config_stream = config_response.into_inner();
                     // ...and restart stats stream
-                    spawn_stats_thread(Arc::clone(&client), stats_period, config.if_name.clone());
+                    spawn_stats_thread(
+                        Arc::clone(&client),
+                        stats_period,
+                        config.if_name.clone(),
+                        config.userspace,
+                    );
                     info!("Reconnect successful");
                 }
                 sleep(Duration::from_secs(1)).await;

@@ -1,0 +1,384 @@
+use super::{IpAddrMask, Key};
+use crate::gateway::PeerStats;
+#[cfg(target_os = "linux")]
+use netlink_packet_wireguard::{
+    constants::{WGDEVICE_F_REPLACE_PEERS, WGPEER_F_REPLACE_ALLOWEDIPS},
+    nlas::{WgAllowedIpAttrs, WgDeviceAttrs, WgPeer, WgPeerAttrs},
+    Wireguard, WireguardCmd,
+};
+use std::{
+    net::SocketAddr,
+    str::{from_utf8, FromStr},
+    string::ToString,
+    time::{Duration, SystemTime},
+};
+
+#[derive(Debug, Default)]
+pub struct Peer {
+    public_key: Key,
+    preshared_key: Option<Key>,
+    protocol_version: Option<u32>,
+    endpoint: Option<SocketAddr>,
+    last_handshake: Option<SystemTime>,
+    tx_bytes: u64,
+    rx_bytes: u64,
+    persistent_keepalive_interval: Option<u16>,
+    pub allowed_ips: Vec<IpAddrMask>,
+}
+
+impl Peer {
+    pub fn new(public_key: Key) -> Self {
+        Self {
+            public_key,
+            preshared_key: None,
+            protocol_version: None,
+            endpoint: None,
+            last_handshake: None,
+            tx_bytes: 0,
+            rx_bytes: 0,
+            persistent_keepalive_interval: None,
+            allowed_ips: Vec::new(),
+        }
+    }
+
+    pub fn set_allowed_ips(&mut self, allowed_ips: Vec<IpAddrMask>) {
+        self.allowed_ips = allowed_ips;
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn from_nlas(nlas: &[WgPeerAttrs]) -> Self {
+        let mut peer = Self::default();
+
+        for nla in nlas {
+            match nla {
+                WgPeerAttrs::PublicKey(value) => peer.public_key = Key::new(*value),
+                WgPeerAttrs::PresharedKey(value) => peer.preshared_key = Some(Key::new(*value)),
+                WgPeerAttrs::Endpoint(value) => peer.endpoint = Some(*value),
+                WgPeerAttrs::PersistentKeepalive(value) => {
+                    peer.persistent_keepalive_interval = Some(*value)
+                }
+                WgPeerAttrs::LastHandshake(value) => peer.last_handshake = Some(*value),
+                WgPeerAttrs::RxBytes(value) => peer.rx_bytes = *value,
+                WgPeerAttrs::TxBytes(value) => peer.tx_bytes = *value,
+                WgPeerAttrs::AllowedIps(nlas) => {
+                    for nla in nlas {
+                        let ip = nla.iter().find_map(|nla| match nla {
+                            WgAllowedIpAttrs::IpAddr(ip) => Some(*ip),
+                            _ => None,
+                        });
+                        let cidr = nla.iter().find_map(|nla| match nla {
+                            WgAllowedIpAttrs::Cidr(cidr) => Some(*cidr),
+                            _ => None,
+                        });
+                        if let (Some(ip), Some(cidr)) = (ip, cidr) {
+                            peer.allowed_ips.push(IpAddrMask::new(ip, cidr));
+                        }
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        peer
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn to_nlas(&self) -> WgPeer {
+        let mut attrs = Vec::new();
+        attrs.push(WgPeerAttrs::PublicKey(self.public_key.as_array()));
+        if let Some(keepalive) = self.persistent_keepalive_interval {
+            attrs.push(WgPeerAttrs::PersistentKeepalive(keepalive));
+        }
+        attrs.push(WgPeerAttrs::Flags(WGPEER_F_REPLACE_ALLOWEDIPS));
+        let allowed_ips = self
+            .allowed_ips
+            .iter()
+            .map(|ipaddr| ipaddr.to_nlas())
+            .collect();
+        attrs.push(WgPeerAttrs::AllowedIps(allowed_ips));
+
+        WgPeer(attrs)
+    }
+}
+
+impl ToString for Peer {
+    fn to_string(&self) -> String {
+        let mut output = format!("public_key={}\n", self.public_key.to_lower_hex());
+        if let Some(key) = &self.preshared_key {
+            output.push_str("preshared_key=");
+            output.push_str(&key.to_lower_hex());
+            output.push('\n');
+        }
+        if let Some(endpoint) = &self.endpoint {
+            output.push_str("endpoint=");
+            output.push_str(&endpoint.to_string());
+            output.push('\n');
+        }
+        if let Some(interval) = &self.persistent_keepalive_interval {
+            output.push_str("persistent_keepalive_interval=");
+            output.push_str(&interval.to_string());
+            output.push('\n');
+        }
+        for allowed_ip in &self.allowed_ips {
+            output.push_str("allowed_ip=");
+            output.push_str(&allowed_ip.to_string());
+            output.push('\n');
+        }
+
+        output
+    }
+}
+
+impl Into<PeerStats> for Peer {
+    fn into(self) -> PeerStats {
+        PeerStats {
+            public_key: self.public_key.to_string(),
+            endpoint: self
+                .endpoint
+                .map_or(String::new(), |endpoint| endpoint.to_string()),
+            allowed_ips: String::new(), // TODO
+            latest_handshake: self.last_handshake.map_or(0, |ts| {
+                ts.duration_since(SystemTime::UNIX_EPOCH)
+                    .map_or(0, |duration| duration.as_secs() as i64)
+            }),
+            download: self.rx_bytes as i64,
+            upload: self.tx_bytes as i64,
+            keepalive_interval: self.persistent_keepalive_interval.unwrap_or_default() as i64,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Host {
+    listen_port: u16,
+    private_key: Option<Key>,
+    fwmark: Option<u32>,
+    pub peers: Vec<Peer>,
+}
+
+impl Host {
+    pub fn new(listen_port: u16, private_key: Key) -> Self {
+        Self {
+            listen_port,
+            private_key: Some(private_key),
+            fwmark: None,
+            peers: Vec::new(),
+        }
+    }
+
+    // TODO: handle errors
+    pub fn parse_from(buf: &[u8]) -> Self {
+        let mut host = Self::default();
+
+        for line in buf.split(|&char| char == b'\n') {
+            if let Some(index) = line.iter().position(|&char| char == b'=') {
+                let key = from_utf8(&line[..index]).unwrap();
+                let value = from_utf8(&line[index + 1..]).unwrap();
+                match key {
+                    "listen_port" => host.listen_port = value.parse().unwrap_or_default(),
+                    "fwmark" => host.fwmark = Some(value.parse().unwrap_or_default()),
+                    "private_key" => host.private_key = Some(Key::decode(value).unwrap()),
+                    // "public_key" starts new peer definition
+                    "public_key" => {
+                        let key = Key::decode(value).unwrap();
+                        let peer = Peer::new(key);
+                        host.peers.push(peer);
+                    }
+                    "preshared_key" => {
+                        if let Some(mut peer) = host.peers.last_mut() {
+                            peer.preshared_key = Some(Key::decode(value).unwrap());
+                        } // else {}
+                    }
+                    "protocol_version" => {
+                        if let Some(mut peer) = host.peers.last_mut() {
+                            peer.protocol_version = Some(value.parse().unwrap_or_default());
+                        } // else {}
+                    }
+                    "endpoint" => {
+                        if let Some(mut peer) = host.peers.last_mut() {
+                            if let Ok(addr) = SocketAddr::from_str(value) {
+                                peer.endpoint = Some(addr);
+                            }
+                        } // else {}
+                    }
+                    "persistent_keepalive_interval" => {
+                        if let Some(mut peer) = host.peers.last_mut() {
+                            peer.persistent_keepalive_interval =
+                                Some(value.parse().unwrap_or_default());
+                        } // else {}
+                    }
+                    "allowed_ip" => {
+                        if let Some(peer) = host.peers.last_mut() {
+                            peer.allowed_ips.push(value.parse().unwrap());
+                        } // else {}
+                    }
+                    "last_handshake_time_sec" => {
+                        if let Some(peer) = host.peers.last_mut() {
+                            let handshake =
+                                peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
+                            *handshake += Duration::from_secs(value.parse().unwrap_or_default());
+                        } // else {}
+                    }
+                    "last_handshake_time_nsec" => {
+                        if let Some(peer) = host.peers.last_mut() {
+                            let handshake =
+                                peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
+                            *handshake += Duration::from_nanos(value.parse().unwrap_or_default());
+                        } // else {}
+                    }
+                    "rx_bytes" => {
+                        if let Some(mut peer) = host.peers.last_mut() {
+                            peer.rx_bytes = value.parse().unwrap_or_default();
+                        } // else {}
+                    }
+                    "tx_bytes" => {
+                        if let Some(mut peer) = host.peers.last_mut() {
+                            peer.tx_bytes = value.parse().unwrap_or_default();
+                        } // else {}
+                    }
+                    // "errno" ends config
+                    "errno" => {
+                        let _errno: u32 = value.parse().unwrap();
+                        // if errno != 0
+                    }
+                    _ => eprintln!("Unknown key {}", key),
+                }
+            }
+        }
+
+        host
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn from_nlas(wg: &Wireguard) -> Self {
+        let mut host = Self::default();
+
+        for nla in &wg.nlas {
+            match nla {
+                WgDeviceAttrs::PrivateKey(value) => host.private_key = Some(Key::new(*value)),
+                WgDeviceAttrs::ListenPort(value) => host.listen_port = *value,
+                WgDeviceAttrs::Fwmark(value) => host.fwmark = Some(*value),
+                WgDeviceAttrs::Peers(nlas) => {
+                    for nla in nlas {
+                        host.peers.push(Peer::from_nlas(&nla));
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        host
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn to_nlas(&self, ifname: &str) -> Wireguard {
+        let mut nlas = Vec::new();
+        nlas.push(WgDeviceAttrs::IfName(ifname.into()));
+        nlas.push(WgDeviceAttrs::ListenPort(self.listen_port));
+        if let Some(key) = &self.private_key {
+            nlas.push(WgDeviceAttrs::PrivateKey(key.as_array()));
+        }
+        if let Some(fwmark) = &self.fwmark {
+            nlas.push(WgDeviceAttrs::Fwmark(*fwmark));
+        }
+        nlas.push(WgDeviceAttrs::Flags(WGDEVICE_F_REPLACE_PEERS));
+        let peers = self.peers.iter().map(|peer| peer.to_nlas()).collect();
+        nlas.push(WgDeviceAttrs::Peers(peers));
+
+        let wg = Wireguard {
+            cmd: WireguardCmd::SetDevice,
+            nlas,
+        };
+
+        wg
+    }
+}
+
+impl ToString for Host {
+    fn to_string(&self) -> String {
+        let mut output = format!("listen_port={}\n", self.listen_port);
+        if let Some(key) = &self.private_key {
+            output.push_str("private_key=");
+            output.push_str(&key.to_lower_hex());
+            output.push('\n');
+        }
+        if let Some(fwmark) = &self.fwmark {
+            output.push_str("fwmark=");
+            output.push_str(&fwmark.to_string());
+            output.push('\n');
+        }
+
+        // host: replace_peers=true
+        // peer: remove=true, replace_allowed_ips=true
+
+        for peer in &self.peers {
+            output.push_str(&peer.to_string());
+            output.push('\n');
+        }
+
+        output
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_config() {
+        let uapi_output =
+            b"private_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            listen_port=7301\n\
+            public_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            preshared_key=0000000000000000000000000000000000000000000000000000000000000000\n\
+            protocol_version=1\n\
+            last_handshake_time_sec=0\n\
+            last_handshake_time_nsec=0\n\
+            tx_bytes=0\n\
+            rx_bytes=0\n\
+            persistent_keepalive_interval=0\n\
+            allowed_ip=10.6.0.12/32\n\
+            public_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            preshared_key=0000000000000000000000000000000000000000000000000000000000000000\n\
+            protocol_version=1\n\
+            endpoint=83.11.218.160:51421\n\
+            last_handshake_time_sec=1654631933\n\
+            last_handshake_time_nsec=862977251\n\
+            tx_bytes=52759980\n\
+            rx_bytes=3683056\n\
+            persistent_keepalive_interval=0\n\
+            allowed_ip=10.6.0.25/32\n\
+            public_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            preshared_key=0000000000000000000000000000000000000000000000000000000000000000\n\
+            protocol_version=1\n\
+            endpoint=31.135.163.194:37712\n\
+            last_handshake_time_sec=1654776419\n\
+            last_handshake_time_nsec=732507856\n\
+            tx_bytes=1009094476\n\
+            rx_bytes=76734328\n\
+            persistent_keepalive_interval=0\n\
+            allowed_ip=10.6.0.23/32\n\
+            errno=0\n";
+        let host = Host::parse_from(uapi_output);
+        assert_eq!(host.listen_port, 7301);
+        assert_eq!(host.peers.len(), 3);
+    }
+
+    #[test]
+    fn test_format_config() {
+        let key_str = "000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f";
+        let key = Key::decode(key_str).unwrap();
+
+        let host = Host {
+            listen_port: 12345,
+            private_key: Some(key),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            "listen_port=12345\n\
+            private_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n",
+            host.to_string()
+        );
+    }
+}
