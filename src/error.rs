@@ -8,6 +8,7 @@ pub enum OriWireGuardError {
     #[error("Command returned error status")]
     CommandExecutionError { stderr: String },
 
+    #[cfg(feature = "boringtun")]
     #[error("BorningTun error")]
     BorningTun(boringtun::device::Error),
 }
