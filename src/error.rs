@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum OriWireGuardError {
+pub enum GatewayError {
     #[error("Command execution failed")]
     CommandExecutionFailed(#[from] std::io::Error),
 

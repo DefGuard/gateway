@@ -1,34 +1,96 @@
 use std::{
+    collections::HashMap,
     io::{stdout, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::{Arc, Mutex},
 };
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     sync::{
-        mpsc,
+        mpsc::{self, UnboundedSender},
         watch::{self, Receiver, Sender},
     },
 };
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
+use wireguard_gateway::{
+    proto,
+    wireguard::{Host, IpAddrMask, Key, Peer},
+};
 
-tonic::include_proto!("gateway");
+pub struct HostConfig {
+    name: String,
+    address: IpAddrMask,
+    host: Host,
+}
 
-pub struct GatewayServer {
-    rx: Receiver<Configuration>,
+type ClientMap = HashMap<SocketAddr, UnboundedSender<Result<proto::Update, Status>>>;
+
+struct GatewayServer {
+    config_rx: Receiver<HostConfig>,
+    clients: Arc<Mutex<ClientMap>>,
 }
 
 impl GatewayServer {
-    pub fn new(rx: Receiver<Configuration>) -> Self {
-        Self { rx }
+    pub fn new(config_rx: Receiver<HostConfig>, clients: Arc<Mutex<ClientMap>>) -> Self {
+        // watch for changes in host configuration
+        let task_clients = clients.clone();
+        let mut task_config_rx = config_rx.clone();
+        tokio::spawn(async move {
+            while task_config_rx.changed().await.is_ok() {
+                let config = (&*task_config_rx.borrow()).into();
+                let update = proto::Update {
+                    update_type: proto::UpdateType::Modify as i32,
+                    update: Some(proto::update::Update::Network(config)),
+                };
+                task_clients.lock().unwrap().retain(
+                    move |_addr, tx: &mut UnboundedSender<Result<proto::Update, Status>>| {
+                        tx.send(Ok(update.clone())).is_ok()
+                    },
+                );
+            }
+        });
+
+        Self { config_rx, clients }
+    }
+}
+
+impl From<&HostConfig> for proto::Configuration {
+    fn from(host_config: &HostConfig) -> Self {
+        Self {
+            name: host_config.name.clone(),
+            prvkey: host_config
+                .host
+                .private_key
+                .as_ref()
+                .map(|key| key.to_string())
+                .unwrap_or_default(),
+            address: host_config.address.to_string(),
+            port: host_config.host.listen_port as u32,
+            peers: host_config
+                .host
+                .peers
+                .iter()
+                .map(|peer| peer.into())
+                .collect(),
+        }
     }
 }
 
 #[tonic::async_trait]
-impl gateway_service_server::GatewayService for GatewayServer {
-    type ConfigStream = ReceiverStream<Result<Configuration, Status>>;
+impl proto::gateway_service_server::GatewayService for GatewayServer {
+    type UpdatesStream = UnboundedReceiverStream<Result<proto::Update, Status>>;
 
-    async fn stats(&self, request: Request<Streaming<PeerStats>>) -> Result<Response<()>, Status> {
+    async fn config(&self, request: Request<()>) -> Result<Response<proto::Configuration>, Status> {
+        let address = request.remote_addr().unwrap();
+        eprintln!("CONFIG connected from: {}", address);
+        Ok(Response::new((&*self.config_rx.borrow()).into()))
+    }
+
+    async fn stats(
+        &self,
+        request: Request<Streaming<proto::PeerStats>>,
+    ) -> Result<Response<()>, Status> {
         let address = request.remote_addr().unwrap();
         eprintln!("STATS connected from: {}", address);
 
@@ -39,33 +101,28 @@ impl gateway_service_server::GatewayService for GatewayServer {
         Ok(Response::new(()))
     }
 
-    async fn config(&self, request: Request<()>) -> Result<Response<Self::ConfigStream>, Status> {
+    async fn updates(&self, request: Request<()>) -> Result<Response<Self::UpdatesStream>, Status> {
         let address = request.remote_addr().unwrap();
-        eprintln!("CONFIG connected from: {}", address);
+        eprintln!("UPDATES connected from: {}", address);
 
-        let (tx, rx) = mpsc::channel(16);
-        let mut config_rx = self.rx.clone();
-        tokio::spawn(async move {
-            while !tx.is_closed() {
-                // loop {
-                let config = config_rx.borrow().clone();
-                eprintln!("Sending config {:?}", config);
-                if tx.send(Ok(config)).await.is_err() {
-                    break;
-                }
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.clients.lock().unwrap().insert(address, tx);
 
-                if let Err(err) = config_rx.changed().await {
-                    eprintln!("Watcher error {}", err);
-                    break;
-                }
-            }
-        });
-        Ok(Response::new(ReceiverStream::new(rx)))
+        Ok(Response::new(UnboundedReceiverStream::new(rx)))
     }
 }
 
-pub async fn cli(tx: Sender<Configuration>) {
+pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
     let mut stdin = BufReader::new(tokio::io::stdin());
+    println!(
+        "a|addr address - set host address\n\
+        c|peer key - create peer with public key\n\
+        d|peer key - delete peer with public key\n\
+        k|key key - set private key\n\
+        p|port port - set listening port\n\
+        q|quit - quit\n\
+        "
+    );
     loop {
         print!("> ");
         stdout().flush().unwrap();
@@ -76,17 +133,81 @@ pub async fn cli(tx: Sender<Configuration>) {
             match keyword {
                 "a" | "addr" => {
                     if let Some(address) = token_iter.next() {
-                        tx.send_modify(|config| config.address = address.into());
+                        if let Ok(ipaddr) = address.parse() {
+                            tx.send_modify(|config| config.address = ipaddr);
+                        } else {
+                            eprintln!("Parse error");
+                        }
                     }
                 }
-                "k" | "key" | "prvkey" => {
+                "c" | "peer" => {
                     if let Some(key) = token_iter.next() {
-                        tx.send_modify(|config| config.prvkey = key.into());
+                        if let Ok(key) = Key::try_from(key) {
+                            let peer = Peer::new(key);
+
+                            let update = proto::Update {
+                                update_type: proto::UpdateType::Create as i32,
+                                update: Some(proto::update::Update::Peer((&peer).into())),
+                            };
+                            clients.lock().unwrap().retain(
+                                move |addr, tx: &mut UnboundedSender<Result<proto::Update, Status>>| {
+                                    eprintln!("Sending peer update to {addr}");
+                                    tx.send(Ok(update.clone())).is_ok()
+                                },
+                            );
+
+                            // modify HostConfig, but do not notify the receiver
+                            tx.send_if_modified(|config| {
+                                config.host.peers.push(peer);
+                                false
+                            });
+                        } else {
+                            eprintln!("Parse error");
+                        }
+                    }
+                }
+                "d" | "del" => {
+                    if let Some(key) = token_iter.next() {
+                        if let Ok(key) = Key::try_from(key) {
+                            let peer = Peer::new(key);
+
+                            let update = proto::Update {
+                                update_type: proto::UpdateType::Delete as i32,
+                                update: Some(proto::update::Update::Peer((&peer).into())),
+                            };
+                            clients.lock().unwrap().retain(
+                                move |addr, tx: &mut UnboundedSender<Result<proto::Update, Status>>| {
+                                    eprintln!("Sending peer update to {addr}");
+                                    tx.send(Ok(update.clone())).is_ok()
+                                },
+                            );
+
+                            // modify HostConfig, but do not notify the receiver
+                            // tx.send_if_modified(|config| {
+                            //     config.host.peers.retain(|entry| entry.public_key != peer.public_key);
+                            //     false
+                            // });
+                        } else {
+                            eprintln!("Parse error");
+                        }
+                    }
+                }
+                "k" | "key" => {
+                    if let Some(key) = token_iter.next() {
+                        if let Ok(key) = Key::try_from(key) {
+                            tx.send_modify(|config| config.host.private_key = Some(key));
+                        } else {
+                            eprintln!("Parse error");
+                        }
                     }
                 }
                 "p" | "port" => {
                     if let Some(port) = token_iter.next() {
-                        tx.send_modify(|config| config.port = port.parse().unwrap_or_default());
+                        if let Ok(port) = port.parse() {
+                            tx.send_modify(|config| config.host.listen_port = port);
+                        } else {
+                            eprintln!("Parse error");
+                        }
                     }
                 }
                 "q" | "quit" => break,
@@ -96,8 +217,13 @@ pub async fn cli(tx: Sender<Configuration>) {
     }
 }
 
-pub async fn grpc(rx: Receiver<Configuration>) -> Result<(), tonic::transport::Error> {
-    let gateway_service = gateway_service_server::GatewayServiceServer::new(GatewayServer::new(rx));
+pub async fn grpc(
+    config_rx: Receiver<HostConfig>,
+    clients: Arc<Mutex<ClientMap>>,
+) -> Result<(), tonic::transport::Error> {
+    let gateway_service = proto::gateway_service_server::GatewayServiceServer::new(
+        GatewayServer::new(config_rx, clients),
+    );
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 50055); // TODO: port as an option
     Server::builder()
         .add_service(gateway_service)
@@ -107,16 +233,19 @@ pub async fn grpc(rx: Receiver<Configuration>) -> Result<(), tonic::transport::E
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let configuration = Configuration {
-        prvkey: "JPcD7xOfOAULx+cTdgzB3dIv6nvqqbmlACYzxrfJ4Dw=".into(),
-        address: "192.168.68.68".into(),
-        port: 50505,
-        peers: Vec::new(),
+    let configuration = HostConfig {
+        name: "demo".into(),
+        host: Host::new(
+            50505,
+            Key::try_from("JPcD7xOfOAULx+cTdgzB3dIv6nvqqbmlACYzxrfJ4Dw=").unwrap(),
+        ),
+        address: "192.168.68.68".parse().unwrap(),
     };
-    let (tx, rx) = watch::channel(configuration);
+    let (config_tx, config_rx) = watch::channel(configuration);
+    let clients = Arc::new(Mutex::new(HashMap::new()));
     tokio::select! {
-        _ = grpc(rx) => eprintln!("grpc completed"),
-        _ = cli(tx) => eprintln!("cli completed")
+        _ = grpc(config_rx, clients.clone()) => eprintln!("grpc completed"),
+        _ = cli(config_tx, clients) => eprintln!("cli completed")
     };
 
     Ok(())

@@ -17,7 +17,7 @@ env_logger = "0.9"
 log = "0.4"
 prost = "0.10"
 thiserror = "1.0"
-tonic = "0.7"
+tonic = {version = "0.7", features = ["tls"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
 

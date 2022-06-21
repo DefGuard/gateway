@@ -1,4 +1,4 @@
-use super::{Host, IpAddrMask, SOCKET_BUFFER_LENGTH};
+use super::{Host, IpAddrMask, Peer, SOCKET_BUFFER_LENGTH};
 use netlink_packet_core::{
     NetlinkDeserializable, NetlinkMessage, NetlinkPayload, NetlinkSerializable, NLM_F_ACK,
     NLM_F_CREATE, NLM_F_DUMP, NLM_F_EXCL, NLM_F_REPLACE, NLM_F_REQUEST,
@@ -12,9 +12,7 @@ use netlink_packet_route::{
     link::nlas::{Info, InfoKind, Nla},
     AddressMessage, LinkHeader, LinkMessage, RtnlMessage, AF_INET, AF_INET6, IFF_UP,
 };
-use netlink_packet_wireguard::{
-    constants::WGPEER_F_REMOVE_ME, nlas::WgDeviceAttrs, Wireguard, WireguardCmd,
-};
+use netlink_packet_wireguard::{nlas::WgDeviceAttrs, Wireguard, WireguardCmd};
 use netlink_sys::{constants::NETLINK_GENERIC, protocols::NETLINK_ROUTE, Socket, SocketAddr};
 use std::{
     fmt::Debug,
@@ -188,18 +186,16 @@ fn set_address(ifindex: u32, address: &IpAddrMask) -> io::Result<()> {
         // set the IFA_BROADCAST address as well (IPv6 does not support broadcast)
         if address.cidr == 32 {
             message.nlas.push(address::Nla::Broadcast(address_vec));
-        } else {
-            if let IpAddrMask {
-                ip: IpAddr::V4(ipv4),
-                ..
-            } = address
-            {
-                let broadcast =
-                    Ipv4Addr::from((0xffff_ffff_u32) >> u32::from(address.cidr) | u32::from(*ipv4));
-                message
-                    .nlas
-                    .push(address::Nla::Broadcast(broadcast.octets().to_vec()));
-            }
+        } else if let IpAddrMask {
+            ip: IpAddr::V4(ipv4),
+            ..
+        } = address
+        {
+            let broadcast =
+                Ipv4Addr::from((0xffff_ffff_u32) >> u32::from(address.cidr) | u32::from(*ipv4));
+            message
+                .nlas
+                .push(address::Nla::Broadcast(broadcast.octets().to_vec()));
         };
     }
 
@@ -270,20 +266,19 @@ pub fn get_host(ifname: &str) -> Result<Host, io::Error> {
     });
     let responses = netlink_request_genl(genlmsg, NLM_F_REQUEST | NLM_F_DUMP | NLM_F_ACK)?;
 
-    for nlmsg in responses {
-        let message = match nlmsg {
-            NetlinkMessage {
-                payload: NetlinkPayload::InnerMessage(message),
-                ..
-            } => message,
-            _ => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("unexpected netlink payload: {:?}", nlmsg),
-                ))
-            }
-        };
-        return Ok(Host::from_nlas(&message.payload));
+    if let Some(nlmsg) = responses.into_iter().next() {
+        if let NetlinkMessage {
+            payload: NetlinkPayload::InnerMessage(message),
+            ..
+        } = nlmsg
+        {
+            return Ok(Host::from_nlas(&message.payload.nlas));
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unexpected netlink payload: {:?}", nlmsg),
+            ));
+        }
     }
 
     Err(io::Error::new(
@@ -293,7 +288,28 @@ pub fn get_host(ifname: &str) -> Result<Host, io::Error> {
 }
 
 pub fn set_host(ifname: &str, host: &Host) -> io::Result<()> {
-    let genlmsg = GenlMessage::from_payload(host.to_nlas(ifname));
+    let genlmsg = GenlMessage::from_payload(Wireguard {
+        cmd: WireguardCmd::SetDevice,
+        nlas: host.as_nlas(ifname),
+    });
+    netlink_request_genl(genlmsg, NLM_F_REQUEST | NLM_F_ACK)?;
+    Ok(())
+}
+
+pub fn set_peer(ifname: &str, peer: &Peer) -> io::Result<()> {
+    let genlmsg = GenlMessage::from_payload(Wireguard {
+        cmd: WireguardCmd::SetDevice,
+        nlas: peer.as_nlas(ifname),
+    });
+    netlink_request_genl(genlmsg, NLM_F_REQUEST | NLM_F_ACK)?;
+    Ok(())
+}
+
+pub fn delete_peer(ifname: &str, peer: &Peer) -> io::Result<()> {
+    let genlmsg = GenlMessage::from_payload(Wireguard {
+        cmd: WireguardCmd::SetDevice,
+        nlas: peer.as_nlas_remove(ifname),
+    });
     netlink_request_genl(genlmsg, NLM_F_REQUEST | NLM_F_ACK)?;
     Ok(())
 }

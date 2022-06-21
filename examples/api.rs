@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         WGApi::new("utun3".into(), true)
     };
-    let host = api.read_configuration()?;
+    let host = api.read_host()?;
     println!("{host:#?}");
 
     let mut host = Host::new(
@@ -36,7 +36,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     peer.allowed_ips.push(addr);
     host.peers.push(peer);
 
-    api.write_configuration(&host)?;
+    api.write_host(&host)?;
+
+    let peer = Peer::new(
+        "hTZX/2a0CVyoqhP60eiXYRTXuDbWXCrrhAvd/8ublE0="
+            .try_into()
+            .unwrap(),
+    );
+    api.write_peer(&peer)?;
+
+    api.delete_peer(&peer)?;
 
     Ok(())
 }
