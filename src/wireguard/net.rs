@@ -19,7 +19,7 @@ impl IpAddrMask {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn to_nlas(&self) -> WgAllowedIp {
+    pub fn to_nlas_allowed_ip(&self) -> WgAllowedIp {
         let mut attrs = Vec::new();
         attrs.push(WgAllowedIpAttrs::Family(if self.ip.is_ipv4() {
             AF_INET

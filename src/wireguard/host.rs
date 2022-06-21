@@ -1,15 +1,13 @@
 use super::{IpAddrMask, Key};
-use crate::gateway::PeerStats;
+use crate::proto;
 #[cfg(target_os = "linux")]
 use netlink_packet_wireguard::{
-    constants::{WGDEVICE_F_REPLACE_PEERS, WGPEER_F_REPLACE_ALLOWEDIPS},
+    constants::{WGDEVICE_F_REPLACE_PEERS, WGPEER_F_REMOVE_ME, WGPEER_F_REPLACE_ALLOWEDIPS},
     nlas::{WgAllowedIpAttrs, WgDeviceAttrs, WgPeer, WgPeerAttrs},
-    Wireguard, WireguardCmd,
 };
 use std::{
     net::SocketAddr,
     str::{from_utf8, FromStr},
-    string::ToString,
     time::{Duration, SystemTime},
 };
 
@@ -43,6 +41,40 @@ impl Peer {
 
     pub fn set_allowed_ips(&mut self, allowed_ips: Vec<IpAddrMask>) {
         self.allowed_ips = allowed_ips;
+    }
+
+    pub fn as_uapi_update(&self) -> String {
+        let mut output = format!("public_key={}\n", self.public_key.to_lower_hex());
+        if let Some(key) = &self.preshared_key {
+            output.push_str("preshared_key=");
+            output.push_str(&key.to_lower_hex());
+            output.push('\n');
+        }
+        if let Some(endpoint) = &self.endpoint {
+            output.push_str("endpoint=");
+            output.push_str(&endpoint.to_string());
+            output.push('\n');
+        }
+        if let Some(interval) = &self.persistent_keepalive_interval {
+            output.push_str("persistent_keepalive_interval=");
+            output.push_str(&interval.to_string());
+            output.push('\n');
+        }
+        output.push_str("replace_allowed_ips=true\n");
+        for allowed_ip in &self.allowed_ips {
+            output.push_str("allowed_ip=");
+            output.push_str(&allowed_ip.to_string());
+            output.push('\n');
+        }
+
+        output
+    }
+
+    pub fn as_uapi_remove(&self) -> String {
+        format!(
+            "public_key={}\nremove=true\n",
+            self.public_key.to_lower_hex()
+        )
     }
 
     #[cfg(target_os = "linux")]
@@ -83,9 +115,27 @@ impl Peer {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn to_nlas(&self) -> WgPeer {
-        let mut attrs = Vec::new();
-        attrs.push(WgPeerAttrs::PublicKey(self.public_key.as_array()));
+    pub fn as_nlas(&self, ifname: &str) -> Vec<WgDeviceAttrs> {
+        vec![
+            WgDeviceAttrs::IfName(ifname.into()),
+            WgDeviceAttrs::Peers(vec![self.as_nlas_peer()]),
+        ]
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn as_nlas_remove(&self, ifname: &str) -> Vec<WgDeviceAttrs> {
+        vec![
+            WgDeviceAttrs::IfName(ifname.into()),
+            WgDeviceAttrs::Peers(vec![WgPeer(vec![
+                WgPeerAttrs::PublicKey(self.public_key.as_array()),
+                WgPeerAttrs::Flags(WGPEER_F_REMOVE_ME),
+            ])]),
+        ]
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn as_nlas_peer(&self) -> WgPeer {
+        let mut attrs = vec![WgPeerAttrs::PublicKey(self.public_key.as_array())];
         if let Some(keepalive) = self.persistent_keepalive_interval {
             attrs.push(WgPeerAttrs::PersistentKeepalive(keepalive));
         }
@@ -93,7 +143,7 @@ impl Peer {
         let allowed_ips = self
             .allowed_ips
             .iter()
-            .map(|ipaddr| ipaddr.to_nlas())
+            .map(|ipaddr| ipaddr.to_nlas_allowed_ip())
             .collect();
         attrs.push(WgPeerAttrs::AllowedIps(allowed_ips));
 
@@ -101,57 +151,54 @@ impl Peer {
     }
 }
 
-impl ToString for Peer {
-    fn to_string(&self) -> String {
-        let mut output = format!("public_key={}\n", self.public_key.to_lower_hex());
-        if let Some(key) = &self.preshared_key {
-            output.push_str("preshared_key=");
-            output.push_str(&key.to_lower_hex());
-            output.push('\n');
-        }
-        if let Some(endpoint) = &self.endpoint {
-            output.push_str("endpoint=");
-            output.push_str(&endpoint.to_string());
-            output.push('\n');
-        }
-        if let Some(interval) = &self.persistent_keepalive_interval {
-            output.push_str("persistent_keepalive_interval=");
-            output.push_str(&interval.to_string());
-            output.push('\n');
-        }
-        for allowed_ip in &self.allowed_ips {
-            output.push_str("allowed_ip=");
-            output.push_str(&allowed_ip.to_string());
-            output.push('\n');
-        }
-
-        output
+impl From<proto::Peer> for Peer {
+    fn from(proto_peer: proto::Peer) -> Self {
+        let mut peer = Self::new(proto_peer.pubkey.as_str().try_into().unwrap_or_default());
+        peer.allowed_ips = proto_peer
+            .allowed_ips
+            .iter()
+            .filter_map(|entry| IpAddrMask::from_str(entry).ok())
+            .collect();
+        peer
     }
 }
 
-impl Into<PeerStats> for Peer {
-    fn into(self) -> PeerStats {
-        PeerStats {
-            public_key: self.public_key.to_string(),
-            endpoint: self
+impl From<&Peer> for proto::Peer {
+    fn from(peer: &Peer) -> Self {
+        Self {
+            pubkey: peer.public_key.to_string(),
+            allowed_ips: peer
+                .allowed_ips
+                .iter()
+                .map(|ipmask| ipmask.to_string())
+                .collect(),
+        }
+    }
+}
+
+impl From<Peer> for proto::PeerStats {
+    fn from(peer: Peer) -> Self {
+        Self {
+            public_key: peer.public_key.to_string(),
+            endpoint: peer
                 .endpoint
                 .map_or(String::new(), |endpoint| endpoint.to_string()),
-            allowed_ips: String::new(), // TODO
-            latest_handshake: self.last_handshake.map_or(0, |ts| {
+            allowed_ips: String::new(), // FIXME: change proto to Vec<String>
+            latest_handshake: peer.last_handshake.map_or(0, |ts| {
                 ts.duration_since(SystemTime::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_secs() as i64)
             }),
-            download: self.rx_bytes as i64,
-            upload: self.tx_bytes as i64,
-            keepalive_interval: self.persistent_keepalive_interval.unwrap_or_default() as i64,
+            download: peer.rx_bytes as i64,
+            upload: peer.tx_bytes as i64,
+            keepalive_interval: peer.persistent_keepalive_interval.unwrap_or_default() as i64,
         }
     }
 }
 
 #[derive(Debug, Default)]
 pub struct Host {
-    listen_port: u16,
-    private_key: Option<Key>,
+    pub listen_port: u16,
+    pub private_key: Option<Key>,
     fwmark: Option<u32>,
     pub peers: Vec<Peer>,
 }
@@ -164,6 +211,27 @@ impl Host {
             fwmark: None,
             peers: Vec::new(),
         }
+    }
+
+    pub fn as_uapi(&self) -> String {
+        let mut output = format!("listen_port={}\n", self.listen_port);
+        if let Some(key) = &self.private_key {
+            output.push_str("private_key=");
+            output.push_str(&key.to_lower_hex());
+            output.push('\n');
+        }
+        if let Some(fwmark) = &self.fwmark {
+            output.push_str("fwmark=");
+            output.push_str(&fwmark.to_string());
+            output.push('\n');
+        }
+        output.push_str("replace_peers=true\n");
+        for peer in &self.peers {
+            output.push_str(&peer.as_uapi_update());
+            output.push('\n');
+        }
+
+        output
     }
 
     // TODO: handle errors
@@ -250,17 +318,17 @@ impl Host {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn from_nlas(wg: &Wireguard) -> Self {
+    pub fn from_nlas(nlas: &[WgDeviceAttrs]) -> Self {
         let mut host = Self::default();
 
-        for nla in &wg.nlas {
+        for nla in nlas {
             match nla {
                 WgDeviceAttrs::PrivateKey(value) => host.private_key = Some(Key::new(*value)),
                 WgDeviceAttrs::ListenPort(value) => host.listen_port = *value,
                 WgDeviceAttrs::Fwmark(value) => host.fwmark = Some(*value),
                 WgDeviceAttrs::Peers(nlas) => {
                     for nla in nlas {
-                        host.peers.push(Peer::from_nlas(&nla));
+                        host.peers.push(Peer::from_nlas(nla));
                     }
                 }
                 _ => (),
@@ -271,10 +339,11 @@ impl Host {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn to_nlas(&self, ifname: &str) -> Wireguard {
-        let mut nlas = Vec::new();
-        nlas.push(WgDeviceAttrs::IfName(ifname.into()));
-        nlas.push(WgDeviceAttrs::ListenPort(self.listen_port));
+    pub fn as_nlas(&self, ifname: &str) -> Vec<WgDeviceAttrs> {
+        let mut nlas = vec![
+            WgDeviceAttrs::IfName(ifname.into()),
+            WgDeviceAttrs::ListenPort(self.listen_port),
+        ];
         if let Some(key) = &self.private_key {
             nlas.push(WgDeviceAttrs::PrivateKey(key.as_array()));
         }
@@ -282,41 +351,9 @@ impl Host {
             nlas.push(WgDeviceAttrs::Fwmark(*fwmark));
         }
         nlas.push(WgDeviceAttrs::Flags(WGDEVICE_F_REPLACE_PEERS));
-        let peers = self.peers.iter().map(|peer| peer.to_nlas()).collect();
+        let peers = self.peers.iter().map(|peer| peer.as_nlas_peer()).collect();
         nlas.push(WgDeviceAttrs::Peers(peers));
-
-        let wg = Wireguard {
-            cmd: WireguardCmd::SetDevice,
-            nlas,
-        };
-
-        wg
-    }
-}
-
-impl ToString for Host {
-    fn to_string(&self) -> String {
-        let mut output = format!("listen_port={}\n", self.listen_port);
-        if let Some(key) = &self.private_key {
-            output.push_str("private_key=");
-            output.push_str(&key.to_lower_hex());
-            output.push('\n');
-        }
-        if let Some(fwmark) = &self.fwmark {
-            output.push_str("fwmark=");
-            output.push_str(&fwmark.to_string());
-            output.push('\n');
-        }
-
-        // host: replace_peers=true
-        // peer: remove=true, replace_allowed_ips=true
-
-        for peer in &self.peers {
-            output.push_str(&peer.to_string());
-            output.push('\n');
-        }
-
-        output
+        nlas
     }
 }
 
@@ -365,20 +402,38 @@ mod tests {
     }
 
     #[test]
-    fn test_format_config() {
+    fn test_host_uapi() {
         let key_str = "000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f";
         let key = Key::decode(key_str).unwrap();
 
-        let host = Host {
-            listen_port: 12345,
-            private_key: Some(key),
-            ..Default::default()
-        };
-
+        let host = Host::new(12345, key);
         assert_eq!(
             "listen_port=12345\n\
-            private_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n",
-            host.to_string()
+            private_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            replace_peers=true\n",
+            host.as_uapi()
+        );
+    }
+
+    #[test]
+    fn test_peer_uapi() {
+        let key_str = "000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f";
+        let key = Key::decode(key_str).unwrap();
+
+        let peer = Peer::new(key);
+        assert_eq!(
+            "public_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            replace_allowed_ips=true\n",
+            peer.as_uapi_update()
+        );
+
+        let key_str = "00112233445566778899aaabbcbddeeff0e1d2c3b4a5968778695a4b3c2d1e0f";
+        let key = Key::decode(key_str).unwrap();
+        let peer = Peer::new(key);
+        assert_eq!(
+            "public_key=00112233445566778899aaabbcbddeeff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            remove=true\n",
+            peer.as_uapi_remove()
         );
     }
 }

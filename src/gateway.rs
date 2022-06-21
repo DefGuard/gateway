@@ -1,12 +1,11 @@
-tonic::include_proto!("gateway");
-
 #[cfg(target_os = "linux")]
 use crate::wireguard::netlink::delete_interface;
 use crate::{
+    error::GatewayError,
+    proto::{gateway_service_client::GatewayServiceClient, update::Update, Configuration},
     wireguard::{setup_interface, wgapi::WGApi},
     Config,
 };
-use gateway_service_client::GatewayServiceClient;
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 use tonic::{
@@ -33,7 +32,7 @@ fn spawn_stats_thread(
     let stats_stream = async_stream::stream! {
         let api = WGApi::new(ifname, userspace);
         loop {
-            match api.read_configuration() {
+            match api.read_host() {
                 Ok(host) => {
                     for peer in host.peers {
                         yield peer.into();
@@ -51,8 +50,21 @@ fn spawn_stats_thread(
     });
 }
 
-/// Connects to DefGuard GRPC endpoint, retrieves configuration and sets up wireguard interface.
-/// Reconfigures the interface whenever new configuration is sent via grpc stream.
+fn new_configuration(config: &Config, configuration: Configuration) -> Result<(), GatewayError> {
+    debug!(
+        "Received configuration, reconfiguring WireGuard interface: {:?}",
+        configuration
+    );
+    if !config.userspace {
+        #[cfg(target_os = "linux")]
+        let _ = delete_interface(&config.ifname);
+    }
+    setup_interface(&config.ifname, config.userspace, &configuration)?;
+    info!("Reconfigured WireGuard interface: {:?}", configuration);
+    Ok(())
+}
+
+/// Connect to DefGuard GRPC endpoint, retrieve configuration and set up WireGuard interface.
 /// Sends wireguard interface statistics periodically.
 pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Connecting to DefGuard GRPC endpoint: {}", config.grpc_url);
@@ -71,12 +83,16 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
     )));
 
     let stats_period = Duration::from_secs(config.stats_period);
-    let mut config_stream = loop {
-        if let Ok(stream) = client.lock().await.config(()).await {
+
+    let response = client.lock().await.config(Request::new(())).await?;
+    new_configuration(config, response.into_inner())?;
+
+    let mut updates_stream = loop {
+        if let Ok(stream) = client.lock().await.updates(()).await {
             spawn_stats_thread(
                 Arc::clone(&client),
                 stats_period,
-                config.if_name.clone(),
+                config.ifname.clone(),
                 config.userspace,
             );
             break stream.into_inner();
@@ -85,32 +101,35 @@ pub async fn run_gateway_client(config: &Config) -> Result<(), Box<dyn std::erro
         }
         sleep(Duration::from_secs(1)).await;
     };
+
+    let wgapi = WGApi::new(config.ifname.clone(), config.userspace);
     loop {
-        match config_stream.message().await {
-            Ok(Some(configuration)) => {
-                debug!(
-                    "Received configuration, reconfiguring wireguard interface: {:?}",
-                    configuration
-                );
-                if !config.userspace {
-                    #[cfg(target_os = "linux")]
-                    let _ = delete_interface(&config.if_name);
+        match updates_stream.message().await {
+            Ok(Some(update)) => match update.update {
+                Some(Update::Network(configuration)) => new_configuration(config, configuration)?,
+                Some(Update::Peer(peer_config)) => {
+                    info!("Applying peer configuration: {:?}", peer_config);
+                    match update.update_type {
+                        // UpdateType::Delete
+                        2 => wgapi.delete_peer(&peer_config.into()),
+                        // UpdateType::Create, UpdateType::Modify
+                        _ => wgapi.write_peer(&peer_config.into()),
+                    }?
                 }
-                setup_interface(&config.if_name, config.userspace, &configuration)?;
-                info!("Reconfigured wireguard interface: {:?}", configuration);
-            }
+                _ => warn!("Unsupported kind of update"),
+            },
             Ok(None) => {
-                if let Ok(config_response) = client.lock().await.config(()).await {
+                if let Ok(response) = client.lock().await.updates(()).await {
                     // Server is back online, get new config stream...
-                    config_stream = config_response.into_inner();
+                    updates_stream = response.into_inner();
                     // ...and restart stats stream
                     spawn_stats_thread(
                         Arc::clone(&client),
                         stats_period,
-                        config.if_name.clone(),
+                        config.ifname.clone(),
                         config.userspace,
                     );
-                    info!("Reconnect successful");
+                    info!("Reconnection successful");
                 }
                 sleep(Duration::from_secs(1)).await;
             }

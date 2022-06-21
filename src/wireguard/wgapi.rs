@@ -1,11 +1,10 @@
-use super::{Host, SOCKET_BUFFER_LENGTH};
+use super::{Host, Peer, SOCKET_BUFFER_LENGTH};
 #[cfg(target_os = "linux")]
-use crate::wireguard::netlink::{get_host, set_host};
+use crate::wireguard::netlink::{delete_peer, get_host, set_host, set_peer};
 use std::{
     io::{self, Read, Write},
     os::unix::net::UnixStream,
     str::from_utf8,
-    string::ToString,
     time::Duration,
 };
 
@@ -40,7 +39,7 @@ impl WGApi {
         0
     }
 
-    pub fn read_configuration(&self) -> io::Result<Host> {
+    pub fn read_host(&self) -> io::Result<Host> {
         if self.userspace {
             let mut socket = self.socket()?;
             socket.write_all(b"get=1\n\n")?;
@@ -61,11 +60,11 @@ impl WGApi {
         }
     }
 
-    pub fn write_configuration(&self, host: &Host) -> io::Result<()> {
+    pub fn write_host(&self, host: &Host) -> io::Result<()> {
         if self.userspace {
             let mut socket = self.socket()?;
             socket.write_all(b"set=1\n")?;
-            socket.write_all(host.to_string().as_bytes())?;
+            socket.write_all(host.as_uapi().as_bytes())?;
             socket.write_all(b"\n")?;
 
             let mut buf = [0u8; SOCKET_BUFFER_LENGTH];
@@ -82,6 +81,66 @@ impl WGApi {
             #[cfg(target_os = "linux")]
             {
                 set_host(&self.ifname, host)
+            }
+            #[cfg(not(target_os = "linux"))]
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "kernel support is not available on this platform",
+            ))
+        }
+    }
+
+    pub fn write_peer(&self, peer: &Peer) -> io::Result<()> {
+        if self.userspace {
+            let mut socket = self.socket()?;
+            socket.write_all(b"set=1\n")?;
+            socket.write_all(peer.as_uapi_update().as_bytes())?;
+            socket.write_all(b"\n")?;
+
+            let mut buf = [0u8; SOCKET_BUFFER_LENGTH];
+            let count = socket.read(&mut buf)?;
+            if Self::parse_errno(&buf[..count]) != 0 {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "write configuration error",
+                ))
+            } else {
+                Ok(())
+            }
+        } else {
+            #[cfg(target_os = "linux")]
+            {
+                set_peer(&self.ifname, peer)
+            }
+            #[cfg(not(target_os = "linux"))]
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "kernel support is not available on this platform",
+            ))
+        }
+    }
+
+    pub fn delete_peer(&self, peer: &Peer) -> io::Result<()> {
+        if self.userspace {
+            let mut socket = self.socket()?;
+            socket.write_all(b"set=1\n")?;
+            socket.write_all(peer.as_uapi_remove().as_bytes())?;
+            socket.write_all(b"\n")?;
+
+            let mut buf = [0u8; SOCKET_BUFFER_LENGTH];
+            let count = socket.read(&mut buf)?;
+            if Self::parse_errno(&buf[..count]) != 0 {
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "write configuration error",
+                ))
+            } else {
+                Ok(())
+            }
+        } else {
+            #[cfg(target_os = "linux")]
+            {
+                delete_peer(&self.ifname, peer)
             }
             #[cfg(not(target_os = "linux"))]
             Err(io::Error::new(

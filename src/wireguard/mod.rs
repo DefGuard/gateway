@@ -7,7 +7,7 @@ pub mod wgapi;
 
 pub(crate) const SOCKET_BUFFER_LENGTH: usize = 4096;
 
-use crate::{error::OriWireGuardError, gateway::Configuration, utils::run_command};
+use crate::{error::GatewayError, proto::Configuration, utils::run_command};
 #[cfg(feature = "boringtun")]
 use boringtun::{
     device::drop_privileges::drop_privileges,
@@ -23,13 +23,12 @@ use wgapi::WGApi;
 ///
 /// * `name` - Interface name
 #[cfg(feature = "boringtun")]
-pub fn create_interface_userspace(ifname: &str) -> Result<(), OriWireGuardError> {
+pub fn create_interface_userspace(ifname: &str) -> Result<(), GatewayError> {
     let enable_drop_privileges = true;
 
     let config = DeviceConfig::default();
 
-    let mut device_handle =
-        DeviceHandle::new(ifname, config).map_err(OriWireGuardError::BorningTun)?;
+    let mut device_handle = DeviceHandle::new(ifname, config).map_err(GatewayError::BorningTun)?;
 
     if enable_drop_privileges {
         if let Err(e) = drop_privileges() {
@@ -48,11 +47,11 @@ pub fn create_interface_userspace(ifname: &str) -> Result<(), OriWireGuardError>
 /// # Arguments
 ///
 /// * `output` - command output
-fn map_output(output: &Output) -> Result<String, OriWireGuardError> {
+fn map_output(output: &Output) -> Result<String, GatewayError> {
     if output.status.success() {
         Ok(String::from_utf8(output.stdout.clone()).unwrap_or_default())
     } else {
-        Err(OriWireGuardError::CommandExecutionError {
+        Err(GatewayError::CommandExecutionError {
             stderr: String::from_utf8(output.stderr.clone()).unwrap_or_default(),
         })
     }
@@ -64,12 +63,17 @@ fn map_output(output: &Output) -> Result<String, OriWireGuardError> {
 ///
 /// * `interface` - Interface name
 /// * `addr` - Address to assign to interface
-pub fn assign_addr(ifname: &str, addr: &str) -> Result<(), OriWireGuardError> {
+pub fn assign_addr(ifname: &str, addr: &str) -> Result<(), GatewayError> {
     if cfg!(target_os = "linux") {
         #[cfg(target_os = "linux")]
         netlink::address_interface(ifname, &IpAddrMask::from_str(addr).unwrap())?;
     } else {
-        let output = run_command(&["ifconfig", ifname, addr, addr])?;
+        let output = if cfg!(target_os = "macos") {
+            // On macOS, interface is point-to-point and requires a pair of addresses
+            run_command(&["ifconfig", ifname, addr, addr])
+        } else {
+            run_command(&["ifconfig", ifname, addr])
+        }?;
         let _ = map_output(&output);
     }
     Ok(())
@@ -80,7 +84,7 @@ pub fn setup_interface(
     ifname: &str,
     userspace: bool,
     config: &Configuration,
-) -> Result<(), OriWireGuardError> {
+) -> Result<(), GatewayError> {
     if userspace {
         #[cfg(feature = "boringtun")]
         create_interface_userspace(ifname)?;
@@ -95,7 +99,7 @@ pub fn setup_interface(
     for peercfg in &config.peers {
         let key = peercfg.pubkey.as_str().try_into().unwrap();
         let mut peer = Peer::new(key);
-        let allowed_ips: Vec<IpAddrMask> = peercfg
+        let allowed_ips = peercfg
             .allowed_ips
             .iter()
             .filter_map(|entry| IpAddrMask::from_str(entry).ok())
@@ -105,7 +109,7 @@ pub fn setup_interface(
         host.peers.push(peer);
     }
     let api = WGApi::new(ifname.into(), userspace);
-    api.write_configuration(&host)?;
+    api.write_host(&host)?;
 
     Ok(())
 }

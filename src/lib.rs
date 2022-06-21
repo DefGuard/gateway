@@ -3,6 +3,10 @@ pub mod gateway;
 mod utils;
 pub mod wireguard;
 
+pub mod proto {
+    tonic::include_proto!("gateway");
+}
+
 #[macro_use]
 extern crate log;
 
@@ -52,7 +56,7 @@ pub struct Config {
         default_value = "wg0",
         help = "Interface name (e.g. wg0)"
     )]
-    if_name: String,
+    ifname: String,
 }
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
