@@ -1,6 +1,6 @@
 use clap::Parser;
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
-use wireguard_gateway::{gateway::run_gateway_client, Config, VERSION};
+use wireguard_gateway::{gateway::start, Config, VERSION};
 
 #[macro_use]
 extern crate log;
@@ -14,6 +14,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Starting wireguard gateway version {} with configuration: {:?}",
         VERSION, config
     );
-    run_gateway_client(&config).await?;
+    start(&config).await?;
     Ok(())
 }
