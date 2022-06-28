@@ -183,7 +183,7 @@ impl From<Peer> for proto::PeerStats {
             endpoint: peer
                 .endpoint
                 .map_or(String::new(), |endpoint| endpoint.to_string()),
-            allowed_ips: String::new(), // FIXME: change proto to Vec<String>
+            allowed_ips: peer.allowed_ips.iter().map(|ip| ip.to_string()).collect(),
             latest_handshake: peer.last_handshake.map_or(0, |ts| {
                 ts.duration_since(SystemTime::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_secs() as i64)
