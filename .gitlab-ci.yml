@@ -10,7 +10,8 @@ default:
     - kubernetes
 
 services:
-  - docker:stable-dind
+  - name: docker:stable-dind
+    command: ["--mtu=1440"]
 
 stages:
   - compile
