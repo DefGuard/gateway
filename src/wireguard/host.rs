@@ -228,7 +228,6 @@ impl Host {
         output.push_str("replace_peers=true\n");
         for peer in &self.peers {
             output.push_str(&peer.as_uapi_update());
-            output.push('\n');
         }
 
         output
