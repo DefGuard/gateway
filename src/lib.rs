@@ -32,6 +32,9 @@ pub struct Config {
     )]
     grpc_url: String,
 
+    #[clap(long, env = "DEFGUARD_GRPC_CA")]
+    grpc_ca: Option<String>,
+
     #[clap(
         long,
         short = 'p',
