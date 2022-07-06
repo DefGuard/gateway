@@ -9,8 +9,10 @@ use crate::{
 use std::{sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 use tonic::{
-    codegen::InterceptedService, metadata::MetadataValue, transport::Channel, Request, Status,
-    Streaming,
+    codegen::InterceptedService,
+    metadata::MetadataValue,
+    transport::{Certificate, Channel, ClientTlsConfig},
+    Request, Status, Streaming,
 };
 
 /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
@@ -114,7 +116,17 @@ async fn connect(
 /// * Sends interface statistics to Defguard server periodically
 pub async fn start(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Gateway client starting");
-    let channel = Channel::from_shared(config.grpc_url.to_owned())?.connect_lazy();
+
+    let channel = Channel::from_shared(config.grpc_url.to_owned())?;
+    let channel = if let Some(ca) = &config.grpc_ca {
+        let ca = std::fs::read_to_string(ca)?;
+        let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(&ca));
+        channel.tls_config(tls)?
+    } else {
+        channel
+    };
+    let channel = channel.connect_lazy();
+
     let token = MetadataValue::try_from(&config.token)
         .map_err(|_| Status::unknown("Token parsing error"))?;
     let jwt_auth_interceptor = move |mut req: Request<()>| -> Result<Request<()>, Status> {

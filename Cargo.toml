@@ -17,7 +17,7 @@ env_logger = "0.9"
 log = "0.4"
 prost = "0.10"
 thiserror = "1.0"
-tonic = {version = "0.7", features = ["tls"] }
+tonic = {version = "0.7", features = ["compression", "tls", "tls-roots"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
 
@@ -25,7 +25,7 @@ tokio-stream = { version = "0.1", features = [] }
 tokio = { version = "1", features = ["io-std", "io-util"] }
 
 [build-dependencies]
-tonic-build = "0.7"
+tonic-build = { version = "0.7", features = ["compression"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-core = "0.4"
