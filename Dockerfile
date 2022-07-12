@@ -1,11 +1,11 @@
-FROM rust:1.61-slim as builder
+FROM rust:1.62-slim as builder
 
 RUN apt-get update && apt-get -y install cmake g++
 WORKDIR /app
 COPY . .
 RUN cargo build --release
 
-FROM rust:1.61-slim as runtime
+FROM debian:bullseye-slim
 RUN apt-get update && apt-get -y install \
     iproute2 wireguard-tools sudo && \
     rm -rf /var/lib/apt/lists/*

@@ -37,7 +37,7 @@ fn spawn_stats_thread(
         loop {
             match api.read_host() {
                 Ok(host) => {
-                    for peer in host.peers {
+                    for peer in host.peers.values() {
                         yield peer.into();
                     }
                 },

@@ -70,7 +70,7 @@ impl From<&HostConfig> for proto::Configuration {
             peers: host_config
                 .host
                 .peers
-                .iter()
+                .values()
                 .map(|peer| peer.into())
                 .collect(),
         }
@@ -143,7 +143,7 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
                 "c" | "peer" => {
                     if let Some(key) = token_iter.next() {
                         if let Ok(key) = Key::try_from(key) {
-                            let peer = Peer::new(key);
+                            let peer = Peer::new(key.clone());
 
                             let update = proto::Update {
                                 update_type: proto::UpdateType::Create as i32,
@@ -158,7 +158,7 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
 
                             // modify HostConfig, but do not notify the receiver
                             tx.send_if_modified(|config| {
-                                config.host.peers.push(peer);
+                                config.host.peers.insert(key, peer);
                                 false
                             });
                         } else {
