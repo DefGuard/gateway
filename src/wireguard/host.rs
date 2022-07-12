@@ -6,6 +6,7 @@ use netlink_packet_wireguard::{
     nlas::{WgAllowedIpAttrs, WgDeviceAttrs, WgPeer, WgPeerAttrs},
 };
 use std::{
+    collections::HashMap,
     net::SocketAddr,
     str::{from_utf8, FromStr},
     time::{Duration, SystemTime},
@@ -176,8 +177,8 @@ impl From<&Peer> for proto::Peer {
     }
 }
 
-impl From<Peer> for proto::PeerStats {
-    fn from(peer: Peer) -> Self {
+impl From<&Peer> for proto::PeerStats {
+    fn from(peer: &Peer) -> Self {
         Self {
             public_key: peer.public_key.to_string(),
             endpoint: peer
@@ -200,7 +201,7 @@ pub struct Host {
     pub listen_port: u16,
     pub private_key: Option<Key>,
     fwmark: Option<u32>,
-    pub peers: Vec<Peer>,
+    pub peers: HashMap<Key, Peer>,
 }
 
 impl Host {
@@ -209,7 +210,7 @@ impl Host {
             listen_port,
             private_key: Some(private_key),
             fwmark: None,
-            peers: Vec::new(),
+            peers: HashMap::new(),
         }
     }
 
@@ -226,8 +227,8 @@ impl Host {
             output.push('\n');
         }
         output.push_str("replace_peers=true\n");
-        for peer in &self.peers {
-            output.push_str(&peer.as_uapi_update());
+        for peer in self.peers.values() {
+            output.push_str(peer.as_uapi_update().as_ref());
         }
 
         output
@@ -239,76 +240,98 @@ impl Host {
 
         for line in buf.split(|&char| char == b'\n') {
             if let Some(index) = line.iter().position(|&char| char == b'=') {
-                let key = from_utf8(&line[..index]).unwrap();
+                let keyword = from_utf8(&line[..index]).unwrap();
                 let value = from_utf8(&line[index + 1..]).unwrap();
-                match key {
+                let mut current_peer_key = None;
+                match keyword {
                     "listen_port" => host.listen_port = value.parse().unwrap_or_default(),
                     "fwmark" => host.fwmark = Some(value.parse().unwrap_or_default()),
                     "private_key" => host.private_key = Some(Key::decode(value).unwrap()),
                     // "public_key" starts new peer definition
                     "public_key" => {
-                        let key = Key::decode(value).unwrap();
-                        let peer = Peer::new(key);
-                        host.peers.push(peer);
+                        current_peer_key = Key::decode(value).ok();
+                        if let Some(key) = current_peer_key {
+                            let peer = Peer::new(key.clone());
+                            host.peers.insert(key, peer);
+                        }
                     }
                     "preshared_key" => {
-                        if let Some(mut peer) = host.peers.last_mut() {
-                            peer.preshared_key = Some(Key::decode(value).unwrap());
-                        } // else {}
+                        if let Some(key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(&key) {
+                                peer.preshared_key = Key::decode(value).ok();
+                            }
+                        }
                     }
                     "protocol_version" => {
-                        if let Some(mut peer) = host.peers.last_mut() {
-                            peer.protocol_version = Some(value.parse().unwrap_or_default());
-                        } // else {}
+                        if let Some(key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(&key) {
+                                peer.protocol_version = value.parse().ok();
+                            }
+                        }
                     }
                     "endpoint" => {
-                        if let Some(mut peer) = host.peers.last_mut() {
-                            if let Ok(addr) = SocketAddr::from_str(value) {
-                                peer.endpoint = Some(addr);
+                        if let Some(key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(&key) {
+                                if let Ok(addr) = SocketAddr::from_str(value) {
+                                    peer.endpoint = Some(addr);
+                                }
                             }
-                        } // else {}
+                        }
                     }
                     "persistent_keepalive_interval" => {
-                        if let Some(mut peer) = host.peers.last_mut() {
-                            peer.persistent_keepalive_interval =
-                                Some(value.parse().unwrap_or_default());
-                        } // else {}
+                        if let Some(key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(&key) {
+                                peer.persistent_keepalive_interval = value.parse().ok();
+                            }
+                        }
                     }
                     "allowed_ip" => {
-                        if let Some(peer) = host.peers.last_mut() {
-                            peer.allowed_ips.push(value.parse().unwrap());
-                        } // else {}
+                        if let Some(key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(&key) {
+                                peer.allowed_ips.push(value.parse().unwrap());
+                            }
+                        }
                     }
                     "last_handshake_time_sec" => {
-                        if let Some(peer) = host.peers.last_mut() {
-                            let handshake =
-                                peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
-                            *handshake += Duration::from_secs(value.parse().unwrap_or_default());
-                        } // else {}
+                        if let Some(key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(&key) {
+                                let handshake =
+                                    peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
+                                *handshake +=
+                                    Duration::from_secs(value.parse().unwrap_or_default());
+                            }
+                        }
                     }
                     "last_handshake_time_nsec" => {
-                        if let Some(peer) = host.peers.last_mut() {
-                            let handshake =
-                                peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
-                            *handshake += Duration::from_nanos(value.parse().unwrap_or_default());
-                        } // else {}
+                        if let Some(key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(&key) {
+                                let handshake =
+                                    peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
+                                *handshake +=
+                                    Duration::from_nanos(value.parse().unwrap_or_default());
+                            }
+                        }
                     }
                     "rx_bytes" => {
-                        if let Some(mut peer) = host.peers.last_mut() {
-                            peer.rx_bytes = value.parse().unwrap_or_default();
-                        } // else {}
+                        if let Some(key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(&key) {
+                                peer.rx_bytes = value.parse().unwrap_or_default();
+                            }
+                        }
                     }
                     "tx_bytes" => {
-                        if let Some(mut peer) = host.peers.last_mut() {
-                            peer.tx_bytes = value.parse().unwrap_or_default();
-                        } // else {}
+                        if let Some(key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(&key) {
+                                peer.tx_bytes = value.parse().unwrap_or_default();
+                            }
+                        }
                     }
                     // "errno" ends config
                     "errno" => {
                         let _errno: u32 = value.parse().unwrap();
                         // if errno != 0
                     }
-                    _ => eprintln!("Unknown key {}", key),
+                    _ => eprintln!("Unknown keyword {}", keyword),
                 }
             }
         }
@@ -327,7 +350,8 @@ impl Host {
                 WgDeviceAttrs::Fwmark(value) => host.fwmark = Some(*value),
                 WgDeviceAttrs::Peers(nlas) => {
                     for nla in nlas {
-                        host.peers.push(Peer::from_nlas(nla));
+                        let peer = Peer::from_nlas(nla);
+                        host.peers.insert(peer.public_key.clone(), peer);
                     }
                 }
                 _ => (),
@@ -350,7 +374,11 @@ impl Host {
             nlas.push(WgDeviceAttrs::Fwmark(*fwmark));
         }
         nlas.push(WgDeviceAttrs::Flags(WGDEVICE_F_REPLACE_PEERS));
-        let peers = self.peers.iter().map(|peer| peer.as_nlas_peer()).collect();
+        let peers = self
+            .peers
+            .values()
+            .map(|peer| peer.as_nlas_peer())
+            .collect();
         nlas.push(WgDeviceAttrs::Peers(peers));
         nlas
     }
@@ -365,7 +393,7 @@ mod tests {
         let uapi_output =
             b"private_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
             listen_port=7301\n\
-            public_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            public_key=100102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
             preshared_key=0000000000000000000000000000000000000000000000000000000000000000\n\
             protocol_version=1\n\
             last_handshake_time_sec=0\n\
@@ -374,7 +402,7 @@ mod tests {
             rx_bytes=0\n\
             persistent_keepalive_interval=0\n\
             allowed_ip=10.6.0.12/32\n\
-            public_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            public_key=200102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
             preshared_key=0000000000000000000000000000000000000000000000000000000000000000\n\
             protocol_version=1\n\
             endpoint=83.11.218.160:51421\n\
@@ -384,7 +412,7 @@ mod tests {
             rx_bytes=3683056\n\
             persistent_keepalive_interval=0\n\
             allowed_ip=10.6.0.25/32\n\
-            public_key=000102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
+            public_key=300102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f\n\
             preshared_key=0000000000000000000000000000000000000000000000000000000000000000\n\
             protocol_version=1\n\
             endpoint=31.135.163.194:37712\n\

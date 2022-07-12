@@ -1,7 +1,7 @@
 use std::str::FromStr;
 #[cfg(target_os = "linux")]
 use wireguard_gateway::wireguard::netlink::{address_interface, create_interface};
-use wireguard_gateway::wireguard::{wgapi::WGApi, Host, IpAddrMask, Peer};
+use wireguard_gateway::wireguard::{wgapi::WGApi, Host, IpAddrMask, Key, Peer};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,14 +27,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .try_into()
             .unwrap(),
     );
-    let mut peer = Peer::new(
-        "Chtg9UAkTUOlH7Z6mT//c43kRTjejo7IlX1PCA9AaEs="
-            .try_into()
-            .unwrap(),
-    );
+    let peer_key: Key = "Chtg9UAkTUOlH7Z6mT//c43kRTjejo7IlX1PCA9AaEs="
+        .try_into()
+        .unwrap();
+    let mut peer = Peer::new(peer_key.clone());
     let addr = IpAddrMask::from_str("10.20.30.40/24").unwrap();
     peer.allowed_ips.push(addr);
-    host.peers.push(peer);
+    host.peers.insert(peer_key, peer);
 
     api.write_host(&host)?;
 

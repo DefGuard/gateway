@@ -97,8 +97,8 @@ pub fn setup_interface(
     let key = config.prvkey.as_str().try_into().unwrap();
     let mut host = Host::new(config.port as u16, key);
     for peercfg in &config.peers {
-        let key = peercfg.pubkey.as_str().try_into().unwrap();
-        let mut peer = Peer::new(key);
+        let key: Key = peercfg.pubkey.as_str().try_into().unwrap();
+        let mut peer = Peer::new(key.clone());
         let allowed_ips = peercfg
             .allowed_ips
             .iter()
@@ -106,7 +106,7 @@ pub fn setup_interface(
             .collect();
         peer.set_allowed_ips(allowed_ips);
 
-        host.peers.push(peer);
+        host.peers.insert(key, peer);
     }
     let api = WGApi::new(ifname.into(), userspace);
     api.write_host(&host)?;

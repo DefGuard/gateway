@@ -1,9 +1,12 @@
 use base64::{decode, encode, DecodeError};
-use std::{error, fmt};
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+};
 
 const KEY_LENGTH: usize = 32;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Key([u8; KEY_LENGTH]);
 
 #[derive(Debug)]
@@ -88,6 +91,20 @@ impl TryFrom<&str> for Key {
         }
     }
 }
+
+impl Hash for Key {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl PartialEq for Key {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Eq for Key {}
 
 impl fmt::Debug for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
