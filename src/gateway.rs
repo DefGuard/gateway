@@ -6,7 +6,7 @@ use crate::{
     wireguard::{setup_interface, wgapi::WGApi},
     Config,
 };
-use std::{sync::Arc, time::Duration};
+use std::{fs::File, io::Write, process, sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 use tonic::{
     codegen::InterceptedService,
@@ -116,6 +116,11 @@ async fn connect(
 /// * Sends interface statistics to Defguard server periodically
 pub async fn start(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Gateway client starting");
+
+    if let Some(pidfile) = &config.pidfile {
+        let mut file = File::create(pidfile)?;
+        file.write_all(process::id().to_string().as_bytes())?;
+    }
 
     let channel = Channel::from_shared(config.grpc_url.to_owned())?;
     let channel = if let Some(ca) = &config.grpc_ca {
