@@ -60,6 +60,9 @@ pub struct Config {
         help = "Interface name (e.g. wg0)"
     )]
     ifname: String,
+
+    #[clap(long, help = "Write pid to this file")]
+    pidfile: Option<String>,
 }
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
