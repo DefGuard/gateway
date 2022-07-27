@@ -115,8 +115,6 @@ async fn connect(
 /// * Manages the interface according to configuration and updates
 /// * Sends interface statistics to Defguard server periodically
 pub async fn start(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    debug!("Gateway client starting");
-
     if let Some(pidfile) = &config.pidfile {
         let mut file = File::create(pidfile)?;
         file.write_all(process::id().to_string().as_bytes())?;
@@ -160,8 +158,12 @@ pub async fn start(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                 }
                 _ => warn!("Unsupported kind of update"),
             },
-            _ => {
-                error!("Server connection lost, reconnecting");
+            Ok(None) => {
+                warn!("Received empty message, reconnecting");
+                updates_stream = connect(config, Arc::clone(&client)).await?;
+            }
+            Err(err) => {
+                error!("Server error {err}, reconnecting");
                 updates_stream = connect(config, Arc::clone(&client)).await?;
             }
         }

@@ -237,12 +237,12 @@ impl Host {
     // TODO: handle errors
     pub fn parse_from(buf: &[u8]) -> Self {
         let mut host = Self::default();
+        let mut current_peer_key = None;
 
         for line in buf.split(|&char| char == b'\n') {
             if let Some(index) = line.iter().position(|&char| char == b'=') {
                 let keyword = from_utf8(&line[..index]).unwrap();
                 let value = from_utf8(&line[index + 1..]).unwrap();
-                let mut current_peer_key = None;
                 match keyword {
                     "listen_port" => host.listen_port = value.parse().unwrap_or_default(),
                     "fwmark" => host.fwmark = Some(value.parse().unwrap_or_default()),
@@ -250,28 +250,28 @@ impl Host {
                     // "public_key" starts new peer definition
                     "public_key" => {
                         current_peer_key = Key::decode(value).ok();
-                        if let Some(key) = current_peer_key {
+                        if let Some(ref key) = current_peer_key {
                             let peer = Peer::new(key.clone());
-                            host.peers.insert(key, peer);
+                            host.peers.insert(key.clone(), peer);
                         }
                     }
                     "preshared_key" => {
-                        if let Some(key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(&key) {
+                        if let Some(ref key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(key) {
                                 peer.preshared_key = Key::decode(value).ok();
                             }
                         }
                     }
                     "protocol_version" => {
-                        if let Some(key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(&key) {
+                        if let Some(ref key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(key) {
                                 peer.protocol_version = value.parse().ok();
                             }
                         }
                     }
                     "endpoint" => {
-                        if let Some(key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(&key) {
+                        if let Some(ref key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(key) {
                                 if let Ok(addr) = SocketAddr::from_str(value) {
                                     peer.endpoint = Some(addr);
                                 }
@@ -279,22 +279,22 @@ impl Host {
                         }
                     }
                     "persistent_keepalive_interval" => {
-                        if let Some(key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(&key) {
+                        if let Some(ref key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(key) {
                                 peer.persistent_keepalive_interval = value.parse().ok();
                             }
                         }
                     }
                     "allowed_ip" => {
-                        if let Some(key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(&key) {
+                        if let Some(ref key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(key) {
                                 peer.allowed_ips.push(value.parse().unwrap());
                             }
                         }
                     }
                     "last_handshake_time_sec" => {
-                        if let Some(key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(&key) {
+                        if let Some(ref key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(key) {
                                 let handshake =
                                     peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
                                 *handshake +=
@@ -303,8 +303,8 @@ impl Host {
                         }
                     }
                     "last_handshake_time_nsec" => {
-                        if let Some(key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(&key) {
+                        if let Some(ref key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(key) {
                                 let handshake =
                                     peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
                                 *handshake +=
@@ -313,15 +313,15 @@ impl Host {
                         }
                     }
                     "rx_bytes" => {
-                        if let Some(key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(&key) {
+                        if let Some(ref key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(key) {
                                 peer.rx_bytes = value.parse().unwrap_or_default();
                             }
                         }
                     }
                     "tx_bytes" => {
-                        if let Some(key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(&key) {
+                        if let Some(ref key) = current_peer_key {
+                            if let Some(peer) = host.peers.get_mut(key) {
                                 peer.tx_bytes = value.parse().unwrap_or_default();
                             }
                         }
@@ -426,6 +426,13 @@ mod tests {
         let host = Host::parse_from(uapi_output);
         assert_eq!(host.listen_port, 7301);
         assert_eq!(host.peers.len(), 3);
+
+        let key = Key::decode("200102030405060708090a0b0c0d0e0ff0e1d2c3b4a5968778695a4b3c2d1e0f")
+            .unwrap();
+        let stats = proto::PeerStats::from(&host.peers[&key]);
+        assert_eq!(stats.download, 3683056);
+        assert_eq!(stats.upload, 52759980);
+        assert_eq!(stats.latest_handshake, 1654631933);
     }
 
     #[test]
