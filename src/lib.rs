@@ -19,7 +19,7 @@ pub struct Config {
         long,
         short = 'u',
         env = "DEFGUARD_USERSPACE",
-        help = "Use userspace wireguard implementation, useful on systems without native wireguard support"
+        help = "Use userspace WireGuard implementation e.g. wireguard-go"
     )]
     userspace: bool,
 
@@ -48,7 +48,7 @@ pub struct Config {
         long,
         short = 't',
         env = "DEFGUARD_TOKEN",
-        help = "Token received on Defguard after completing network wizard"
+        help = "Token received on DefGuard after completing network wizard"
     )]
     token: String,
 
@@ -63,6 +63,15 @@ pub struct Config {
 
     #[clap(long, help = "Write pid to this file")]
     pidfile: Option<String>,
+
+    #[clap(long, short = 's', help = "Log to syslog")]
+    use_syslog: bool,
+
+    #[clap(long, default_value = "LOG_USER", help = "Log to syslog")]
+    syslog_facility: String,
+
+    #[clap(long, default_value = "/var/run/log", help = "Log to syslog")]
+    syslog_socket: String,
 }
 
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");

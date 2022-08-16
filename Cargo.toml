@@ -16,6 +16,7 @@ clap = { version = "3.2", features = ["derive", "env"] }
 env_logger = "0.9"
 log = "0.4"
 prost = "0.10"
+syslog = "6.0"
 thiserror = "1.0"
 tonic = {version = "0.7", features = ["compression", "tls", "tls-roots"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
