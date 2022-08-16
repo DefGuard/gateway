@@ -4,9 +4,11 @@ use crate::{
     error::GatewayError,
     proto::{gateway_service_client::GatewayServiceClient, update, Configuration, Update},
     wireguard::{setup_interface, wgapi::WGApi},
-    Config,
+    Config, VERSION,
 };
-use std::{fs::File, io::Write, process, sync::Arc, time::Duration};
+use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
+use std::{fs::File, io::Write, process, str::FromStr, sync::Arc, time::Duration};
+use syslog::{BasicLogger, Facility, Formatter3164};
 use tokio::{sync::Mutex, time::sleep};
 use tonic::{
     codegen::InterceptedService,
@@ -110,15 +112,42 @@ async fn connect(
     }
 }
 
+/// Initialize logging to syslog.
+fn init_syslog(config: &Config, pid: u32) -> Result<(), GatewayError> {
+    let formatter = Formatter3164 {
+        facility: Facility::from_str(&config.syslog_facility).unwrap_or_default(),
+        hostname: None,
+        process: "defguard-gateway".into(),
+        pid,
+    };
+    let logger = syslog::unix_custom(formatter, &config.syslog_socket)?;
+    log::set_boxed_logger(Box::new(BasicLogger::new(logger)))?;
+    log::set_max_level(log::LevelFilter::Info);
+    Ok(())
+}
+
 /// Starts the gateway process.
 /// * Retrieves configuration and configuration updates from Defguard GRPC server
 /// * Manages the interface according to configuration and updates
 /// * Sends interface statistics to Defguard server periodically
-pub async fn start(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start(config: &Config) -> Result<(), GatewayError> {
+    let pid = process::id();
+
     if let Some(pidfile) = &config.pidfile {
         let mut file = File::create(pidfile)?;
-        file.write_all(process::id().to_string().as_bytes())?;
+        file.write_all(pid.to_string().as_bytes())?;
     }
+
+    if config.use_syslog {
+        init_syslog(config, pid)?;
+    } else {
+        init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
+    }
+
+    info!(
+        "Starting DefGuard gateway version {} with configuration: {:?}",
+        VERSION, config
+    );
 
     let channel = Channel::from_shared(config.grpc_url.to_owned())?;
     let channel = if let Some(ca) = &config.grpc_ca {
@@ -130,8 +159,7 @@ pub async fn start(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     };
     let channel = channel.connect_lazy();
 
-    let token = MetadataValue::try_from(&config.token)
-        .map_err(|_| Status::unknown("Token parsing error"))?;
+    let token = MetadataValue::try_from(&config.token)?;
     let jwt_auth_interceptor = move |mut req: Request<()>| -> Result<Request<()>, Status> {
         req.metadata_mut().insert("authorization", token.clone());
         Ok(req)
