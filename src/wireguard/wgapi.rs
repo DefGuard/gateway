@@ -14,6 +14,7 @@ pub struct WGApi {
 }
 
 impl WGApi {
+    #[must_use]
     pub fn new(ifname: String, userspace: bool) -> Self {
         Self { ifname, userspace }
     }

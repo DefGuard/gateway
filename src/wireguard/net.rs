@@ -14,6 +14,7 @@ pub struct IpAddrMask {
 }
 
 impl IpAddrMask {
+    #[must_use]
     pub fn new(ip: IpAddr, cidr: u8) -> Self {
         Self { ip, cidr }
     }

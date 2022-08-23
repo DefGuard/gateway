@@ -42,9 +42,11 @@ compile:
   before_script:
     - rustc --version
     - cargo --version
-    - apt-get update && apt-get -y install cmake g++
+    - apt-get update && apt-get -y install protobuf-compiler
   script:
     - mkdir -p build
+    - rustup component add rustfmt
+    - cargo fmt -- --check
     - cargo test --locked --no-fail-fast
     - cargo install --locked --path . --root build
 
