@@ -29,6 +29,7 @@ impl fmt::Display for KeyError {
 }
 
 impl Key {
+    #[must_use]
     pub fn new(buf: [u8; KEY_LENGTH]) -> Self {
         Self(buf)
     }

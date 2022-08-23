@@ -95,18 +95,24 @@ async fn connect(
             let stream = client.updates(()).await;
             (response, stream)
         };
-        if let (Ok(response), Ok(stream)) = (response, stream) {
-            configure(config, response.into_inner())?;
-            spawn_stats_thread(
-                Arc::clone(&client),
-                Duration::from_secs(config.stats_period),
-                config.ifname.clone(),
-                config.userspace,
-            );
-            info!("Connected to DefGuard GRPC endpoint: {}", config.grpc_url);
-            break Ok(stream.into_inner());
-        } else {
-            error!("Couldn't connect to server, retrying");
+        match (response, stream) {
+            (Ok(response), Ok(stream)) => {
+                configure(config, response.into_inner())?;
+                spawn_stats_thread(
+                    Arc::clone(&client),
+                    Duration::from_secs(config.stats_period),
+                    config.ifname.clone(),
+                    config.userspace,
+                );
+                info!("Connected to DefGuard GRPC endpoint: {}", config.grpc_url);
+                break Ok(stream.into_inner());
+            }
+            (Err(err), _) => {
+                error!("Couldn't retrieve gateway configuration, retrying: {}", err);
+            }
+            (_, Err(err)) => {
+                error!("Couldn't establish streaming connection, retrying: {}", err);
+            }
         }
         sleep(Duration::from_secs(1)).await;
     }
@@ -149,7 +155,7 @@ pub async fn start(config: &Config) -> Result<(), GatewayError> {
         VERSION, config
     );
 
-    let channel = Channel::from_shared(config.grpc_url.to_owned())?;
+    let channel = Channel::from_shared(config.grpc_url.clone())?;
     let channel = if let Some(ca) = &config.grpc_ca {
         let ca = std::fs::read_to_string(ca)?;
         let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(&ca));
