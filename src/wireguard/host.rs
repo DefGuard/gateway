@@ -18,7 +18,7 @@ pub struct Peer {
     preshared_key: Option<Key>,
     protocol_version: Option<u32>,
     endpoint: Option<SocketAddr>,
-    last_handshake: Option<SystemTime>,
+    pub last_handshake: Option<SystemTime>,
     tx_bytes: u64,
     rx_bytes: u64,
     persistent_keepalive_interval: Option<u16>,

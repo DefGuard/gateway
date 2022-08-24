@@ -7,7 +7,14 @@ use crate::{
     Config, VERSION,
 };
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
-use std::{fs::File, io::Write, process, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    fs::File,
+    io::Write,
+    process,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use syslog::{BasicLogger, Facility, Formatter3164};
 use tokio::{sync::Mutex, time::sleep};
 use tonic::{
@@ -39,7 +46,13 @@ fn spawn_stats_thread(
         loop {
             match api.read_host() {
                 Ok(host) => {
-                    for peer in host.peers.values() {
+                    for peer in host
+                        .peers
+                        .values()
+                        .filter(|p| p.last_handshake.map_or(
+                            false,
+                            |lhs| lhs != SystemTime::UNIX_EPOCH)
+                        ) {
                         yield peer.into();
                     }
                 },
