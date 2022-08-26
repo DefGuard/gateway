@@ -5,8 +5,6 @@ pub mod net;
 pub mod netlink;
 pub mod wgapi;
 
-pub(crate) const SOCKET_BUFFER_LENGTH: usize = 4096;
-
 use crate::{error::GatewayError, proto::Configuration, utils::run_command};
 #[cfg(feature = "boringtun")]
 use boringtun::{
