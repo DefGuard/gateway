@@ -1,6 +1,6 @@
-FROM rust:1.62-slim as builder
+FROM rust:slim as builder
 
-RUN apt-get update && apt-get -y install cmake g++
+RUN apt-get update && apt-get -y install protobuf-compiler
 WORKDIR /app
 COPY . .
 RUN cargo build --release

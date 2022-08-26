@@ -1,10 +1,9 @@
-use super::{Host, Peer, SOCKET_BUFFER_LENGTH};
+use super::{Host, Peer};
 #[cfg(target_os = "linux")]
 use crate::wireguard::netlink::{delete_peer, get_host, set_host, set_peer};
 use std::{
-    io::{self, Read, Write},
+    io::{self, BufRead, BufReader, Read, Write},
     os::unix::net::UnixStream,
-    str::from_utf8,
     time::Duration,
 };
 
@@ -27,12 +26,18 @@ impl WGApi {
     }
 
     // FIXME: currenty other errors are ignored and result in 0 being returned.
-    fn parse_errno(buf: &[u8]) -> u32 {
-        for line in buf.split(|&char| char == b'\n') {
-            if let Some(index) = line.iter().position(|&char| char == b'=') {
-                let key = from_utf8(&line[..index]).unwrap();
-                let value = from_utf8(&line[index + 1..]).unwrap();
-                if key == "errno" {
+    fn parse_errno(buf: impl Read) -> u32 {
+        let reader = BufReader::new(buf);
+        for line_result in reader.lines() {
+            let line = match line_result {
+                Ok(line) => line,
+                Err(err) => {
+                    error!("Error parsing buffer line: {err}");
+                    continue;
+                }
+            };
+            if let Some((keyword, value)) = line.split_once('=') {
+                if keyword == "errno" {
                     return value.parse().unwrap_or_default();
                 }
             }
@@ -44,10 +49,7 @@ impl WGApi {
         if self.userspace {
             let mut socket = self.socket()?;
             socket.write_all(b"get=1\n\n")?;
-
-            let mut buf = [0u8; SOCKET_BUFFER_LENGTH];
-            let count = socket.read(&mut buf)?;
-            Ok(Host::parse_from(&buf[..count]))
+            Ok(Host::parse_from(socket))
         } else {
             #[cfg(target_os = "linux")]
             {
@@ -68,9 +70,7 @@ impl WGApi {
             socket.write_all(host.as_uapi().as_bytes())?;
             socket.write_all(b"\n")?;
 
-            let mut buf = [0u8; SOCKET_BUFFER_LENGTH];
-            let count = socket.read(&mut buf)?;
-            if Self::parse_errno(&buf[..count]) != 0 {
+            if Self::parse_errno(socket) != 0 {
                 Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "write configuration error",
@@ -98,9 +98,7 @@ impl WGApi {
             socket.write_all(peer.as_uapi_update().as_bytes())?;
             socket.write_all(b"\n")?;
 
-            let mut buf = [0u8; SOCKET_BUFFER_LENGTH];
-            let count = socket.read(&mut buf)?;
-            if Self::parse_errno(&buf[..count]) != 0 {
+            if Self::parse_errno(socket) != 0 {
                 Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "write configuration error",
@@ -128,9 +126,7 @@ impl WGApi {
             socket.write_all(peer.as_uapi_remove().as_bytes())?;
             socket.write_all(b"\n")?;
 
-            let mut buf = [0u8; SOCKET_BUFFER_LENGTH];
-            let count = socket.read(&mut buf)?;
-            if Self::parse_errno(&buf[..count]) != 0 {
+            if Self::parse_errno(socket) != 0 {
                 Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "write configuration error",
@@ -149,5 +145,20 @@ impl WGApi {
                 "kernel support is not available on this platform",
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_parse_errno() {
+        let buf = Cursor::new(b"errno=0\n");
+        assert_eq!(WGApi::parse_errno(buf), 0);
+
+        let buf = Cursor::new(b"errno=12345\n");
+        assert_eq!(WGApi::parse_errno(buf), 12345);
     }
 }

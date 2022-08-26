@@ -7,8 +7,9 @@ use netlink_packet_wireguard::{
 };
 use std::{
     collections::HashMap,
+    io::{BufRead, BufReader, Read},
     net::SocketAddr,
-    str::{from_utf8, FromStr},
+    str::FromStr,
     time::{Duration, SystemTime},
 };
 
@@ -235,14 +236,20 @@ impl Host {
     }
 
     // TODO: handle errors
-    pub fn parse_from(buf: &[u8]) -> Self {
+    pub fn parse_from(buf: impl Read) -> Self {
+        let reader = BufReader::new(buf);
         let mut host = Self::default();
         let mut current_peer_key = None;
 
-        for line in buf.split(|&char| char == b'\n') {
-            if let Some(index) = line.iter().position(|&char| char == b'=') {
-                let keyword = from_utf8(&line[..index]).unwrap();
-                let value = from_utf8(&line[index + 1..]).unwrap();
+        for line_result in reader.lines() {
+            let line = match line_result {
+                Ok(line) => line,
+                Err(err) => {
+                    error!("Error parsing buffer line: {err}");
+                    continue;
+                }
+            };
+            if let Some((keyword, value)) = line.split_once('=') {
                 match keyword {
                     "listen_port" => host.listen_port = value.parse().unwrap_or_default(),
                     "fwmark" => host.fwmark = Some(value.parse().unwrap_or_default()),
@@ -329,7 +336,10 @@ impl Host {
                     // "errno" ends config
                     "errno" => {
                         let _errno: u32 = value.parse().unwrap();
-                        // if errno != 0
+                        // TODO: if errno != 0
+
+                        // Break here, or BufReader will wait for EOF.
+                        break;
                     }
                     _ => eprintln!("Unknown keyword {}", keyword),
                 }
@@ -387,6 +397,7 @@ impl Host {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn test_parse_config() {
@@ -423,7 +434,8 @@ mod tests {
             persistent_keepalive_interval=0\n\
             allowed_ip=10.6.0.23/32\n\
             errno=0\n";
-        let host = Host::parse_from(uapi_output);
+        let buf = Cursor::new(uapi_output);
+        let host = Host::parse_from(buf);
         assert_eq!(host.listen_port, 7301);
         assert_eq!(host.peers.len(), 3);
 

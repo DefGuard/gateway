@@ -1,4 +1,4 @@
-use super::{Host, IpAddrMask, Peer, SOCKET_BUFFER_LENGTH};
+use super::{Host, IpAddrMask, Peer};
 use netlink_packet_core::{
     NetlinkDeserializable, NetlinkMessage, NetlinkPayload, NetlinkSerializable, NLM_F_ACK,
     NLM_F_CREATE, NLM_F_DUMP, NLM_F_EXCL, NLM_F_REPLACE, NLM_F_REQUEST,
@@ -19,6 +19,8 @@ use std::{
     io,
     net::{IpAddr, Ipv4Addr},
 };
+
+const SOCKET_BUFFER_LENGTH: usize = 4096;
 
 macro_rules! get_nla_value {
     ($nlas:expr, $e:ident, $v:ident) => {
