@@ -12,6 +12,9 @@ pub enum GatewayError {
     #[error("BorningTun error")]
     BorningTun(boringtun::device::Error),
 
+    #[error("IP address/mask error")]
+    IpAddrMask(#[from] super::wireguard::net::IpAddrParseError),
+
     #[error("Logger error")]
     Logger(#[from] log::SetLoggerError),
 

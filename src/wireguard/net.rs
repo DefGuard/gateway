@@ -3,7 +3,7 @@ use netlink_packet_wireguard::{
     constants::{AF_INET, AF_INET6},
     nlas::{WgAllowedIp, WgAllowedIpAttrs},
 };
-use std::{fmt, net::IpAddr, str::FromStr};
+use std::{error, fmt, net::IpAddr, str::FromStr};
 
 #[derive(Debug, PartialEq)]
 pub struct IpAddrMask {
@@ -39,17 +39,28 @@ impl fmt::Display for IpAddrMask {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct IpAddrParseError;
+
+impl error::Error for IpAddrParseError {}
+
+impl fmt::Display for IpAddrParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "IP address/mask parse error")
+    }
+}
+
 impl FromStr for IpAddrMask {
-    type Err = ();
+    type Err = IpAddrParseError;
 
     fn from_str(ip_str: &str) -> Result<Self, Self::Err> {
         if let Some((left, right)) = ip_str.split_once('/') {
             Ok(IpAddrMask {
-                ip: left.parse().map_err(|_| ())?,
-                cidr: right.parse().map_err(|_| ())?,
+                ip: left.parse().map_err(|_| IpAddrParseError)?,
+                cidr: right.parse().map_err(|_| IpAddrParseError)?,
             })
         } else {
-            let ip: IpAddr = ip_str.parse().map_err(|_| ())?;
+            let ip: IpAddr = ip_str.parse().map_err(|_| IpAddrParseError)?;
             Ok(IpAddrMask {
                 ip,
                 cidr: if ip.is_ipv4() { 32 } else { 128 },
@@ -65,31 +76,46 @@ mod tests {
 
     #[test]
     fn parse_ip_addr() {
-        let ip: IpAddrMask = "192.168.0.1/24".parse().unwrap();
         assert_eq!(
-            ip,
-            IpAddrMask::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)), 24)
+            "192.168.0.1/24".parse::<IpAddrMask>(),
+            Ok(IpAddrMask::new(
+                IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
+                24
+            ))
         );
 
-        let ip: IpAddrMask = "10.11.12.13".parse().unwrap();
         assert_eq!(
-            ip,
-            IpAddrMask::new(IpAddr::V4(Ipv4Addr::new(10, 11, 12, 13)), 32)
+            "10.11.12.13".parse::<IpAddrMask>(),
+            Ok(IpAddrMask::new(
+                IpAddr::V4(Ipv4Addr::new(10, 11, 12, 13)),
+                32
+            ))
         );
 
-        let ip: IpAddrMask = "2001:0db8::1428:57ab/96".parse().unwrap();
         assert_eq!(
-            ip,
-            IpAddrMask::new(
+            "2001:0db8::1428:57ab/96".parse::<IpAddrMask>(),
+            Ok(IpAddrMask::new(
                 IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0x1428, 0x57ab)),
                 96
-            )
+            ))
         );
 
-        let ip: IpAddrMask = "::1".parse().unwrap();
         assert_eq!(
-            ip,
-            IpAddrMask::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 128)
+            "::1".parse::<IpAddrMask>(),
+            Ok(IpAddrMask::new(
+                IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+                128
+            ))
+        );
+
+        assert_eq!(
+            "172.168.0.256/24".parse::<IpAddrMask>(),
+            Err(IpAddrParseError)
+        );
+
+        assert_eq!(
+            "172.168.0.0/256".parse::<IpAddrMask>(),
+            Err(IpAddrParseError)
         );
     }
 }

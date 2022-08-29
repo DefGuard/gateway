@@ -7,7 +7,7 @@ use netlink_packet_wireguard::{
 };
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, Read},
+    io::{self, BufRead, BufReader, Read},
     net::SocketAddr,
     str::FromStr,
     time::{Duration, SystemTime},
@@ -27,6 +27,7 @@ pub struct Peer {
 }
 
 impl Peer {
+    #[must_use]
     pub fn new(public_key: Key) -> Self {
         Self {
             public_key,
@@ -206,6 +207,7 @@ pub struct Host {
 }
 
 impl Host {
+    #[must_use]
     pub fn new(listen_port: u16, private_key: Key) -> Self {
         Self {
             listen_port,
@@ -235,11 +237,11 @@ impl Host {
         output
     }
 
-    // TODO: handle errors
-    pub fn parse_from(buf: impl Read) -> Self {
+    // TODO: use custom Error
+    pub fn parse_uapi(buf: impl Read) -> io::Result<Self> {
         let reader = BufReader::new(buf);
         let mut host = Self::default();
-        let mut current_peer_key = None;
+        let mut peer_ref = None;
 
         for line_result in reader.lines() {
             let line = match line_result {
@@ -252,101 +254,85 @@ impl Host {
             if let Some((keyword, value)) = line.split_once('=') {
                 match keyword {
                     "listen_port" => host.listen_port = value.parse().unwrap_or_default(),
-                    "fwmark" => host.fwmark = Some(value.parse().unwrap_or_default()),
-                    "private_key" => host.private_key = Some(Key::decode(value).unwrap()),
+                    "fwmark" => host.fwmark = value.parse().ok(),
+                    "private_key" => host.private_key = Key::decode(value).ok(),
                     // "public_key" starts new peer definition
                     "public_key" => {
-                        current_peer_key = Key::decode(value).ok();
-                        if let Some(ref key) = current_peer_key {
+                        if let Ok(key) = Key::decode(value) {
                             let peer = Peer::new(key.clone());
                             host.peers.insert(key.clone(), peer);
+                            peer_ref = host.peers.get_mut(&key);
+                        } else {
+                            peer_ref = None;
                         }
                     }
                     "preshared_key" => {
-                        if let Some(ref key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(key) {
-                                peer.preshared_key = Key::decode(value).ok();
-                            }
+                        if let Some(ref mut peer) = peer_ref {
+                            peer.preshared_key = Key::decode(value).ok();
                         }
                     }
                     "protocol_version" => {
-                        if let Some(ref key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(key) {
-                                peer.protocol_version = value.parse().ok();
-                            }
+                        if let Some(ref mut peer) = peer_ref {
+                            peer.protocol_version = value.parse().ok();
                         }
                     }
                     "endpoint" => {
-                        if let Some(ref key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(key) {
-                                if let Ok(addr) = SocketAddr::from_str(value) {
-                                    peer.endpoint = Some(addr);
-                                }
-                            }
+                        if let Some(ref mut peer) = peer_ref {
+                            peer.endpoint = SocketAddr::from_str(value).ok();
                         }
                     }
                     "persistent_keepalive_interval" => {
-                        if let Some(ref key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(key) {
-                                peer.persistent_keepalive_interval = value.parse().ok();
-                            }
+                        if let Some(ref mut peer) = peer_ref {
+                            peer.persistent_keepalive_interval = value.parse().ok();
                         }
                     }
                     "allowed_ip" => {
-                        if let Some(ref key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(key) {
-                                peer.allowed_ips.push(value.parse().unwrap());
+                        if let Some(ref mut peer) = peer_ref {
+                            if let Ok(addr) = value.parse() {
+                                peer.allowed_ips.push(addr);
                             }
                         }
                     }
                     "last_handshake_time_sec" => {
-                        if let Some(ref key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(key) {
-                                let handshake =
-                                    peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
-                                *handshake +=
-                                    Duration::from_secs(value.parse().unwrap_or_default());
-                            }
+                        if let Some(ref mut peer) = peer_ref {
+                            let handshake =
+                                peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
+                            *handshake += Duration::from_secs(value.parse().unwrap_or_default());
                         }
                     }
                     "last_handshake_time_nsec" => {
-                        if let Some(ref key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(key) {
-                                let handshake =
-                                    peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
-                                *handshake +=
-                                    Duration::from_nanos(value.parse().unwrap_or_default());
-                            }
+                        if let Some(ref mut peer) = peer_ref {
+                            let handshake =
+                                peer.last_handshake.get_or_insert(SystemTime::UNIX_EPOCH);
+                            *handshake += Duration::from_nanos(value.parse().unwrap_or_default());
                         }
                     }
                     "rx_bytes" => {
-                        if let Some(ref key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(key) {
-                                peer.rx_bytes = value.parse().unwrap_or_default();
-                            }
+                        if let Some(ref mut peer) = peer_ref {
+                            peer.rx_bytes = value.parse().unwrap_or_default();
                         }
                     }
                     "tx_bytes" => {
-                        if let Some(ref key) = current_peer_key {
-                            if let Some(peer) = host.peers.get_mut(key) {
-                                peer.tx_bytes = value.parse().unwrap_or_default();
-                            }
+                        if let Some(ref mut peer) = peer_ref {
+                            peer.tx_bytes = value.parse().unwrap_or_default();
                         }
                     }
                     // "errno" ends config
                     "errno" => {
-                        let _errno: u32 = value.parse().unwrap();
-                        // TODO: if errno != 0
-
-                        // Break here, or BufReader will wait for EOF.
-                        break;
+                        if let Ok(errno) = value.parse::<u32>() {
+                            if errno == 0 {
+                                // Break here, or BufReader will wait for EOF.
+                                break;
+                            }
+                        }
+                        return Err(io::Error::new(io::ErrorKind::Other, "error reading UAPI"));
                     }
-                    _ => eprintln!("Unknown keyword {}", keyword),
+                    _ => error!("Unknown UAPI keyword {}", keyword),
                 }
             }
         }
 
-        host
+        Ok(host)
     }
 
     #[cfg(target_os = "linux")]
@@ -435,7 +421,7 @@ mod tests {
             allowed_ip=10.6.0.23/32\n\
             errno=0\n";
         let buf = Cursor::new(uapi_output);
-        let host = Host::parse_from(buf);
+        let host = Host::parse_uapi(buf).unwrap();
         assert_eq!(host.listen_port, 7301);
         assert_eq!(host.peers.len(), 3);
 

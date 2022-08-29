@@ -61,16 +61,17 @@ fn map_output(output: &Output) -> Result<String, GatewayError> {
 ///
 /// * `interface` - Interface name
 /// * `addr` - Address to assign to interface
-pub fn assign_addr(ifname: &str, addr: &str) -> Result<(), GatewayError> {
+pub fn assign_addr(ifname: &str, addr: &IpAddrMask) -> Result<(), GatewayError> {
     if cfg!(target_os = "linux") {
         #[cfg(target_os = "linux")]
-        netlink::address_interface(ifname, &IpAddrMask::from_str(addr).unwrap())?;
+        netlink::address_interface(ifname, addr)?;
     } else {
         let output = if cfg!(target_os = "macos") {
             // On macOS, interface is point-to-point and requires a pair of addresses
-            run_command(&["ifconfig", ifname, addr, addr])
+            let address_string = addr.ip.to_string();
+            run_command(&["ifconfig", ifname, &address_string, &address_string])
         } else {
-            run_command(&["ifconfig", ifname, addr])
+            run_command(&["ifconfig", ifname, &addr.to_string()])
         }?;
         let _ = map_output(&output);
     }
@@ -91,7 +92,8 @@ pub fn setup_interface(
         netlink::create_interface(ifname)?;
     }
 
-    assign_addr(ifname, &config.address)?;
+    let address = IpAddrMask::from_str(&config.address)?;
+    assign_addr(ifname, &address)?;
     let key = config.prvkey.as_str().try_into().unwrap();
     let mut host = Host::new(config.port as u16, key);
     for peercfg in &config.peers {
