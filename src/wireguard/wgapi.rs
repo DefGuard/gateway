@@ -49,7 +49,7 @@ impl WGApi {
         if self.userspace {
             let mut socket = self.socket()?;
             socket.write_all(b"get=1\n\n")?;
-            Ok(Host::parse_from(socket))
+            Host::parse_uapi(socket)
         } else {
             #[cfg(target_os = "linux")]
             {
