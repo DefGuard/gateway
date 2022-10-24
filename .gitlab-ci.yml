@@ -1,0 +1,69 @@
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  GIT_SUBMODULE_STRATEGY: recursive
+  REGISTRY: registry.teonite.net
+  IMAGE_TAG: ${CI_PIPELINE_ID}
+
+default:
+  tags:
+    - kubernetes
+
+services:
+  - name: docker:stable-dind
+    command: ["--mtu=1440"]
+
+stages:
+  - compile
+  - build
+
+.build-image:
+  stage: build
+  image: docker:stable
+  before_script:
+    - docker login -u "${REGISTRY_USER}" -p "${REGISTRY_SECRET}" ${REGISTRY}
+  after_script:
+    - docker logout ${REGISTRY}
+
+compile:
+  image: rust:latest
+  stage: compile
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - target/
+  artifacts:
+    expire_in: 1 hour
+    name: "$CI_COMMIT_REF_NAME"
+    paths:
+      - build
+  before_script:
+    - rustc --version
+    - cargo --version
+    - apt-get update && apt-get -y install protobuf-compiler
+  script:
+    - mkdir -p build
+    - rustup component add rustfmt
+    - cargo fmt -- --check
+    - cargo test --locked --no-fail-fast
+    - cargo install --locked --path . --root build
+
+build-latest:
+  extends: .build-image
+  script:
+    - docker build --pull -f Dockerfile.ci -t ${REGISTRY}/defguard/wireguard:${IMAGE_TAG} .
+    - docker tag ${REGISTRY}/defguard/wireguard:${IMAGE_TAG} ${REGISTRY}/defguard/wireguard:latest
+    - docker push ${REGISTRY}/defguard/wireguard:${IMAGE_TAG}
+    - docker push ${REGISTRY}/defguard/wireguard:latest
+  only:
+    - master
+
+build:
+  extends: .build-image
+  script:
+    - docker build --pull --network host -f Dockerfile.ci -t ${REGISTRY}/defguard/wireguard:${IMAGE_TAG} .
+    - docker push ${REGISTRY}/defguard/wireguard:${IMAGE_TAG}
+  except:
+    - master
