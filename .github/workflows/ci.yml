@@ -40,4 +40,4 @@ jobs:
           rustup component add rustfmt
           cargo fmt -- --check
       - name: Run tests
-        run: cargo test --locked --no-fail-fast --features mock-license-key
+        run: cargo test --locked --no-fail-fast
