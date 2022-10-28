@@ -1,0 +1,42 @@
+name: Continuous integration
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: rust:latest
+
+    steps:
+      - name: Debug
+        run: echo ${{ github.ref_name }}
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        run: apt-get update && apt-get -y install protobuf-compiler
+      - name: Check format
+        run: |
+          rustup component add rustfmt
+          cargo fmt -- --check
+      - name: Run tests
+        run: cargo test --locked --no-fail-fast --features mock-license-key
