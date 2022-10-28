@@ -51,6 +51,7 @@ jobs:
 
   publish-binary:
     runs-on: ubuntu-latest
+    container: rust:latest
 
     steps:
       - name: Checkout
