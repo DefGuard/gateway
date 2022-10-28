@@ -48,3 +48,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - name: Store binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: defguard-gateway
+          path: /app/target/release/defguard-gateway

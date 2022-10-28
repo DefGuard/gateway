@@ -10,5 +10,5 @@ RUN apt-get update && apt-get -y install \
     iproute2 wireguard-tools sudo && \
     rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=builder /app/target/release/wireguard-gateway /usr/local/bin
-ENTRYPOINT ["/usr/local/bin/wireguard-gateway"]
+COPY --from=builder /app/target/release/defguard-gateway /usr/local/bin
+ENTRYPOINT ["/usr/local/bin/defguard-gateway"]
