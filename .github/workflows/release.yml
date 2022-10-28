@@ -67,6 +67,8 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install protoc
+        run: apt-get update && apt-get -y install protobuf-compiler
       - name: Build binary
         uses: actions-rs/cargo@v1
         with:
