@@ -1,7 +1,7 @@
-use std::str::FromStr;
 #[cfg(target_os = "linux")]
-use wireguard_gateway::wireguard::netlink::{address_interface, create_interface};
-use wireguard_gateway::wireguard::{wgapi::WGApi, Host, IpAddrMask, Key, Peer};
+use defguard_gateway::wireguard::netlink::{address_interface, create_interface};
+use defguard_gateway::wireguard::{wgapi::WGApi, Host, IpAddrMask, Key, Peer};
+use std::str::FromStr;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

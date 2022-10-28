@@ -1,7 +1,0 @@
-FROM debian:bullseye-slim
-
-RUN apt-get update && apt-get -y install \
-    iproute2 wireguard-tools sudo && \
-    rm -rf /var/lib/apt/lists/*
-COPY build/bin/wireguard-gateway .
-CMD ["./wireguard-gateway"]
