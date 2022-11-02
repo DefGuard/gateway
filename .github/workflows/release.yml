@@ -3,9 +3,6 @@ on:
   push:
     tags:
       - v*.*.*
-  pull_request:
-    branches:
-      - main
 
 jobs:
   publish-docker:
@@ -50,32 +47,42 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   publish-binary:
-    runs-on: ubuntu-latest
-    container: rust:latest
+    name: Release ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: defguard-gateway-linux-x86_64
+          - os: macos-latest
+            asset_name: defguard-gateway-macos-x86_64
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
           submodules: recursive
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: Install protoc
-        run: apt-get update && apt-get -y install protobuf-compiler
+      - name: Install protoc - linux
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get -y install protobuf-compiler
+      - name: Install protoc - macos
+        if: matrix.os == 'macos-latest'
+        run: brew install protobuf
       - name: Build binary
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release
-      - name: Store binary
-        uses: actions/upload-artifact@v3
+      - name: Tar
+        uses: a7ul/tar-action@v1.1.0
+        id: compress
         with:
-          name: defguard-gateway
-          path: target/release/defguard-gateway
+          command: c
+          cwd: target/release
+          files: |
+            defguard-gateway
+          outPath: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
