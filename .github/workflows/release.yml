@@ -91,7 +91,6 @@ jobs:
         with:
           # files: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
           files: ${{ matrix.asset_name }}-v0.0.1.tar.gz
-          draft: true
 
       # - name: Compile and release
       #   uses: rust-build/rust-build.action@v1.4.0
