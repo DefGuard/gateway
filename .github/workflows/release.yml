@@ -82,9 +82,9 @@ jobs:
           cwd: target/release
           files: |
             defguard-gateway
-          outPath: defguard-gateway-{{ git.ref_name }}.tar.gz
+          outPath: defguard-gateway-${{ git.ref_name }}.tar.gz
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: defguard-gateway-{{ git.ref_name }}.tar.gz
+          files: defguard-gateway-${{ git.ref_name }}.tar.gz
           draft: true
