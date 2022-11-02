@@ -3,9 +3,6 @@ on:
   push:
     tags:
       - v*.*.*
-  pull_request:
-    branches:
-      - main
 
 jobs:
   publish-docker:
@@ -57,9 +54,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            asset_name: defguard-gateway-linux-amd64
+            asset_name: defguard-gateway-linux-x86_64
           - os: macos-latest
-            asset_name: defguard-gateway-macos-amd64
+            asset_name: defguard-gateway-macos-x86_64
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -84,38 +81,8 @@ jobs:
           cwd: target/release
           files: |
             defguard-gateway
-          # outPath: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
-          outPath: ${{ matrix.asset_name }}-v0.0.1.tar.gz
+          outPath: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          # files: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
-          files: ${{ matrix.asset_name }}-v0.0.1.tar.gz
-
-      # - name: Compile and release
-      #   uses: rust-build/rust-build.action@v1.4.0
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     RUSTTARGET: ${{ matrix.target }}
-      #     ARCHIVE_TYPES: ${{ matrix.archive }}
-
-      # - name: Build binary
-      #   uses: actions-rs/cargo@v1
-      #   with:
-      #     command: build
-      #     args: --release
-      # - name: Tar
-      #   uses: a7ul/tar-action@v1.1.0
-      #   id: compress
-      #   with:
-      #     command: c
-      #     cwd: target/release
-      #     files: |
-      #       defguard-gateway
-      #     outPath: defguard-gateway-${{ git.ref_name }}.tar.gz
-      # - name: Release
-      #   uses: softprops/action-gh-release@v1
-      #   with:
-      #     files: defguard-gateway-${{ git.ref_name }}.tar.gz
-      #     draft: true
+          files: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
