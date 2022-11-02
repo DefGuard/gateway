@@ -52,7 +52,7 @@ jobs:
   publish-binary:
     name: release ${{ matrix.target }}
     runs-on: ubuntu-latest
-    container: rust:latest
+    # container: rust:latest
     strategy:
       fail-fast: false
       matrix:
@@ -69,6 +69,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install protoc
+        options: --user root
         run: apt-get update && apt-get -y install protobuf-compiler
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.0
