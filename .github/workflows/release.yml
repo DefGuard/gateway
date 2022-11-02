@@ -57,9 +57,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            asset_name: defguard-gateway-linux-amd64-${{ git.ref_name }}
+            asset_name: defguard-gateway-linux-amd64
           - os: macos-latest
-            asset_name: defguard-gateway-macos-amd64-${{ git.ref_name }}
+            asset_name: defguard-gateway-macos-amd64
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -80,7 +80,7 @@ jobs:
           cwd: target/release
           files: |
             defguard-gateway
-          outPath: ${{ matrix.asset_name }}.tar.gz
+          outPath: ${{ matrix.asset_name }}-${{ git.ref_name }}.tar.gz
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
