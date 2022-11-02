@@ -74,11 +74,6 @@ jobs:
         with:
           command: build
           args: --release
-      - name: Store binary
-        uses: actions/upload-artifact@v3
-        with:
-          name: defguard-gateway
-          path: target/release/defguard-gateway
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
