@@ -69,8 +69,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install protoc
-        options: --user root
-        run: apt-get update && apt-get -y install protobuf-compiler
+        run: sudo apt-get update && sudo apt-get -y install protobuf-compiler
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.0
         env:
