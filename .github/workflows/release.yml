@@ -79,3 +79,8 @@ jobs:
         with:
           name: defguard-gateway
           path: target/release/defguard-gateway
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: target/release/defguard-gateway
+          draft: true
