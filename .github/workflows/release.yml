@@ -80,7 +80,7 @@ jobs:
           cwd: target/release
           files: |
             defguard-gateway
-          outPath: ${{ matrix.asset_name }}-${{ git.ref_name }}.tar.gz
+          outPath: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
