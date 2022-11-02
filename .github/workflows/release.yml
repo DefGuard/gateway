@@ -74,8 +74,17 @@ jobs:
         with:
           command: build
           args: --release
+      - name: Tar
+        uses: a7ul/tar-action@v1.1.0
+        id: compress
+        with:
+          command: c
+          cwd: target/release
+          files: |
+            defguard-gateway
+          outPath: defguard-gateway-{{ git.ref_name }}.tar.gz
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/defguard-gateway
+          files: defguard-gateway-{{ git.ref_name }}.tar.gz
           draft: true
