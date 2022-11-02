@@ -50,19 +50,16 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   publish-binary:
-    name: release ${{ matrix.target }}
-    runs-on: ubuntu-latest
-    # container: rust:latest
+    name: Release ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-pc-windows-gnu
-            archive: zip
-          - target: x86_64-unknown-linux-musl
-            archive: tar.gz
-          - target: x86_64-apple-darwin
-            archive: zip
+          - os: ubuntu-latest
+            asset_name: defguard-gateway-linux-amd64-${{ git.ref_name }}
+          - os: macos-latest
+            asset_name: defguard-gateway-macos-amd64-${{ git.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -70,13 +67,33 @@ jobs:
           submodules: recursive
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get -y install protobuf-compiler
-      - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build binary
+        uses: actions-rs/cargo@v1
         with:
-          RUSTTARGET: ${{ matrix.target }}
-          ARCHIVE_TYPES: ${{ matrix.archive }}
+          command: build
+          args: --release
+      - name: Tar
+        uses: a7ul/tar-action@v1.1.0
+        id: compress
+        with:
+          command: c
+          cwd: target/release
+          files: |
+            defguard-gateway
+          outPath: ${{ matrix.asset_name }}.tar.gz
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ matrix.asset_name }}.tar.gz
+          draft: true
+
+      # - name: Compile and release
+      #   uses: rust-build/rust-build.action@v1.4.0
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     RUSTTARGET: ${{ matrix.target }}
+      #     ARCHIVE_TYPES: ${{ matrix.archive }}
 
       # - name: Build binary
       #   uses: actions-rs/cargo@v1
