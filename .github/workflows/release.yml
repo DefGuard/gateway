@@ -46,7 +46,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  publish-binary:
+  publish-binaries:
     name: Release ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -75,7 +75,6 @@ jobs:
           args: --release
       - name: Tar
         uses: a7ul/tar-action@v1.1.0
-        id: compress
         with:
           command: c
           cwd: target/release
@@ -86,3 +85,33 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
+
+  publish-binary-freebsd:
+    name: Release FreeBSD
+    runs-on: macos-12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Build binary
+        uses: vmactions/freebsd-vm@v0
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y protobuf rust
+          run: |
+            cargo build --release
+            mv target/release/defguard-gateway ./
+            rm -rf target/
+      - name: Tar
+        uses: a7ul/tar-action@v1.1.0
+        with:
+          command: c
+          files: |
+            defguard-gateway
+          outPath: defguard-gateway-freebsd-x86_64-${{ github.ref_name }}.tar.gz
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: defguard-gateway-freebsd-x86_64-${{ github.ref_name }}.tar.gz
