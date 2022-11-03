@@ -15,8 +15,14 @@ extern crate log;
 use clap::Parser;
 
 #[derive(Debug, Parser)]
-#[clap(name = "vpn-gateway", about = "DefGuard VPN gateway service")]
+#[clap(about = "DefGuard VPN gateway service")]
 pub struct Config {
+    #[clap(
+        env = "DEFGUARD_TOKEN",
+        help = "Token received on DefGuard after completing network wizard"
+    )]
+    token: String,
+
     #[clap(
         long,
         short = 'u',
@@ -26,8 +32,6 @@ pub struct Config {
     userspace: bool,
 
     #[clap(
-        long,
-        short = 'g',
         env = "DEFGUARD_GRPC_URL",
         default_value = "http://localhost:50055",
         help = "Defguard server gRPC endpoint URL"
@@ -45,14 +49,6 @@ pub struct Config {
         help = "Defines how often (seconds) should interface statistics be sent to DefGuard server"
     )]
     stats_period: u64,
-
-    #[clap(
-        long,
-        short = 't',
-        env = "DEFGUARD_TOKEN",
-        help = "Token received on DefGuard after completing network wizard"
-    )]
-    token: String,
 
     #[clap(
         long,
