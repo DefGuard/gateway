@@ -94,10 +94,10 @@ pub fn setup_interface(
 
     let address = IpAddrMask::from_str(&config.address)?;
     assign_addr(ifname, &address)?;
-    let key = config.prvkey.as_str().try_into().unwrap();
+    let key = config.prvkey.as_str().try_into()?;
     let mut host = Host::new(config.port as u16, key);
     for peercfg in &config.peers {
-        let key: Key = peercfg.pubkey.as_str().try_into().unwrap();
+        let key: Key = peercfg.pubkey.as_str().try_into()?;
         let mut peer = Peer::new(key.clone());
         let allowed_ips = peercfg
             .allowed_ips

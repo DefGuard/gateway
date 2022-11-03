@@ -46,6 +46,7 @@ impl Peer {
         self.allowed_ips = allowed_ips;
     }
 
+    #[must_use]
     pub fn as_uapi_update(&self) -> String {
         let mut output = format!("public_key={}\n", self.public_key.to_lower_hex());
         if let Some(key) = &self.preshared_key {
@@ -73,6 +74,7 @@ impl Peer {
         output
     }
 
+    #[must_use]
     pub fn as_uapi_remove(&self) -> String {
         format!(
             "public_key={}\nremove=true\n",
@@ -186,7 +188,7 @@ impl From<&Peer> for proto::PeerStats {
             endpoint: peer
                 .endpoint
                 .map_or(String::new(), |endpoint| endpoint.to_string()),
-            allowed_ips: peer.allowed_ips.iter().map(|ip| ip.to_string()).collect(),
+            allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
             latest_handshake: peer.last_handshake.map_or(0, |ts| {
                 ts.duration_since(SystemTime::UNIX_EPOCH)
                     .map_or(0, |duration| duration.as_secs() as i64)
