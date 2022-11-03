@@ -46,7 +46,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  publish-binary:
+  publish-binaries:
     name: Release ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -100,12 +100,14 @@ jobs:
           usesh: true
           prepare: |
             pkg install -y protobuf rust
-          run: cargo build --release
+          run: |
+            cargo build --release
+            mv target/release/defguard-gateway ./
+            rm -rf target/
       - name: Tar
         uses: a7ul/tar-action@v1.1.0
         with:
           command: c
-          cwd: target/release
           files: |
             defguard-gateway
           outPath: defguard-gateway-freebsd-x86_64-${{ github.ref_name }}.tar.gz
