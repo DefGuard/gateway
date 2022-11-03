@@ -87,20 +87,20 @@ jobs:
           files: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
 
   publish-binary-freebsd:
-    runs-on: macos-12
     name: Release FreeBSD
+    runs-on: macos-12
     steps:
       - name: Checkout
-      uses: actions/checkout@v3
+        uses: actions/checkout@v3
         with:
           submodules: recursive
       - name: Build binary
-      uses: vmactions/freebsd-vm@v0
-      with:
-        usesh: true
-        prepare: |
-          pkg install -y protobuf rust
-        run: cargo build --release
+        uses: vmactions/freebsd-vm@v0
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y protobuf rust
+          run: cargo build --release
       - name: Tar
         uses: a7ul/tar-action@v1.1.0
         with:
