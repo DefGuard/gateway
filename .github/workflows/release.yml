@@ -52,7 +52,6 @@ jobs:
   publish-binaries:
     name: Release ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    container: rust:latest
     strategy:
       fail-fast: false
       matrix:
@@ -72,6 +71,9 @@ jobs:
       # - name: Install protoc - macos
       #   if: matrix.os == 'macos-latest'
       #   run: brew install protobuf
+      - uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
       - name: Build binary
         uses: actions-rs/cargo@v1
         with:
