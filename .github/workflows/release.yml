@@ -52,6 +52,7 @@ jobs:
   publish-binaries:
     name: Release ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    container: rust:latest
     strategy:
       fail-fast: false
       matrix:
