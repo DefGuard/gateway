@@ -66,11 +66,15 @@ jobs:
         with:
           submodules: recursive
       - name: Install protoc - linux
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'self-hosted'
         run: sudo apt-get update && sudo apt-get -y install protobuf-compiler
       # - name: Install protoc - macos
       #   if: matrix.os == 'macos-latest'
       #   run: brew install protobuf
+      - name: Install rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
       - name: Build binary
         uses: actions-rs/cargo@v1
         with:
