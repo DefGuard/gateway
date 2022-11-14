@@ -52,6 +52,7 @@ jobs:
   publish-binaries:
     name: Release ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    container: rust:latest
     strategy:
       fail-fast: false
       matrix:
@@ -66,7 +67,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install protoc - linux
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'self-hosted'
         run: sudo apt-get update && sudo apt-get -y install protobuf-compiler
       # - name: Install protoc - macos
       #   if: matrix.os == 'macos-latest'
