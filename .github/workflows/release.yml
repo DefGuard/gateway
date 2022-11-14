@@ -71,6 +71,8 @@ jobs:
       # - name: Install protoc - macos
       #   if: matrix.os == 'macos-latest'
       #   run: brew install protobuf
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
       - name: Build binary
         uses: actions-rs/cargo@v1
         with:
