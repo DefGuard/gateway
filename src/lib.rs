@@ -83,12 +83,9 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Used to log sensitive/secret objects.
 #[macro_export]
 macro_rules! mask {
-    ($object:expr, $field:ident) => {
-        {
-            let mut object = $object.clone();
-            object.$field = String::from("***");
-            object
-        }
-    };
+    ($object:expr, $field:ident) => {{
+        let mut object = $object.clone();
+        object.$field = String::from("***");
+        object
+    }};
 }
-

@@ -1,6 +1,6 @@
+use crate::mask;
 #[cfg(target_os = "linux")]
 use crate::wireguard::netlink::delete_interface;
-use crate::mask;
 use crate::{
     error::GatewayError,
     proto::{gateway_service_client::GatewayServiceClient, update, Configuration, Update},
@@ -82,7 +82,10 @@ fn configure(config: &Config, configuration: Configuration) -> Result<(), Gatewa
         let _ = delete_interface(&config.ifname);
     }
     setup_interface(&config.ifname, config.userspace, &configuration)?;
-    info!("Reconfigured WireGuard interface: {:?}", mask!(configuration, prvkey));
+    info!(
+        "Reconfigured WireGuard interface: {:?}",
+        mask!(configuration, prvkey)
+    );
     Ok(())
 }
 
@@ -166,7 +169,8 @@ pub async fn start(config: &Config) -> Result<(), GatewayError> {
 
     info!(
         "Starting Defguard gateway version {} with configuration: {:?}",
-        VERSION, mask!(config, token)
+        VERSION,
+        mask!(config, token)
     );
 
     let channel = Channel::from_shared(config.grpc_url.clone())?;
