@@ -18,10 +18,22 @@ use clap::Parser;
 #[clap(about = "DefGuard VPN gateway service")]
 pub struct Config {
     #[clap(
+        required = true,
+        long,
+        short = 't',
         env = "DEFGUARD_TOKEN",
         help = "Token received on DefGuard after completing network wizard"
     )]
     token: String,
+
+    #[clap(
+        required = true,
+        long,
+        short = 'g',
+        env = "DEFGUARD_GRPC_URL",
+        help = "Defguard server gRPC endpoint URL"
+    )]
+    grpc_url: String,
 
     #[clap(
         long,
@@ -30,13 +42,6 @@ pub struct Config {
         help = "Use userspace WireGuard implementation e.g. wireguard-go"
     )]
     userspace: bool,
-
-    #[clap(
-        env = "DEFGUARD_GRPC_URL",
-        default_value = "http://localhost:50055",
-        help = "Defguard server gRPC endpoint URL"
-    )]
-    grpc_url: String,
 
     #[clap(long, env = "DEFGUARD_GRPC_CA")]
     grpc_ca: Option<String>,
