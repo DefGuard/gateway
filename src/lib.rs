@@ -14,7 +14,7 @@ extern crate log;
 
 use clap::Parser;
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Parser, Clone)]
 #[clap(about = "Defguard VPN gateway service")]
 pub struct Config {
     #[clap(
@@ -78,3 +78,17 @@ pub struct Config {
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Masks object's field with "***" string.
+/// Used to log sensitive/secret objects.
+#[macro_export]
+macro_rules! mask {
+    ($object:expr, $field:ident) => {
+        {
+            let mut object = $object.clone();
+            object.$field = String::from("***");
+            object
+        }
+    };
+}
+
