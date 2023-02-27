@@ -101,7 +101,7 @@ async fn connect(
     >,
 ) -> Result<Streaming<Update>, GatewayError> {
     loop {
-        debug!("Connecting to DefGuard GRPC endpoint: {}", config.grpc_url);
+        debug!("Connecting to Defguard GRPC endpoint: {}", config.grpc_url);
         let (response, stream) = {
             let mut client = client.lock().await;
             let response = client.config(Request::new(())).await;
@@ -117,7 +117,7 @@ async fn connect(
                     config.ifname.clone(),
                     config.userspace,
                 );
-                info!("Connected to DefGuard GRPC endpoint: {}", config.grpc_url);
+                info!("Connected to Defguard GRPC endpoint: {}", config.grpc_url);
                 break Ok(stream.into_inner());
             }
             (Err(err), _) => {
@@ -164,7 +164,7 @@ pub async fn start(config: &Config) -> Result<(), GatewayError> {
     }
 
     info!(
-        "Starting DefGuard gateway version {} with configuration: {:?}",
+        "Starting Defguard gateway version {} with configuration: {:?}",
         VERSION, config
     );
 

@@ -15,14 +15,14 @@ extern crate log;
 use clap::Parser;
 
 #[derive(Debug, Parser)]
-#[clap(about = "DefGuard VPN gateway service")]
+#[clap(about = "Defguard VPN gateway service")]
 pub struct Config {
     #[clap(
         required = true,
         long,
         short = 't',
         env = "DEFGUARD_TOKEN",
-        help = "Token received on DefGuard after completing network wizard"
+        help = "Token received on Defguard after completing network wizard"
     )]
     token: String,
 
@@ -51,7 +51,7 @@ pub struct Config {
         short = 'p',
         env = "DEFGUARD_STATS_PERIOD",
         default_value = "60",
-        help = "Defines how often (seconds) should interface statistics be sent to DefGuard server"
+        help = "Defines how often (seconds) should interface statistics be sent to Defguard server"
     )]
     stats_period: u64,
 
