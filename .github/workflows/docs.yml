@@ -13,6 +13,8 @@ env:
 jobs:
   rustdoc:
     runs-on: self-hosted
+    container:
+      image: rust:1.67-buster
 
     steps:
     - name: Checkout
@@ -24,7 +26,7 @@ jobs:
       run: rustup update --no-self-update stable
 
     - name: Install protoc
-      run: sudo apt-get update && sudo apt-get -y install protobuf-compiler
+      run: apt-get update && apt-get -y install protobuf-compiler
 
     - name: Build Docs
       run: cargo doc --all --no-deps
