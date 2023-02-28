@@ -13,6 +13,8 @@ env:
 jobs:
   rustdoc:
     runs-on: self-hosted
+    container:
+      image: rust:1.67-slim-buster
 
     steps:
     - name: Checkout
