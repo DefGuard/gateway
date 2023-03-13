@@ -20,7 +20,7 @@ impl WGApi {
 
     fn socket(&self) -> io::Result<UnixStream> {
         let path = format!("/var/run/wireguard/{}.sock", self.ifname);
-        let socket = UnixStream::connect(&path)?;
+        let socket = UnixStream::connect(path)?;
         socket.set_read_timeout(Some(Duration::new(3, 0)))?;
         Ok(socket)
     }
