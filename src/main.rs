@@ -6,7 +6,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::parse();
     if config.version {
         println!("{}", VERSION);
-        return Ok(());
     } else {
         start(&config).await?;
     }
