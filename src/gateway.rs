@@ -21,7 +21,7 @@ use tokio::{sync::Mutex, time::sleep};
 use tonic::{
     codegen::InterceptedService,
     metadata::MetadataValue,
-    transport::{Certificate, Channel, ClientTlsConfig},
+    transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
 
@@ -173,15 +173,15 @@ pub async fn start(config: &Config) -> Result<(), GatewayError> {
         mask!(config, token)
     );
 
-    let channel = Channel::from_shared(config.grpc_url.clone())?;
-    let channel = if let Some(ca) = &config.grpc_ca {
+    let endpoint = Endpoint::from_shared(config.grpc_url.clone())?;
+    let endpoint = if let Some(ca) = &config.grpc_ca {
         let ca = std::fs::read_to_string(ca)?;
         let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(&ca));
-        channel.tls_config(tls)?
+        endpoint.tls_config(tls)?
     } else {
-        channel
+        endpoint
     };
-    let channel = channel.connect_lazy();
+    let channel = endpoint.connect_lazy();
 
     let token = MetadataValue::try_from(&config.token)?;
     let jwt_auth_interceptor = move |mut req: Request<()>| -> Result<Request<()>, Status> {
