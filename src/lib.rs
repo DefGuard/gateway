@@ -82,7 +82,7 @@ pub struct Config {
     pub version: bool,
 }
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Masks object's field with "***" string.
 /// Used to log sensitive/secret objects.

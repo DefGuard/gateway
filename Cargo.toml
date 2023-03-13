@@ -11,6 +11,7 @@ async-stream = "0.3"
 base64 = "0.13"
 boringtun = { version = "0.4", optional = true }
 chrono = "0.4"
+clap = { version = "4.1", features = ["derive", "env"] }
 env_logger = "0.9"
 log = "0.4"
 prost = "0.11"
@@ -19,7 +20,6 @@ thiserror = "1.0"
 tonic = {version = "0.8", features = ["gzip", "tls", "tls-roots"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
-clap = { version = "4.1", features = ["derive", "env"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
