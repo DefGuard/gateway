@@ -32,4 +32,7 @@ pub enum GatewayError {
 
     #[error("Uri error")]
     Uri(#[from] tonic::codegen::http::uri::InvalidUri),
+
+    #[error("Invalid configuration")]
+    InvalidConfiguration(String),
 }

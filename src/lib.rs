@@ -18,22 +18,24 @@ use clap::Parser;
 #[clap(about = "Defguard VPN gateway service")]
 pub struct Config {
     #[clap(
-        required = true,
         long,
         short = 't',
+        required_unless_present = "version",
         env = "DEFGUARD_TOKEN",
-        help = "Token received on Defguard after completing network wizard"
+        help = "Token received on Defguard after completing network wizard",
+        default_value = ""
     )]
-    token: String,
+    pub token: String,
 
     #[clap(
-        required = true,
         long,
         short = 'g',
+        required_unless_present = "version",
         env = "DEFGUARD_GRPC_URL",
-        help = "Defguard server gRPC endpoint URL"
+        help = "Defguard server gRPC endpoint URL",
+        default_value = ""
     )]
-    grpc_url: String,
+    pub grpc_url: String,
 
     #[clap(
         long,
@@ -41,10 +43,10 @@ pub struct Config {
         env = "DEFGUARD_USERSPACE",
         help = "Use userspace WireGuard implementation e.g. wireguard-go"
     )]
-    userspace: bool,
+    pub userspace: bool,
 
     #[clap(long, env = "DEFGUARD_GRPC_CA")]
-    grpc_ca: Option<String>,
+    pub grpc_ca: Option<String>,
 
     #[clap(
         long,
@@ -53,7 +55,7 @@ pub struct Config {
         default_value = "60",
         help = "Defines how often (seconds) should interface statistics be sent to Defguard server"
     )]
-    stats_period: u64,
+    pub stats_period: u64,
 
     #[clap(
         long,
@@ -62,19 +64,22 @@ pub struct Config {
         default_value = "wg0",
         help = "Interface name (e.g. wg0)"
     )]
-    ifname: String,
+    pub ifname: String,
 
     #[clap(long, help = "Write pid to this file")]
-    pidfile: Option<String>,
+    pub pidfile: Option<String>,
 
     #[clap(long, short = 's', help = "Log to syslog")]
-    use_syslog: bool,
+    pub use_syslog: bool,
 
     #[clap(long, default_value = "LOG_USER", help = "Log to syslog")]
-    syslog_facility: String,
+    pub syslog_facility: String,
 
     #[clap(long, default_value = "/var/run/log", help = "Log to syslog")]
-    syslog_socket: String,
+    pub syslog_socket: String,
+
+    #[clap(long, short = 'v', action, help = "Show version and quit")]
+    pub version: bool,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
