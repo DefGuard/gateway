@@ -46,7 +46,7 @@ pub struct Config {
     pub userspace: bool,
 
     #[clap(long, env = "DEFGUARD_GRPC_CA")]
-    pub grpc_ca: Option<String>,
+    pub grpc_ca: String,
 
     #[clap(
         long,

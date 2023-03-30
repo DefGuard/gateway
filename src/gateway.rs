@@ -174,13 +174,9 @@ pub async fn start(config: &Config) -> Result<(), GatewayError> {
     );
 
     let endpoint = Endpoint::from_shared(config.grpc_url.clone())?;
-    let endpoint = if let Some(ca) = &config.grpc_ca {
-        let ca = std::fs::read_to_string(ca)?;
-        let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(&ca));
-        endpoint.tls_config(tls)?
-    } else {
-        endpoint
-    };
+    let ca = std::fs::read_to_string(&config.grpc_ca)?;
+    let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(&ca));
+    let endpoint = endpoint.tls_config(tls)?;
     let channel = endpoint.connect_lazy();
 
     let token = MetadataValue::try_from(&config.token)?;
