@@ -16,6 +16,7 @@ use clap::Parser;
 
 #[derive(Debug, Parser, Clone)]
 #[clap(about = "Defguard VPN gateway service")]
+#[command(version)]
 pub struct Config {
     #[clap(
         long,
@@ -77,9 +78,6 @@ pub struct Config {
 
     #[clap(long, default_value = "/var/run/log", help = "Log to syslog")]
     pub syslog_socket: String,
-
-    #[clap(long, short = 'v', action, help = "Show version and quit")]
-    pub version: bool,
 }
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
