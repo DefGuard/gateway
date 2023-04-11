@@ -36,9 +36,3 @@ pub enum GatewayError {
     #[error("Invalid config file. Error: {0}")]
     InvalidConfigFile(String),
 }
-
-impl From<toml::de::Error> for GatewayError {
-    fn from(error: toml::de::Error) -> Self {
-        GatewayError::InvalidConfigFile(error.message().to_string())
-    }
-}
