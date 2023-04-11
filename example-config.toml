@@ -9,8 +9,8 @@ token = "<your_gateway_token>"
 grpc_url = "<defguard_grpc_url>"
 # Required: use userspace Wireguard implementation (e.g. wireguard-go)
 userspace = false
-# Optional:
-# grpc_ca =
+# Optional: path to TLS cert file
+# grpc_ca = cert.pem
 # Required: how often should interface stat updates be sent to Defguard server (in seconds)
 stats_period = 60
 # Required: name of Wireguard interface
