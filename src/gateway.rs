@@ -2,10 +2,11 @@ use crate::mask;
 #[cfg(target_os = "linux")]
 use crate::wireguard::netlink::delete_interface;
 use crate::{
+    config::Config,
     error::GatewayError,
     proto::{gateway_service_client::GatewayServiceClient, update, Configuration, Update},
     wireguard::{setup_interface, wgapi::WGApi},
-    Config, VERSION,
+    VERSION,
 };
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 use std::{
