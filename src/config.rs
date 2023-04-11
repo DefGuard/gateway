@@ -1,13 +1,17 @@
+use crate::error::GatewayError;
 use clap::Parser;
+use serde::Deserialize;
+use std::fs;
+use toml;
 
-#[derive(Debug, Parser, Clone)]
+#[derive(Debug, Parser, Clone, Deserialize)]
 #[clap(about = "Defguard VPN gateway service")]
 #[command(version)]
 pub struct Config {
     #[clap(
         long,
         short = 't',
-        required_unless_present = "version",
+        required_unless_present = "config_path",
         env = "DEFGUARD_TOKEN",
         help = "Token received on Defguard after completing network wizard",
         default_value = ""
@@ -17,7 +21,7 @@ pub struct Config {
     #[clap(
         long,
         short = 'g',
-        required_unless_present = "version",
+        required_unless_present = "config_path",
         env = "DEFGUARD_GRPC_URL",
         help = "Defguard server gRPC endpoint URL",
         default_value = ""
@@ -64,6 +68,24 @@ pub struct Config {
 
     #[clap(long, default_value = "/var/run/log", help = "Log to syslog")]
     pub syslog_socket: String,
+
+    #[clap(long = "config", short, help = "Config file")]
+    #[serde(skip)]
+    config_path: Option<std::path::PathBuf>,
+}
+
+pub fn get_config() -> Result<Config, GatewayError> {
+    // parse CLI arguments to get config file path
+    let cli_config = Config::parse();
+
+    // load config from file if one was specified
+    if let Some(config_path) = cli_config.config_path {
+        let config_toml = fs::read_to_string(config_path)?;
+        let file_config: Config = toml::from_str(&config_toml)?;
+        return Ok(file_config);
+    }
+
+    Ok(cli_config)
 }
 
 #[test]

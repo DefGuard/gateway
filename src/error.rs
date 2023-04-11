@@ -32,4 +32,13 @@ pub enum GatewayError {
 
     #[error("Uri error")]
     Uri(#[from] tonic::codegen::http::uri::InvalidUri),
+
+    #[error("Invalid config file. Error: {0}")]
+    InvalidConfigFile(String),
+}
+
+impl From<toml::de::Error> for GatewayError {
+    fn from(error: toml::de::Error) -> Self {
+        GatewayError::InvalidConfigFile(error.message().to_string())
+    }
 }
