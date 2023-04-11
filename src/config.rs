@@ -80,8 +80,10 @@ pub fn get_config() -> Result<Config, GatewayError> {
 
     // load config from file if one was specified
     if let Some(config_path) = cli_config.config_path {
-        let config_toml = fs::read_to_string(config_path).map_err(|err| GatewayError::InvalidConfigFile(err.to_string()))?;
-        let file_config: Config = toml::from_str(&config_toml).map_err(|err| GatewayError::InvalidConfigFile(err.message().to_string()))?;
+        let config_toml = fs::read_to_string(config_path)
+            .map_err(|err| GatewayError::InvalidConfigFile(err.to_string()))?;
+        let file_config: Config = toml::from_str(&config_toml)
+            .map_err(|err| GatewayError::InvalidConfigFile(err.message().to_string()))?;
         return Ok(file_config);
     }
 
