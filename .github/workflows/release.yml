@@ -49,6 +49,18 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  create-release:
+    name: create-release
+    runs-on: self-hosted
+    outputs:
+      upload_url: ${{ steps.release.outputs.upload_url }}
+    steps:
+      - name: Create GitHub release
+        id: release
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+
   build-release:
     name: Release ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
