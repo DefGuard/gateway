@@ -55,8 +55,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        build: [linux]
         include:
-          - os: self-hosted
+          - build: linux
+            os: self-hosted
             asset_name: defguard-gateway-linux-x86_64
             target: x86_64-unknown-linux-gnu
     steps:
