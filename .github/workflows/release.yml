@@ -107,8 +107,18 @@ jobs:
       - name: Rename binary
         run: mv target/${{ matrix.target }}/release/defguard-gateway ${{ matrix.asset_name }}-${{ github.ref_name }}
 
-      - name: Strip release binary
+      - name: Strip release binary (linux)
+        if: matrix.build == 'linux'
         run: strip "${{ matrix.asset_name }}-${{ github.ref_name }}"
+
+      - name: Strip release binary (arm)
+        if: matrix.build == 'linux-arm'
+        run: |
+          docker run --rm -v \
+            "$PWD/target:/target:Z" \
+            rustembedded/cross:arm-unknown-linux-gnueabihf \
+            arm-linux-gnueabihf-strip \
+            /target/arm-unknown-linux-gnueabihf/release/defguard-gateway
 
       - name: Tar
         uses: a7ul/tar-action@v1.1.0
@@ -116,32 +126,44 @@ jobs:
           command: c
           files: |
             ${{ matrix.asset_name }}-${{ github.ref_name }}
-          outPath: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
+          outPath: ${{ matrix.asset_name }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+
+      - name: Upload release archive
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ matrix.asset_name }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+          asset_name: ${{ matrix.asset_name }}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+          asset_content_type: application/octet-stream
 
       - name: Build DEB package
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/bin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts: "--debug -t deb --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_x86_64.deb"
+          fpm_opts: "--debug -t deb --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb"
+
+      - name: Upload DEB
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
+          asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
+          asset_content_type: application/octet-stream
 
       - name: Build RPM package
+        if: matrix.build == 'linux'
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/bin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts: "--debug -t rpm --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_x86_64.rpm"
+          fpm_opts: "--debug -t rpm --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm"
 
       - name: Build freebsd package
+        if: matrix.build == 'linux'
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/bin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts: "--debug -t freebsd --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_x86_64.txz"
-
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          generate_release_notes: true
-          files: |
-            ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
-            defguard-gateway_${{ env.VERSION }}_x86_64.deb
-            defguard-gateway_${{ env.VERSION }}_x86_64.rpm
-            defguard-gateway_${{ env.VERSION }}_x86_64.txz
+          fpm_opts: "--debug -t freebsd --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.txz"
