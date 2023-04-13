@@ -58,6 +58,7 @@ jobs:
         include:
           - os: self-hosted
             asset_name: defguard-gateway-linux-x86_64
+            target: x86_64-unknown-linux-gnu
     steps:
       # Store the version, stripping any v-prefix
       - name: Write release version
@@ -65,24 +66,34 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           echo Version: $VERSION
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+
       - name: Checkout
         uses: actions/checkout@v3
         with:
           submodules: recursive
+
       - name: Install protoc - linux
         if: matrix.os == 'self-hosted'
         run: sudo apt-get update && sudo apt-get -y install protobuf-compiler
-      - name: Install rust stable
+
+      - name: Install Rust stable
         uses: actions-rs/toolchain@v1
         with:
             toolchain: stable
-      - name: Build binary
+            target: ${{ matrix.target }}
+
+      - name: Build release binary
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release
+          args: --release --target ${{ matrix.target }}
+
       - name: Rename binary
-        run: mv target/release/defguard-gateway ${{ matrix.asset_name }}-${{ github.ref_name }}
+        run: mv target/${{ matrix.target }}/release/defguard-gateway ${{ matrix.asset_name }}-${{ github.ref_name }}
+
+      - name: Strip release binary
+        run: strip "${{ matrix.asset_name }}-${{ github.ref_name }}"
+
       - name: Tar
         uses: a7ul/tar-action@v1.1.0
         with:
@@ -90,21 +101,25 @@ jobs:
           files: |
             ${{ matrix.asset_name }}-${{ github.ref_name }}
           outPath: ${{ matrix.asset_name }}-${{ github.ref_name }}.tar.gz
+
       - name: Build DEB package
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/bin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug -t deb --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_x86_64.deb"
+
       - name: Build RPM package
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/bin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug -t rpm --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_x86_64.rpm"
+
       - name: Build freebsd package
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/bin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug -t freebsd --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_x86_64.txz"
+
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
