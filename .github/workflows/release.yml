@@ -62,7 +62,7 @@ jobs:
           generate_release_notes: true
 
   build-release:
-    name: Release ${{ matrix.os }}
+    name: Release ${{ matrix.build }}
     needs: ['create-release']
     runs-on: ${{ matrix.os }}
     strategy:
