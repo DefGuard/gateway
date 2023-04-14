@@ -91,10 +91,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install protoc - linux
-        if: matrix.os == 'self-hosted'
-        run: sudo apt-get update && sudo apt-get -y install protobuf-compiler
-
       - name: Install Rust stable
         uses: actions-rs/toolchain@v1
         with:
