@@ -169,9 +169,31 @@ jobs:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/bin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug -t rpm --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm"
 
+      - name: Upload RPM
+        if: matrix.build == 'linux'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
+          asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
+          asset_content_type: application/octet-stream
+
       - name: Build freebsd package
         if: matrix.build == 'linux'
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/bin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug -t freebsd --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.txz"
+
+      - name: Upload freebsd
+        if: matrix.build == 'linux'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.txz
+          asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.txz
+          asset_content_type: application/octet-stream
