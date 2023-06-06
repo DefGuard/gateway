@@ -414,7 +414,7 @@ dependencies = [
  "clap 4.3.2",
  "env_logger",
  "log",
- "netlink-packet-core 0.4.2",
+ "netlink-packet-core",
  "netlink-packet-generic",
  "netlink-packet-route",
  "netlink-packet-wireguard",
@@ -925,18 +925,6 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 
 [[package]]
 name = "netlink-packet-core"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "345b8ab5bd4e71a2986663e88c56856699d060e78e152e6e9d7966fcd5491297"
-dependencies = [
- "anyhow",
- "byteorder",
- "libc",
- "netlink-packet-utils",
-]
-
-[[package]]
-name = "netlink-packet-core"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e5cf0b54effda4b91615c40ff0fd12d0d4c9a6e0f5116874f03941792ff535a"
@@ -956,21 +944,21 @@ dependencies = [
  "anyhow",
  "byteorder",
  "libc",
- "netlink-packet-core 0.5.0",
+ "netlink-packet-core",
  "netlink-packet-utils",
 ]
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.11.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "733ea73609acfd7fa7ddadfb7bf709b0471668c456ad9513685af543a06342b2"
+checksum = "ea993e32c77d87f01236c38f572ecb6c311d592e56a06262a007fd2a6e31253c"
 dependencies = [
  "anyhow",
  "bitflags",
  "byteorder",
  "libc",
- "netlink-packet-core 0.4.2",
+ "netlink-packet-core",
  "netlink-packet-utils",
 ]
 
