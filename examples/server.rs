@@ -117,7 +117,7 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
     println!(
         "a|addr address - set host address\n\
         c|peer key - create peer with public key\n\
-        d|peer key - delete peer with public key\n\
+        d|del key - delete peer with public key\n\
         k|key key - set private key\n\
         p|port port - set listening port\n\
         q|quit - quit\n\

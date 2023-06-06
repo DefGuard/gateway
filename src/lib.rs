@@ -3,7 +3,6 @@
 pub mod config;
 mod error;
 pub mod gateway;
-mod utils;
 pub mod wireguard;
 
 pub mod proto {

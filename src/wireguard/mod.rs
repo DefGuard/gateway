@@ -5,13 +5,13 @@ pub mod net;
 pub mod netlink;
 pub mod wgapi;
 
-use crate::{error::GatewayError, proto::Configuration, utils::run_command};
+use crate::{error::GatewayError, proto::Configuration};
 #[cfg(feature = "boringtun")]
 use boringtun::{
     device::drop_privileges::drop_privileges,
     device::{DeviceConfig, DeviceHandle},
 };
-use std::{process::Output, str::FromStr};
+use std::{process::Command, str::FromStr};
 use wgapi::WGApi;
 
 /// Creates wireguard interface using userspace implementation.
@@ -40,21 +40,6 @@ pub fn create_interface_userspace(ifname: &str) -> Result<(), GatewayError> {
     Ok(())
 }
 
-/// Checks if command exited successfully, returns CommandExecutionError with stderr if not.
-///
-/// # Arguments
-///
-/// * `output` - command output
-fn map_output(output: &Output) -> Result<String, GatewayError> {
-    if output.status.success() {
-        Ok(String::from_utf8(output.stdout.clone()).unwrap_or_default())
-    } else {
-        Err(GatewayError::CommandExecutionError {
-            stderr: String::from_utf8(output.stderr.clone()).unwrap_or_default(),
-        })
-    }
-}
-
 /// Assigns address to interface.
 ///
 /// # Arguments
@@ -65,16 +50,18 @@ pub fn assign_addr(ifname: &str, addr: &IpAddrMask) -> Result<(), GatewayError> 
     if cfg!(target_os = "linux") {
         #[cfg(target_os = "linux")]
         netlink::address_interface(ifname, addr)?;
+    } else if cfg!(target_os = "macos") {
+        // On macOS, interface is point-to-point and requires a pair of addresses
+        let address_string = addr.ip.to_string();
+        Command::new("ifconfig")
+            .args([ifname, &address_string, &address_string])
+            .output()?;
     } else {
-        let output = if cfg!(target_os = "macos") {
-            // On macOS, interface is point-to-point and requires a pair of addresses
-            let address_string = addr.ip.to_string();
-            run_command(&["ifconfig", ifname, &address_string, &address_string])
-        } else {
-            run_command(&["ifconfig", ifname, &addr.to_string()])
-        }?;
-        let _ = map_output(&output);
+        Command::new("ifconfig")
+            .args([ifname, &addr.to_string()])
+            .output()?;
     }
+
     Ok(())
 }
 
