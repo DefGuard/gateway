@@ -1,3 +1,4 @@
+use defguard_gateway::proto::ConfigurationRequest;
 use defguard_gateway::{
     proto,
     wireguard::{Host, IpAddrMask, Key, Peer},
@@ -81,7 +82,10 @@ impl From<&HostConfig> for proto::Configuration {
 impl proto::gateway_service_server::GatewayService for GatewayServer {
     type UpdatesStream = UnboundedReceiverStream<Result<proto::Update, Status>>;
 
-    async fn config(&self, request: Request<()>) -> Result<Response<proto::Configuration>, Status> {
+    async fn config(
+        &self,
+        request: Request<ConfigurationRequest>,
+    ) -> Result<Response<proto::Configuration>, Status> {
         let address = request.remote_addr().unwrap();
         eprintln!("CONFIG connected from: {}", address);
         Ok(Response::new((&*self.config_rx.borrow()).into()))
