@@ -1,4 +1,5 @@
 use crate::mask;
+use crate::proto::ConfigurationRequest;
 #[cfg(target_os = "linux")]
 use crate::wireguard::netlink::delete_interface;
 use crate::{
@@ -109,7 +110,11 @@ async fn connect(
         debug!("Connecting to Defguard GRPC endpoint: {}", config.grpc_url);
         let (response, stream) = {
             let mut client = client.lock().await;
-            let response = client.config(Request::new(())).await;
+            let response = client
+                .config(ConfigurationRequest {
+                    name: config.name.clone(),
+                })
+                .await;
             let stream = client.updates(()).await;
             (response, stream)
         };
