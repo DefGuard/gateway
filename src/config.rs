@@ -8,7 +8,7 @@ use toml;
 #[clap(about = "Defguard VPN gateway service")]
 #[command(version)]
 pub struct Config {
-    #[clap(
+    #[arg(
         long,
         short = 't',
         required_unless_present = "config_path",
@@ -18,7 +18,10 @@ pub struct Config {
     )]
     pub token: String,
 
-    #[clap(
+    #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
+    pub name: Option<String>,
+
+    #[arg(
         long,
         short = 'g',
         required_unless_present = "config_path",
@@ -28,7 +31,7 @@ pub struct Config {
     )]
     pub grpc_url: String,
 
-    #[clap(
+    #[arg(
         long,
         short = 'u',
         env = "DEFGUARD_USERSPACE",
@@ -36,10 +39,10 @@ pub struct Config {
     )]
     pub userspace: bool,
 
-    #[clap(long, env = "DEFGUARD_GRPC_CA")]
+    #[arg(long, env = "DEFGUARD_GRPC_CA")]
     pub grpc_ca: Option<String>,
 
-    #[clap(
+    #[arg(
         long,
         short = 'p',
         env = "DEFGUARD_STATS_PERIOD",
@@ -48,7 +51,7 @@ pub struct Config {
     )]
     pub stats_period: u64,
 
-    #[clap(
+    #[arg(
         long,
         short = 'i',
         env = "DEFGUARD_IFNAME",
@@ -57,19 +60,19 @@ pub struct Config {
     )]
     pub ifname: String,
 
-    #[clap(long, help = "Write pid to this file")]
+    #[arg(long, help = "Write pid to this file")]
     pub pidfile: Option<String>,
 
-    #[clap(long, short = 's', help = "Log to syslog")]
+    #[arg(long, short = 's', help = "Log to syslog")]
     pub use_syslog: bool,
 
-    #[clap(long, default_value = "LOG_USER", help = "Log to syslog")]
+    #[arg(long, default_value = "LOG_USER", help = "Log to syslog")]
     pub syslog_facility: String,
 
-    #[clap(long, default_value = "/var/run/log", help = "Log to syslog")]
+    #[arg(long, default_value = "/var/run/log", help = "Log to syslog")]
     pub syslog_socket: String,
 
-    #[clap(long = "config", short, help = "Config file")]
+    #[arg(long = "config", short, help = "Config file")]
     #[serde(skip)]
     config_path: Option<std::path::PathBuf>,
 }
