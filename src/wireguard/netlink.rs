@@ -1,4 +1,9 @@
-use super::{Host, IpAddrMask, Peer};
+use std::{
+    fmt::Debug,
+    io,
+    net::{IpAddr, Ipv4Addr},
+};
+
 use netlink_packet_core::{
     NetlinkDeserializable, NetlinkMessage, NetlinkPayload, NetlinkSerializable, NLM_F_ACK,
     NLM_F_CREATE, NLM_F_DUMP, NLM_F_EXCL, NLM_F_REPLACE, NLM_F_REQUEST,
@@ -14,13 +19,10 @@ use netlink_packet_route::{
 };
 use netlink_packet_wireguard::{nlas::WgDeviceAttrs, Wireguard, WireguardCmd};
 use netlink_sys::{constants::NETLINK_GENERIC, protocols::NETLINK_ROUTE, Socket, SocketAddr};
-use std::{
-    fmt::Debug,
-    io,
-    net::{IpAddr, Ipv4Addr},
-};
 
-const SOCKET_BUFFER_LENGTH: usize = 4096;
+use super::{Host, IpAddrMask, Peer};
+
+const SOCKET_BUFFER_LENGTH: usize = 12288;
 
 macro_rules! get_nla_value {
     ($nlas:expr, $e:ident, $v:ident) => {
