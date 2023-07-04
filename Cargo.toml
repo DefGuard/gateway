@@ -17,7 +17,7 @@ log = "0.4"
 prost = "0.11"
 syslog = "6.0"
 thiserror = "1.0"
-tonic = {version = "0.8", features = ["gzip", "tls", "tls-roots"] }
+tonic = {version = "0.9", features = ["gzip", "tls", "tls-roots"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
 toml = "0.7.3"
@@ -27,7 +27,8 @@ serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["io-std", "io-util"] }
 
 [build-dependencies]
-tonic-build = { version = "0.8" }
+tonic-build = { version = "0.9" }
+prost-build = { version = "0.11" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-core = "0.5"
