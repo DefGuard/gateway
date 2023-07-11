@@ -23,7 +23,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install dosfstools
+          sudo apt-get install -y dosfstools rsync
       - name: Build on ${{ matrix.os.name }}
         uses: cross-platform-actions/action@v0.15.0
         with:
@@ -31,6 +31,7 @@ jobs:
           architecture: ${{ matrix.os.architecture }}
           version: ${{ matrix.os.version }}
           shell: bash
+          hypervisor: qemu
           run: |
             pkg update
             pkg upgrade
