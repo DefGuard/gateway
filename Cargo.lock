@@ -413,6 +413,7 @@ dependencies = [
  "chrono",
  "clap 4.3.2",
  "env_logger",
+ "lazy_static",
  "log",
  "netlink-packet-core",
  "netlink-packet-generic",
