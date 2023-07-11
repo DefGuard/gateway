@@ -21,7 +21,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install deps
-        run: >
+        run: |
           apt-get update
           apt-get install dosfstools
       - name: Build on ${{ matrix.os.name }}
@@ -31,7 +31,7 @@ jobs:
           architecture: ${{ matrix.os.architecture }}
           version: ${{ matrix.os.version }}
           shell: bash
-          run: >
+          run: |
             pkg update
             pkg upgrade
             pkg install curl
