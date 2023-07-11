@@ -10,6 +10,8 @@ use crate::{
     VERSION,
 };
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
+use gethostname::gethostname;
+use lazy_static::lazy_static;
 use std::{
     fs::File,
     io::Write,
@@ -26,6 +28,12 @@ use tonic::{
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
+
+lazy_static! {
+    static ref HOSTNAME: String = gethostname()
+        .into_string()
+        .expect("Unable to get current hostname");
+}
 
 /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
 fn spawn_stats_thread(
@@ -190,8 +198,10 @@ pub async fn start(config: &Config) -> Result<(), GatewayError> {
     let channel = endpoint.connect_lazy();
 
     let token = MetadataValue::try_from(&config.token)?;
+    let hostname = MetadataValue::from_static(&HOSTNAME);
     let jwt_auth_interceptor = move |mut req: Request<()>| -> Result<Request<()>, Status> {
         req.metadata_mut().insert("authorization", token.clone());
+        req.metadata_mut().insert("hostname", hostname.clone());
         Ok(req)
     };
     let client = Arc::new(Mutex::new(GatewayServiceClient::with_interceptor(
