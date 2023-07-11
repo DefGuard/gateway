@@ -17,6 +17,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y dosfstools rsync
+      - name: Setup VM shared dir
+        run: |
+          mkdir -p /home/runner/work
+          mkdir -p /home/runner/action/action
       - name: Test
         uses: cross-platform-actions/action@v0.15.0
         with:
