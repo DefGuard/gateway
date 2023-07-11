@@ -21,11 +21,13 @@ jobs:
         run: |
           mkdir -p /home/runner/work
           mkdir -p /home/runner/work/gateway/gateway
+          mkdir -p /runner/_work/gateway/gateway
       - name: Test
         uses: cross-platform-actions/action@v0.15.0
         with:
           operating_system: freebsd
           version: "13.2"
+          shell: bash
           run: |
             uname -a
             echo $SHELL
