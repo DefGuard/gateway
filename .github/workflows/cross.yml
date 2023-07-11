@@ -1,0 +1,38 @@
+name: Cross build test workflow
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os.host }}
+    strategy:
+      matrix:
+        os:
+          - name: freebsd
+            architecture: x86-64
+            version: "13.2"
+            host: self-hosted
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Build on ${{ matrix.os.name }}
+        uses: cross-platform-actions/action@v0.15.0
+        with:
+          operating_system: ${{ matrix.os.name }}
+          architecture: ${{ matrix.os.architecture }}
+          version: ${{ matrix.os.version }}
+          shell: bash
+          run: >
+            pkg update
+            pkg upgrade
+            pkg install curl
+            pkg install protobuf
+            pkg install wireguard-tools
+            curl https://sh.rustup.rs -sSf | sh -s -- -y
+            cargo build --release
