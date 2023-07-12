@@ -11,23 +11,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y dosfstools rsync
-      - name: Setup VM shared dir
-        run: |
-          mkdir -p /home/runner/work
-          mkdir -p /home/runner/work/gateway/gateway
-          mkdir -p /runner/_work/gateway/gateway
+#        with:
+#          submodules: recursive
+#      - name: Install deps
+#        run: |
+#          sudo apt-get update
+#          sudo apt-get install -y dosfstools rsync
+#      - name: Setup VM shared dir
+#        run: |
+#          mkdir -p /home/runner/work
+#          mkdir -p /home/runner/work/gateway/gateway
+#          mkdir -p /runner/_work/gateway/gateway
       - name: Test
         uses: cross-platform-actions/action@v0.15.0
         with:
           operating_system: freebsd
-          version: "13.2"
-          shell: bash
+          version: '13.2'
+#          shell: bash
           run: |
             uname -a
             echo $SHELL
