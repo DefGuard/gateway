@@ -159,7 +159,7 @@ fn init_syslog(config: &Config, pid: u32) -> Result<(), GatewayError> {
     };
     let logger = syslog::unix_custom(formatter, &config.syslog_socket)?;
     log::set_boxed_logger(Box::new(BasicLogger::new(logger)))?;
-    log::set_max_level(log::LevelFilter::Info);
+    log::set_max_level(log::LevelFilter::Debug);
     Ok(())
 }
 
