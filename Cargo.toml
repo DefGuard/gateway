@@ -15,7 +15,7 @@ clap = { version = "4.1", features = ["derive", "env"] }
 env_logger = "0.9"
 log = "0.4"
 prost = "0.11"
-syslog = "6.0"
+syslog = "6.1"
 thiserror = "1.0"
 tonic = {version = "0.9", features = ["gzip", "tls", "tls-roots"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -33,10 +33,10 @@ tonic-build = { version = "0.9" }
 prost-build = { version = "0.11" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-netlink-packet-core = "0.5"
-netlink-packet-generic = "0.3"
-netlink-packet-route = "0.15"
-netlink-packet-wireguard = "0.2"
+netlink-packet-core = "0.5.0"
+netlink-packet-generic = "0.3.2"
+netlink-packet-route = "0.15.0"
+netlink-packet-wireguard = "0.2.1"
 netlink-sys = "0.8"
 
 [profile.release]

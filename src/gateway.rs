@@ -52,9 +52,11 @@ fn spawn_stats_thread(
     userspace: bool,
 ) {
     // Create an async stream that periodically yields wireguard interface statistics.
+    info!("Spawning stats thread");
     let stats_stream = async_stream::stream! {
         let api = WGApi::new(ifname, userspace);
         loop {
+            debug!("Sending peer stats update");
             match api.read_host() {
                 Ok(host) => {
                     for peer in host
@@ -159,7 +161,7 @@ fn init_syslog(config: &Config, pid: u32) -> Result<(), GatewayError> {
     };
     let logger = syslog::unix_custom(formatter, &config.syslog_socket)?;
     log::set_boxed_logger(Box::new(BasicLogger::new(logger)))?;
-    log::set_max_level(log::LevelFilter::Info);
+    log::set_max_level(log::LevelFilter::Debug);
     Ok(())
 }
 
@@ -213,19 +215,24 @@ pub async fn start(config: &Config) -> Result<(), GatewayError> {
     let mut updates_stream = connect(config, Arc::clone(&client)).await?;
     loop {
         match updates_stream.message().await {
-            Ok(Some(update)) => match update.update {
-                Some(update::Update::Network(configuration)) => configure(config, configuration)?,
-                Some(update::Update::Peer(peer_config)) => {
-                    info!("Applying peer configuration: {:?}", peer_config);
-                    match update.update_type {
-                        // UpdateType::Delete
-                        2 => wgapi.delete_peer(&peer_config.into()),
-                        // UpdateType::Create, UpdateType::Modify
-                        _ => wgapi.write_peer(&peer_config.into()),
-                    }?
+            Ok(Some(update)) => {
+                debug!("Received update: {:?}", update);
+                match update.update {
+                    Some(update::Update::Network(configuration)) => {
+                        configure(config, configuration)?
+                    }
+                    Some(update::Update::Peer(peer_config)) => {
+                        info!("Applying peer configuration: {:?}", peer_config);
+                        match update.update_type {
+                            // UpdateType::Delete
+                            2 => wgapi.delete_peer(&peer_config.into()),
+                            // UpdateType::Create, UpdateType::Modify
+                            _ => wgapi.write_peer(&peer_config.into()),
+                        }?
+                    }
+                    _ => warn!("Unsupported kind of update"),
                 }
-                _ => warn!("Unsupported kind of update"),
-            },
+            }
             Ok(None) => {
                 warn!("Received empty message, reconnecting");
                 updates_stream = connect(config, Arc::clone(&client)).await?;
