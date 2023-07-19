@@ -195,6 +195,7 @@ pub async fn start(config: &Config) -> Result<(), GatewayError> {
 
     let endpoint = Endpoint::from_shared(config.grpc_url.clone())?;
     let endpoint = endpoint.http2_keep_alive_interval(Duration::from_secs(10));
+    let endpoint = endpoint.tcp_keepalive(Some(Duration::from_secs(10)));
     let endpoint = if let Some(ca) = &config.grpc_ca {
         let ca = std::fs::read_to_string(ca)?;
         let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(&ca));
