@@ -27,7 +27,7 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     // run gateway
-    let gateway = Gateway::new(config)?;
+    let mut gateway = Gateway::new(config)?;
     gateway.start().await?;
     Ok(())
 }

@@ -30,11 +30,15 @@ lazy_static! {
 
 pub struct Gateway {
     config: Config,
+    interface_configuration: Option<Configuration>,
 }
 
 impl Gateway {
     pub fn new(config: Config) -> Result<Self, GatewayError> {
-        Ok(Self { config })
+        Ok(Self {
+            config,
+            interface_configuration: None,
+        })
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
@@ -87,27 +91,44 @@ impl Gateway {
     /// Performs complete interface reconfiguration based on `configuration` object.
     /// Called when gateway (re)connects to GRPC endpoint and retrieves complete
     /// network and peers data.
-    fn configure(&self, configuration: Configuration) -> Result<(), GatewayError> {
+    fn configure(&mut self, new_configuration: Configuration) -> Result<(), GatewayError> {
         debug!(
             "Received configuration, reconfiguring WireGuard interface: {:?}",
-            mask!(configuration, prvkey)
+            mask!(new_configuration, prvkey)
         );
+
+        // check if new configuration is different than current one
+        if let Some(current_configuration) = self.interface_configuration.clone() {
+            if current_configuration == new_configuration {
+                debug!("Received configuration is identical to current one. Skipping interface reconfiguration");
+                return Ok(());
+            }
+        }
+
         if !self.config.userspace {
             #[cfg(target_os = "linux")]
             let _ = delete_interface(&self.config.ifname);
         }
-        setup_interface(&self.config.ifname, self.config.userspace, &configuration)?;
+        setup_interface(
+            &self.config.ifname,
+            self.config.userspace,
+            &new_configuration,
+        )?;
         info!(
             "Reconfigured WireGuard interface: {:?}",
-            mask!(configuration, prvkey)
+            mask!(new_configuration, prvkey)
         );
+
+        // store new configuration
+        self.interface_configuration = Some(new_configuration);
+
         Ok(())
     }
 
     /// Continuously tries to connect to GRPC endpoint. Once the connection is established
     /// configures the interface, starts the stats thread, connects and returns the updates stream
     async fn connect(
-        &self,
+        &mut self,
         client: Arc<
             Mutex<
                 GatewayServiceClient<
@@ -159,7 +180,7 @@ impl Gateway {
     /// * Retrieves configuration and configuration updates from Defguard GRPC server
     /// * Manages the interface according to configuration and updates
     /// * Sends interface statistics to Defguard server periodically
-    pub async fn start(&self) -> Result<(), GatewayError> {
+    pub async fn start(&mut self) -> Result<(), GatewayError> {
         info!(
             "Starting Defguard gateway version {} with configuration: {:?}",
             VERSION,
@@ -223,5 +244,61 @@ impl Gateway {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::proto::Configuration;
+
+    #[test]
+    fn test_configuration_comparison() {
+        let old_config = Configuration {
+            name: "gateway".to_string(),
+            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
+            address: "10.6.1.1/24".to_string(),
+            port: 50051,
+            peers: vec![],
+        };
+
+        let new_config = Configuration {
+            name: "gateway".to_string(),
+            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
+            address: "10.6.1.1/24".to_string(),
+            port: 50051,
+            peers: vec![],
+        };
+
+        assert_eq!(old_config, new_config);
+
+        let new_config = Configuration {
+            name: "gateway".to_string(),
+            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
+            address: "10.6.0.1/24".to_string(),
+            port: 50051,
+            peers: vec![],
+        };
+
+        assert_ne!(old_config, new_config);
+
+        let new_config = Configuration {
+            name: "gateway".to_string(),
+            prvkey: "FGqcPuaSlGWC2j40TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
+            address: "10.6.1.1/24".to_string(),
+            port: 50051,
+            peers: vec![],
+        };
+
+        assert_ne!(old_config, new_config);
+
+        let new_config = Configuration {
+            name: "gateway".to_string(),
+            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
+            address: "10.6.1.1/24".to_string(),
+            port: 50052,
+            peers: vec![],
+        };
+
+        assert_ne!(old_config, new_config);
     }
 }
