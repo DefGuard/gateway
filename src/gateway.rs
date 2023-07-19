@@ -178,7 +178,10 @@ pub async fn start(config: &Config) -> Result<(), GatewayError> {
     }
 
     if config.use_syslog {
-        init_syslog(config, pid)?;
+        if let Err(error) = init_syslog(config, pid) {
+            eprintln!("Unable to initialize syslog. Is the syslog daemon running?");
+            return Err(error);
+        };
     } else {
         init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
     }
