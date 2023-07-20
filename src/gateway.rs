@@ -29,10 +29,30 @@ lazy_static! {
         .expect("Unable to get current hostname");
 }
 
+// helper struct which stores just the interface config without peers
+#[derive(Clone, PartialEq)]
+pub struct InterfaceConfiguration {
+    pub name: String,
+    pub prvkey: String,
+    pub address: String,
+    pub port: u32,
+}
+
+impl From<Configuration> for InterfaceConfiguration {
+    fn from(config: Configuration) -> Self {
+        Self {
+            name: config.name,
+            prvkey: config.prvkey,
+            address: config.address,
+            port: config.port,
+        }
+    }
+}
+
 type Pubkey = String;
 pub struct Gateway {
     config: Config,
-    interface_configuration: Option<Configuration>,
+    interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<Pubkey, Peer>,
 }
 
@@ -43,6 +63,58 @@ impl Gateway {
             interface_configuration: None,
             peers: HashMap::new(),
         })
+    }
+
+    // replace current peer map with a new list of peers
+    fn replace_peers(&mut self, new_peers: Vec<Peer>) {
+        debug!("Replacing stored peers with {} new peers", new_peers.len());
+        let peers = new_peers
+            .into_iter()
+            .map(|peer| (peer.pubkey.clone(), peer))
+            .collect();
+        self.peers = peers;
+    }
+
+    // check if new received configuration is different than current one
+    fn is_config_changed(
+        &self,
+        new_interface_configuration: &InterfaceConfiguration,
+        new_peers: &Vec<Peer>,
+    ) -> bool {
+        if let Some(current_configuration) = self.interface_configuration.clone() {
+            return current_configuration != *new_interface_configuration
+                || self.is_peer_list_changed(new_peers);
+        }
+        false
+    }
+
+    // check if new peers are the same as the stored ones
+    fn is_peer_list_changed(&self, new_peers: &Vec<Peer>) -> bool {
+        // check if number of peers is different
+        if self.peers.len() != new_peers.len() {
+            return true;
+        }
+
+        // check if all pubkeys are the same
+        if !new_peers
+            .iter()
+            .map(|peer| &peer.pubkey)
+            .all(|k| self.peers.contains_key(k))
+        {
+            return true;
+        }
+
+        // check if all IPs are the same
+        if !new_peers
+            .iter()
+            .all(|peer| match self.peers.get(&peer.pubkey) {
+                Some(p) => peer.allowed_ips == p.allowed_ips,
+                None => false,
+            })
+        {
+            return true;
+        }
+        false
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
@@ -102,12 +174,11 @@ impl Gateway {
         );
 
         // check if new configuration is different than current one
-        if let Some(current_configuration) = self.interface_configuration.clone() {
-            if current_configuration == new_configuration {
-                debug!("Received configuration is identical to current one. Skipping interface reconfiguration");
-                return Ok(());
-            }
-        }
+        let new_interface_configuration = new_configuration.clone().into();
+        if !self.is_config_changed(&new_interface_configuration, &new_configuration.peers) {
+            debug!("Received configuration is identical to current one. Skipping interface reconfiguration");
+            return Ok(());
+        };
 
         if !self.config.userspace {
             #[cfg(target_os = "linux")]
@@ -123,8 +194,9 @@ impl Gateway {
             mask!(new_configuration, prvkey)
         );
 
-        // store new configuration
-        self.interface_configuration = Some(new_configuration);
+        // store new configuration and peers
+        self.interface_configuration = Some(new_interface_configuration);
+        self.replace_peers(new_configuration.peers);
 
         Ok(())
     }
@@ -201,7 +273,7 @@ impl Gateway {
         let endpoint = endpoint.tcp_keepalive(Some(Duration::from_secs(10)));
         let endpoint = if let Some(ca) = &self.config.grpc_ca {
             let ca = std::fs::read_to_string(ca)?;
-            let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(&ca));
+            let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(ca));
             endpoint.tls_config(tls)?
         } else {
             endpoint
@@ -284,56 +356,101 @@ impl Gateway {
 
 #[cfg(test)]
 mod tests {
-    use crate::proto::Configuration;
+    use crate::config::Config;
+    use crate::gateway::{Gateway, InterfaceConfiguration};
+    use crate::proto::Peer;
 
     #[test]
     fn test_configuration_comparison() {
-        let old_config = Configuration {
+        let old_config = InterfaceConfiguration {
             name: "gateway".to_string(),
             prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
             address: "10.6.1.1/24".to_string(),
             port: 50051,
-            peers: vec![],
         };
 
-        let new_config = Configuration {
+        let old_peers = vec![
+            Peer {
+                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
+                allowed_ips: vec!["10.6.1.2/24".to_string()],
+            },
+            Peer {
+                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
+                allowed_ips: vec!["10.6.1.3/24".to_string()],
+            },
+        ];
+        let old_peers_map = old_peers
+            .clone()
+            .into_iter()
+            .map(|peer| (peer.pubkey.clone(), peer))
+            .collect();
+
+        let gateway = Gateway {
+            config: Config::default(),
+            interface_configuration: Some(old_config.clone()),
+            peers: old_peers_map,
+        };
+
+        // new config is the same
+        let new_config = old_config.clone();
+        let new_peers = old_peers.clone();
+        assert!(!gateway.is_config_changed(&new_config, &new_peers));
+
+        // only interface config is different
+        let new_config = InterfaceConfiguration {
             name: "gateway".to_string(),
             prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            address: "10.6.1.1/24".to_string(),
+            address: "10.6.1.2/24".to_string(),
             port: 50051,
-            peers: vec![],
         };
+        let new_peers = old_peers.clone();
+        assert!(gateway.is_config_changed(&new_config, &new_peers));
 
-        assert_eq!(old_config, new_config);
+        // peer was removed
+        let new_config = old_config.clone();
+        let mut new_peers = old_peers.clone();
+        new_peers.pop();
 
-        let new_config = Configuration {
-            name: "gateway".to_string(),
-            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            address: "10.6.0.1/24".to_string(),
-            port: 50051,
-            peers: vec![],
-        };
+        assert!(gateway.is_config_changed(&new_config, &new_peers));
 
-        assert_ne!(old_config, new_config);
+        // peer was added
+        let new_config = old_config.clone();
+        let mut new_peers = old_peers.clone();
+        new_peers.push(Peer {
+            pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
+            allowed_ips: vec!["10.6.1.4/24".to_string()],
+        });
 
-        let new_config = Configuration {
-            name: "gateway".to_string(),
-            prvkey: "FGqcPuaSlGWC2j40TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            address: "10.6.1.1/24".to_string(),
-            port: 50051,
-            peers: vec![],
-        };
+        assert!(gateway.is_config_changed(&new_config, &new_peers));
 
-        assert_ne!(old_config, new_config);
+        // peer pubkey changed
+        let new_config = old_config.clone();
+        let new_peers = vec![
+            Peer {
+                pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
+                allowed_ips: vec!["10.6.1.2/24".to_string()],
+            },
+            Peer {
+                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
+                allowed_ips: vec!["10.6.1.3/24".to_string()],
+            },
+        ];
 
-        let new_config = Configuration {
-            name: "gateway".to_string(),
-            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            address: "10.6.1.1/24".to_string(),
-            port: 50052,
-            peers: vec![],
-        };
+        assert!(gateway.is_config_changed(&new_config, &new_peers));
 
-        assert_ne!(old_config, new_config);
+        // peer IP changed
+        let new_config = old_config.clone();
+        let new_peers = vec![
+            Peer {
+                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
+                allowed_ips: vec!["10.6.1.2/24".to_string()],
+            },
+            Peer {
+                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
+                allowed_ips: vec!["10.6.1.4/24".to_string()],
+            },
+        ];
+
+        assert!(gateway.is_config_changed(&new_config, &new_peers));
     }
 }
