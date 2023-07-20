@@ -10,8 +10,8 @@ use crate::{
 };
 use gethostname::gethostname;
 use lazy_static::lazy_static;
-use std::collections::HashMap;
 use std::{
+    collections::HashMap,
     sync::Arc,
     time::{Duration, SystemTime},
 };
