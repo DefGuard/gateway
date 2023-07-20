@@ -176,17 +176,21 @@ impl Gateway {
         }
     }
 
-    /// Starts the gateway process.
-    /// * Retrieves configuration and configuration updates from Defguard GRPC server
-    /// * Manages the interface according to configuration and updates
-    /// * Sends interface statistics to Defguard server periodically
-    pub async fn start(&mut self) -> Result<(), GatewayError> {
-        info!(
-            "Starting Defguard gateway version {} with configuration: {:?}",
-            VERSION,
-            mask!(self.config, token)
-        );
-
+    fn setup_client(
+        &self,
+    ) -> Result<
+        Arc<
+            Mutex<
+                GatewayServiceClient<
+                    InterceptedService<
+                        Channel,
+                        impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + 'static,
+                    >,
+                >,
+            >,
+        >,
+        GatewayError,
+    > {
         debug!("Setting up gRPC server connection");
         let endpoint = Endpoint::from_shared(self.config.grpc_url.clone())?;
         let endpoint = endpoint.http2_keep_alive_interval(Duration::from_secs(10));
@@ -211,6 +215,21 @@ impl Gateway {
             channel,
             jwt_auth_interceptor,
         )));
+        Ok(client)
+    }
+
+    /// Starts the gateway process.
+    /// * Retrieves configuration and configuration updates from Defguard GRPC server
+    /// * Manages the interface according to configuration and updates
+    /// * Sends interface statistics to Defguard server periodically
+    pub async fn start(&mut self) -> Result<(), GatewayError> {
+        info!(
+            "Starting Defguard gateway version {} with configuration: {:?}",
+            VERSION,
+            mask!(self.config, token)
+        );
+
+        let client = self.setup_client()?;
 
         let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace);
         let mut updates_stream = self.connect(Arc::clone(&client)).await?;
