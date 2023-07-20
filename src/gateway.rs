@@ -85,7 +85,7 @@ impl Gateway {
             return current_configuration != *new_interface_configuration
                 || self.is_peer_list_changed(new_peers);
         }
-        false
+        true
     }
 
     // check if new peers are the same as the stored ones
