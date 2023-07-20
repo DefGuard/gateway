@@ -1,5 +1,5 @@
 use crate::mask;
-use crate::proto::ConfigurationRequest;
+use crate::proto::{ConfigurationRequest, Peer};
 #[cfg(target_os = "linux")]
 use crate::{
     config::Config,
@@ -10,6 +10,7 @@ use crate::{
 };
 use gethostname::gethostname;
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 use std::{
     sync::Arc,
     time::{Duration, SystemTime},
@@ -28,9 +29,11 @@ lazy_static! {
         .expect("Unable to get current hostname");
 }
 
+type Pubkey = String;
 pub struct Gateway {
     config: Config,
     interface_configuration: Option<Configuration>,
+    peers: HashMap<Pubkey, Peer>,
 }
 
 impl Gateway {
@@ -38,6 +41,7 @@ impl Gateway {
         Ok(Self {
             config,
             interface_configuration: None,
+            peers: HashMap::new(),
         })
     }
 
@@ -245,9 +249,21 @@ impl Gateway {
                             info!("Applying peer configuration: {:?}", peer_config);
                             match update.update_type {
                                 // UpdateType::Delete
-                                2 => wgapi.delete_peer(&peer_config.into()),
+                                2 => {
+                                    debug!("Deleting peer {:?}", peer_config);
+                                    self.peers.remove(&peer_config.pubkey);
+                                    wgapi.delete_peer(&peer_config.into())
+                                }
                                 // UpdateType::Create, UpdateType::Modify
-                                _ => wgapi.write_peer(&peer_config.into()),
+                                _ => {
+                                    debug!(
+                                        "Updating peer {:?}, update type: {}",
+                                        peer_config, update.update_type
+                                    );
+                                    self.peers
+                                        .insert(peer_config.pubkey.clone(), peer_config.clone());
+                                    wgapi.write_peer(&peer_config.into())
+                                }
                             }?
                         }
                         _ => warn!("Unsupported kind of update"),
