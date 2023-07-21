@@ -89,7 +89,7 @@ impl Default for Config {
             ifname: "wg0".to_string(),
             pidfile: None,
             use_syslog: false,
-            syslog_facility: "".to_string(),
+            syslog_facility: String::new(),
             syslog_socket: "".to_string(),
             config_path: None,
         }
