@@ -77,6 +77,25 @@ pub struct Config {
     config_path: Option<std::path::PathBuf>,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            token: "TOKEN".to_string(),
+            name: None,
+            grpc_url: "http://localhost:50051".to_string(),
+            userspace: false,
+            grpc_ca: None,
+            stats_period: 15,
+            ifname: "wg0".to_string(),
+            pidfile: None,
+            use_syslog: false,
+            syslog_facility: String::new(),
+            syslog_socket: "".to_string(),
+            config_path: None,
+        }
+    }
+}
+
 pub fn get_config() -> Result<Config, GatewayError> {
     // parse CLI arguments to get config file path
     let cli_config = Config::parse();
