@@ -5,7 +5,7 @@ use netlink_packet_wireguard::{
 };
 use std::{error, fmt, net::IpAddr, str::FromStr};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct IpAddrMask {
     // IP v4 or v6
     pub ip: IpAddr,
