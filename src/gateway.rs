@@ -152,18 +152,14 @@ impl Gateway {
                                 false,
                                 |lhs| lhs != SystemTime::UNIX_EPOCH)
                             ) {
-                            match peer_map.get(&peer.public_key) {
-                                Some(last_peer) => {
-                                    if *last_peer != peer {
-                                        peer_map.insert(peer.public_key.clone(), peer.clone());
-                                        yield (&peer).into();
-                                    }
-                                },
-                                None => {
-                                    peer_map.insert(peer.public_key.clone(), peer.clone());
-                                    yield (&peer).into();
-                                }
+                            let has_changed = match peer_map.get(&peer.public_key) {
+                                Some(last_peer) => *last_peer != peer,
+                                None => true,
                             };
+                            if has_changed {
+                                peer_map.insert(peer.public_key.clone(), peer.clone());
+                                yield peer.into();
+                            }
                         }
                     },
                     Err(err) => error!("Failed to retrieve WireGuard interface stats {}", err),
