@@ -158,7 +158,7 @@ impl Gateway {
                             };
                             if has_changed {
                                 peer_map.insert(peer.public_key.clone(), peer.clone());
-                                yield peer.into();
+                                yield (&peer).into();
                             }
                         }
                     },
