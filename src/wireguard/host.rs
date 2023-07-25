@@ -13,9 +13,9 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Clone)]
 pub struct Peer {
-    public_key: Key,
+    pub public_key: Key,
     preshared_key: Option<Key>,
     protocol_version: Option<u32>,
     endpoint: Option<SocketAddr>,

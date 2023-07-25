@@ -134,18 +134,28 @@ impl Gateway {
         let userspace = self.config.userspace;
         let stats_stream = async_stream::stream! {
             let api = WGApi::new(ifname, userspace);
+            // helper map to track if peer data is actually changing
+            // and avoid sending duplicate stats
+            let mut peer_map = HashMap::new();
             loop {
                 debug!("Sending peer stats update");
                 match api.read_host() {
                     Ok(host) => {
                         for peer in host
                             .peers
-                            .values()
+                            .into_values()
                             .filter(|p| p.last_handshake.map_or(
                                 false,
                                 |lhs| lhs != SystemTime::UNIX_EPOCH)
                             ) {
-                            yield peer.into();
+                            let has_changed = match peer_map.get(&peer.public_key) {
+                                Some(last_peer) => *last_peer != peer,
+                                None => true,
+                            };
+                            if has_changed {
+                                peer_map.insert(peer.public_key.clone(), peer.clone());
+                                yield (&peer).into();
+                            }
                         }
                     },
                     Err(err) => error!("Failed to retrieve WireGuard interface stats {}", err),
