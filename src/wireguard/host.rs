@@ -81,8 +81,10 @@ impl Peer {
             self.public_key.to_lower_hex()
         )
     }
+}
 
-    #[cfg(target_os = "linux")]
+#[cfg(target_os = "linux")]
+impl Peer {
     #[must_use]
     pub fn from_nlas(nlas: &[WgPeerAttrs]) -> Self {
         let mut peer = Self::default();
@@ -120,7 +122,6 @@ impl Peer {
         peer
     }
 
-    #[cfg(target_os = "linux")]
     #[must_use]
     pub fn as_nlas(&self, ifname: &str) -> Vec<WgDeviceAttrs> {
         vec![
@@ -129,7 +130,6 @@ impl Peer {
         ]
     }
 
-    #[cfg(target_os = "linux")]
     #[must_use]
     pub fn as_nlas_remove(&self, ifname: &str) -> Vec<WgDeviceAttrs> {
         vec![
@@ -141,7 +141,6 @@ impl Peer {
         ]
     }
 
-    #[cfg(target_os = "linux")]
     #[must_use]
     pub fn as_nlas_peer(&self) -> WgPeer {
         let mut attrs = vec![WgPeerAttrs::PublicKey(self.public_key.as_array())];
@@ -338,31 +337,27 @@ impl Host {
 
         Ok(host)
     }
+}
 
-    #[cfg(target_os = "linux")]
-    #[must_use]
-    pub fn from_nlas(nlas: &[WgDeviceAttrs]) -> Self {
-        let mut host = Self::default();
-
+#[cfg(target_os = "linux")]
+impl Host {
+    pub fn append_nlas(&mut self, nlas: &[WgDeviceAttrs]) {
         for nla in nlas {
             match nla {
-                WgDeviceAttrs::PrivateKey(value) => host.private_key = Some(Key::new(*value)),
-                WgDeviceAttrs::ListenPort(value) => host.listen_port = *value,
-                WgDeviceAttrs::Fwmark(value) => host.fwmark = Some(*value),
+                WgDeviceAttrs::PrivateKey(value) => self.private_key = Some(Key::new(*value)),
+                WgDeviceAttrs::ListenPort(value) => self.listen_port = *value,
+                WgDeviceAttrs::Fwmark(value) => self.fwmark = Some(*value),
                 WgDeviceAttrs::Peers(nlas) => {
                     for nla in nlas {
                         let peer = Peer::from_nlas(nla);
-                        host.peers.insert(peer.public_key.clone(), peer);
+                        self.peers.insert(peer.public_key.clone(), peer);
                     }
                 }
                 _ => (),
             }
         }
-
-        host
     }
 
-    #[cfg(target_os = "linux")]
     #[must_use]
     pub fn as_nlas(&self, ifname: &str) -> Vec<WgDeviceAttrs> {
         let mut nlas = vec![

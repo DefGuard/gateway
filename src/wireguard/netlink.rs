@@ -87,10 +87,8 @@ where
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
-                "Serialized netlink packet ({} bytes) larger than maximum size {}: {:?}",
+                "Serialized netlink packet ({} bytes) larger than maximum size {SOCKET_BUFFER_LENGTH}: {req:?}",
                 req.buffer_len(),
-                SOCKET_BUFFER_LENGTH,
-                req
             ),
         ));
     }
@@ -117,8 +115,7 @@ where
         let n_received = socket.recv(&mut &mut buf[..], 0)?;
         let mut offset = 0;
         loop {
-            let bytes = &buf[offset..];
-            let response = NetlinkMessage::<I>::deserialize(bytes)
+            let response = NetlinkMessage::<I>::deserialize(&buf[offset..])
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             match response.payload {
                 // We've parsed all parts of the response and can leave the loop.
@@ -127,8 +124,8 @@ where
                 NetlinkPayload::Error(msg) => return Err(msg.into()),
                 _ => {}
             }
-            offset += response.header.length as usize;
-            let header_length = response.header.length;
+            let header_length = response.header.length as usize;
+            offset += header_length;
             responses.push(response);
             if offset == n_received || header_length == 0 {
                 // We've fully parsed the datagram, but there may be further datagrams
@@ -264,32 +261,55 @@ pub fn delete_interface(ifname: &str) -> io::Result<()> {
     }
 }
 
+/*
+   let genlmsg: GenlMessage<Wireguard> =
+       GenlMessage::from_payload(Wireguard {
+           cmd: WireguardCmd::GetDevice,
+           nlas: vec![WgDeviceAttrs::IfName(argv[1].clone())],
+       });
+   let mut nlmsg = NetlinkMessage::from(genlmsg);
+   nlmsg.header.flags = NLM_F_REQUEST | NLM_F_DUMP;
+
+   let mut res = handle.request(nlmsg).await.unwrap();
+
+   while let Some(result) = res.next().await {
+       let rx_packet = result.unwrap();
+       match rx_packet.payload {
+           NetlinkPayload::InnerMessage(genlmsg) => {
+               print_wg_payload(genlmsg.payload);
+           }
+           NetlinkPayload::Error(e) => {
+               eprintln!("Error: {:?}", e.to_io());
+           }
+           _ => (),
+       };
+   }
+*/
+
 pub fn get_host(ifname: &str) -> Result<Host, io::Error> {
     let genlmsg = GenlMessage::from_payload(Wireguard {
         cmd: WireguardCmd::GetDevice,
         nlas: vec![WgDeviceAttrs::IfName(ifname.into())],
     });
-    let responses = netlink_request_genl(genlmsg, NLM_F_REQUEST | NLM_F_DUMP | NLM_F_ACK)?;
+    let responses = netlink_request_genl(genlmsg, NLM_F_REQUEST | NLM_F_DUMP)?;
 
-    if let Some(nlmsg) = responses.into_iter().next() {
+    let mut host = Host::default();
+    for nlmsg in responses {
         if let NetlinkMessage {
-            payload: NetlinkPayload::InnerMessage(message),
+            payload: NetlinkPayload::InnerMessage(ref message),
             ..
         } = nlmsg
         {
-            return Ok(Host::from_nlas(&message.payload.nlas));
+            host.append_nlas(&message.payload.nlas);
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unexpected netlink payload: {nlmsg:?}"),
+            ));
         }
-
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("unexpected netlink payload: {nlmsg:?}"),
-        ));
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        "interface not found",
-    ))
+    Ok(host)
 }
 
 pub fn set_host(ifname: &str, host: &Host) -> io::Result<()> {
