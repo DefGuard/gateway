@@ -122,8 +122,9 @@ where
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             match response.payload {
                 // We've parsed all parts of the response and can leave the loop.
-                NetlinkPayload::Ack(_) | NetlinkPayload::Done => return Ok(responses),
-                NetlinkPayload::Error(e) => return Err(e.into()),
+                NetlinkPayload::Error(msg) if msg.code.is_none() => return Ok(responses),
+                NetlinkPayload::Done(_) => return Ok(responses),
+                NetlinkPayload::Error(msg) => return Err(msg.into()),
                 _ => {}
             }
             offset += response.header.length as usize;
@@ -277,12 +278,12 @@ pub fn get_host(ifname: &str) -> Result<Host, io::Error> {
         } = nlmsg
         {
             return Ok(Host::from_nlas(&message.payload.nlas));
-        } else {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("unexpected netlink payload: {:?}", nlmsg),
-            ));
         }
+
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unexpected netlink payload: {nlmsg:?}"),
+        ));
     }
 
     Err(io::Error::new(

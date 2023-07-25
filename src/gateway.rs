@@ -1,15 +1,17 @@
-use crate::mask;
-use crate::proto::{ConfigurationRequest, Peer};
 #[cfg(target_os = "linux")]
+use crate::wireguard::netlink::delete_interface;
 use crate::{
     config::Config,
     error::GatewayError,
-    proto::{gateway_service_client::GatewayServiceClient, update, Configuration, Update},
-    wireguard::{netlink::delete_interface, setup_interface, wgapi::WGApi},
+    mask,
+    proto::{
+        gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
+        Peer, Update,
+    },
+    wireguard::{setup_interface, wgapi::WGApi},
     VERSION,
 };
 use gethostname::gethostname;
-use lazy_static::lazy_static;
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -22,12 +24,6 @@ use tonic::{
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
-
-lazy_static! {
-    static ref HOSTNAME: String = gethostname()
-        .into_string()
-        .expect("Unable to get current hostname");
-}
 
 // helper struct which stores just the interface config without peers
 #[derive(Clone, PartialEq)]
@@ -281,7 +277,10 @@ impl Gateway {
         let channel = endpoint.connect_lazy();
 
         let token = MetadataValue::try_from(&self.config.token)?;
-        let hostname = MetadataValue::from_static(&HOSTNAME);
+        let hostname = gethostname()
+            .into_string()
+            .expect("Unable to get current hostname");
+        let hostname = MetadataValue::try_from(hostname).unwrap();
         let jwt_auth_interceptor = move |mut req: Request<()>| -> Result<Request<()>, Status> {
             req.metadata_mut().insert("authorization", token.clone());
             req.metadata_mut().insert("hostname", hostname.clone());
@@ -300,8 +299,7 @@ impl Gateway {
     /// * Sends interface statistics to Defguard server periodically
     pub async fn start(&mut self) -> Result<(), GatewayError> {
         info!(
-            "Starting Defguard gateway version {} with configuration: {:?}",
-            VERSION,
+            "Starting Defguard gateway version {VERSION} with configuration: {:?}",
             mask!(self.config, token)
         );
 
@@ -315,28 +313,28 @@ impl Gateway {
                     debug!("Received update: {:?}", update);
                     match update.update {
                         Some(update::Update::Network(configuration)) => {
-                            self.configure(configuration)?
+                            self.configure(configuration)?;
                         }
                         Some(update::Update::Peer(peer_config)) => {
-                            info!("Applying peer configuration: {:?}", peer_config);
+                            info!("Applying peer configuration: {peer_config:?}");
                             match update.update_type {
                                 // UpdateType::Delete
                                 2 => {
-                                    debug!("Deleting peer {:?}", peer_config);
+                                    debug!("Deleting peer {peer_config:?}");
                                     self.peers.remove(&peer_config.pubkey);
                                     wgapi.delete_peer(&peer_config.into())
                                 }
                                 // UpdateType::Create, UpdateType::Modify
                                 _ => {
                                     debug!(
-                                        "Updating peer {:?}, update type: {}",
-                                        peer_config, update.update_type
+                                        "Updating peer {peer_config:?}, update type: {}",
+                                        update.update_type
                                     );
                                     self.peers
                                         .insert(peer_config.pubkey.clone(), peer_config.clone());
                                     wgapi.write_peer(&peer_config.into())
                                 }
-                            }?
+                            }?;
                         }
                         _ => warn!("Unsupported kind of update"),
                     }

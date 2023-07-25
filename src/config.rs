@@ -8,12 +8,12 @@ use toml;
 #[clap(about = "Defguard VPN gateway service")]
 #[command(version)]
 pub struct Config {
+    /// Token received from Defguard after completing the network wizard
     #[arg(
         long,
         short = 't',
         required_unless_present = "config_path",
         env = "DEFGUARD_TOKEN",
-        help = "Token received on Defguard after completing network wizard",
         default_value = ""
     )]
     pub token: String,
@@ -21,58 +21,49 @@ pub struct Config {
     #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
     pub name: Option<String>,
 
+    /// Defguard server gRPC endpoint URL
     #[arg(
         long,
         short = 'g',
         required_unless_present = "config_path",
         env = "DEFGUARD_GRPC_URL",
-        help = "Defguard server gRPC endpoint URL",
         default_value = ""
     )]
     pub grpc_url: String,
 
-    #[arg(
-        long,
-        short = 'u',
-        env = "DEFGUARD_USERSPACE",
-        help = "Use userspace WireGuard implementation e.g. wireguard-go"
-    )]
+    /// Use userspace WireGuard implementation e.g. wireguard-go
+    #[arg(long, short = 'u', env = "DEFGUARD_USERSPACE")]
     pub userspace: bool,
 
     #[arg(long, env = "DEFGUARD_GRPC_CA")]
     pub grpc_ca: Option<String>,
 
-    #[arg(
-        long,
-        short = 'p',
-        env = "DEFGUARD_STATS_PERIOD",
-        default_value = "60",
-        help = "Defines how often (seconds) should interface statistics be sent to Defguard server"
-    )]
+    /// Defines how often (in seconds) interface statistics are sent to Defguard server
+    #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "60")]
     pub stats_period: u64,
 
-    #[arg(
-        long,
-        short = 'i',
-        env = "DEFGUARD_IFNAME",
-        default_value = "wg0",
-        help = "Interface name (e.g. wg0)"
-    )]
+    /// Network interface name (e.g. wg0)
+    #[arg(long, short = 'i', env = "DEFGUARD_IFNAME", default_value = "wg0")]
     pub ifname: String,
 
-    #[arg(long, help = "Write pid to this file")]
+    /// Write process ID (PID) to this file
+    #[arg(long)]
     pub pidfile: Option<String>,
 
-    #[arg(long, short = 's', help = "Log to syslog")]
+    /// Log to syslog
+    #[arg(long, short = 's')]
     pub use_syslog: bool,
 
-    #[arg(long, default_value = "LOG_USER", help = "Log to syslog")]
+    /// Syslog facility
+    #[arg(long, default_value = "LOG_USER")]
     pub syslog_facility: String,
 
-    #[arg(long, default_value = "/var/run/log", help = "Log to syslog")]
+    /// Syslog socket path
+    #[arg(long, default_value = "/var/run/log")]
     pub syslog_socket: String,
 
-    #[arg(long = "config", short, help = "Config file")]
+    /// Configuration file path
+    #[arg(long = "config", short)]
     #[serde(skip)]
     config_path: Option<std::path::PathBuf>,
 }
@@ -80,17 +71,17 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            token: "TOKEN".to_string(),
+            token: "TOKEN".into(),
             name: None,
-            grpc_url: "http://localhost:50051".to_string(),
+            grpc_url: "http://localhost:50051".into(),
             userspace: false,
             grpc_ca: None,
             stats_period: 15,
-            ifname: "wg0".to_string(),
+            ifname: "wg0".into(),
             pidfile: None,
             use_syslog: false,
             syslog_facility: String::new(),
-            syslog_socket: "".to_string(),
+            syslog_socket: String::new(),
             config_path: None,
         }
     }

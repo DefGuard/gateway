@@ -1,7 +1,11 @@
+use std::str::FromStr;
+
+use base64::encode;
+use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
+
 #[cfg(target_os = "linux")]
 use defguard_gateway::wireguard::netlink::{address_interface, create_interface};
 use defguard_gateway::wireguard::{wgapi::WGApi, Host, IpAddrMask, Key, Peer};
-use std::str::FromStr;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,13 +25,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let host = api.read_host()?;
     println!("{host:#?}");
 
-    let mut host = Host::new(
-        12345,
-        "EF/BvkM0TVmpggGhMJ/QHXZARCZSnKchozvf8AOIjlM="
-            .try_into()
-            .unwrap(),
-    );
-    let peer_key: Key = "Chtg9UAkTUOlH7Z6mT//c43kRTjejo7IlX1PCA9AaEs="
+    // host
+    let secret = StaticSecret::random();
+    let mut host = Host::new(12345, encode(secret.to_bytes()).try_into().unwrap());
+
+    let secret = EphemeralSecret::random();
+    let peer_key: Key = encode(PublicKey::from(&secret).to_bytes())
         .try_into()
         .unwrap();
     let mut peer = Peer::new(peer_key.clone());
@@ -37,14 +40,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     api.write_host(&host)?;
 
-    let peer = Peer::new(
-        "hTZX/2a0CVyoqhP60eiXYRTXuDbWXCrrhAvd/8ublE0="
-            .try_into()
-            .unwrap(),
-    );
-    api.write_peer(&peer)?;
-
-    api.delete_peer(&peer)?;
+    // peer
+    for _ in 0..32 {
+        let secret = EphemeralSecret::random();
+        let peer = Peer::new(encode(PublicKey::from(&secret)).try_into().unwrap());
+        api.write_peer(&peer)?;
+        // api.delete_peer(&peer)?;
+    }
 
     Ok(())
 }

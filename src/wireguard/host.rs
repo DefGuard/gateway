@@ -83,6 +83,7 @@ impl Peer {
     }
 
     #[cfg(target_os = "linux")]
+    #[must_use]
     pub fn from_nlas(nlas: &[WgPeerAttrs]) -> Self {
         let mut peer = Self::default();
 
@@ -92,7 +93,7 @@ impl Peer {
                 WgPeerAttrs::PresharedKey(value) => peer.preshared_key = Some(Key::new(*value)),
                 WgPeerAttrs::Endpoint(value) => peer.endpoint = Some(*value),
                 WgPeerAttrs::PersistentKeepalive(value) => {
-                    peer.persistent_keepalive_interval = Some(*value)
+                    peer.persistent_keepalive_interval = Some(*value);
                 }
                 WgPeerAttrs::LastHandshake(value) => peer.last_handshake = Some(*value),
                 WgPeerAttrs::RxBytes(value) => peer.rx_bytes = *value,
@@ -120,6 +121,7 @@ impl Peer {
     }
 
     #[cfg(target_os = "linux")]
+    #[must_use]
     pub fn as_nlas(&self, ifname: &str) -> Vec<WgDeviceAttrs> {
         vec![
             WgDeviceAttrs::IfName(ifname.into()),
@@ -128,6 +130,7 @@ impl Peer {
     }
 
     #[cfg(target_os = "linux")]
+    #[must_use]
     pub fn as_nlas_remove(&self, ifname: &str) -> Vec<WgDeviceAttrs> {
         vec![
             WgDeviceAttrs::IfName(ifname.into()),
@@ -139,6 +142,7 @@ impl Peer {
     }
 
     #[cfg(target_os = "linux")]
+    #[must_use]
     pub fn as_nlas_peer(&self) -> WgPeer {
         let mut attrs = vec![WgPeerAttrs::PublicKey(self.public_key.as_array())];
         if let Some(keepalive) = self.persistent_keepalive_interval {
@@ -148,7 +152,7 @@ impl Peer {
         let allowed_ips = self
             .allowed_ips
             .iter()
-            .map(|ipaddr| ipaddr.to_nlas_allowed_ip())
+            .map(IpAddrMask::to_nlas_allowed_ip)
             .collect();
         attrs.push(WgPeerAttrs::AllowedIps(allowed_ips));
 
@@ -172,11 +176,7 @@ impl From<&Peer> for proto::Peer {
     fn from(peer: &Peer) -> Self {
         Self {
             pubkey: peer.public_key.to_string(),
-            allowed_ips: peer
-                .allowed_ips
-                .iter()
-                .map(|ipmask| ipmask.to_string())
-                .collect(),
+            allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
         }
     }
 }
@@ -219,6 +219,7 @@ impl Host {
         }
     }
 
+    #[must_use]
     pub fn as_uapi(&self) -> String {
         let mut output = format!("listen_port={}\n", self.listen_port);
         if let Some(key) = &self.private_key {
@@ -240,6 +241,7 @@ impl Host {
     }
 
     // TODO: use custom Error
+    #[must_use]
     pub fn parse_uapi(buf: impl Read) -> io::Result<Self> {
         let reader = BufReader::new(buf);
         let mut host = Self::default();
@@ -338,6 +340,7 @@ impl Host {
     }
 
     #[cfg(target_os = "linux")]
+    #[must_use]
     pub fn from_nlas(nlas: &[WgDeviceAttrs]) -> Self {
         let mut host = Self::default();
 
@@ -360,6 +363,7 @@ impl Host {
     }
 
     #[cfg(target_os = "linux")]
+    #[must_use]
     pub fn as_nlas(&self, ifname: &str) -> Vec<WgDeviceAttrs> {
         let mut nlas = vec![
             WgDeviceAttrs::IfName(ifname.into()),
@@ -372,11 +376,7 @@ impl Host {
             nlas.push(WgDeviceAttrs::Fwmark(*fwmark));
         }
         nlas.push(WgDeviceAttrs::Flags(WGDEVICE_F_REPLACE_PEERS));
-        let peers = self
-            .peers
-            .values()
-            .map(|peer| peer.as_nlas_peer())
-            .collect();
+        let peers = self.peers.values().map(Peer::as_nlas_peer).collect();
         nlas.push(WgDeviceAttrs::Peers(peers));
         nlas
     }
