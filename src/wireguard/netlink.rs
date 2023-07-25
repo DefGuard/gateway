@@ -261,31 +261,6 @@ pub fn delete_interface(ifname: &str) -> io::Result<()> {
     }
 }
 
-/*
-   let genlmsg: GenlMessage<Wireguard> =
-       GenlMessage::from_payload(Wireguard {
-           cmd: WireguardCmd::GetDevice,
-           nlas: vec![WgDeviceAttrs::IfName(argv[1].clone())],
-       });
-   let mut nlmsg = NetlinkMessage::from(genlmsg);
-   nlmsg.header.flags = NLM_F_REQUEST | NLM_F_DUMP;
-
-   let mut res = handle.request(nlmsg).await.unwrap();
-
-   while let Some(result) = res.next().await {
-       let rx_packet = result.unwrap();
-       match rx_packet.payload {
-           NetlinkPayload::InnerMessage(genlmsg) => {
-               print_wg_payload(genlmsg.payload);
-           }
-           NetlinkPayload::Error(e) => {
-               eprintln!("Error: {:?}", e.to_io());
-           }
-           _ => (),
-       };
-   }
-*/
-
 pub fn get_host(ifname: &str) -> Result<Host, io::Error> {
     let genlmsg = GenlMessage::from_payload(Wireguard {
         cmd: WireguardCmd::GetDevice,
