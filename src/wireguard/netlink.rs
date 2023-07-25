@@ -87,10 +87,8 @@ where
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
-                "Serialized netlink packet ({} bytes) larger than maximum size {}: {:?}",
+                "Serialized netlink packet ({} bytes) larger than maximum size {SOCKET_BUFFER_LENGTH}: {req:?}",
                 req.buffer_len(),
-                SOCKET_BUFFER_LENGTH,
-                req
             ),
         ));
     }
@@ -117,17 +115,17 @@ where
         let n_received = socket.recv(&mut &mut buf[..], 0)?;
         let mut offset = 0;
         loop {
-            let bytes = &buf[offset..];
-            let response = NetlinkMessage::<I>::deserialize(bytes)
+            let response = NetlinkMessage::<I>::deserialize(&buf[offset..])
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             match response.payload {
                 // We've parsed all parts of the response and can leave the loop.
-                NetlinkPayload::Ack(_) | NetlinkPayload::Done => return Ok(responses),
-                NetlinkPayload::Error(e) => return Err(e.into()),
+                NetlinkPayload::Error(msg) if msg.code.is_none() => return Ok(responses),
+                NetlinkPayload::Done(_) => return Ok(responses),
+                NetlinkPayload::Error(msg) => return Err(msg.into()),
                 _ => {}
             }
-            offset += response.header.length as usize;
-            let header_length = response.header.length;
+            let header_length = response.header.length as usize;
+            offset += header_length;
             responses.push(response);
             if offset == n_received || header_length == 0 {
                 // We've fully parsed the datagram, but there may be further datagrams
@@ -268,27 +266,25 @@ pub fn get_host(ifname: &str) -> Result<Host, io::Error> {
         cmd: WireguardCmd::GetDevice,
         nlas: vec![WgDeviceAttrs::IfName(ifname.into())],
     });
-    let responses = netlink_request_genl(genlmsg, NLM_F_REQUEST | NLM_F_DUMP | NLM_F_ACK)?;
+    let responses = netlink_request_genl(genlmsg, NLM_F_REQUEST | NLM_F_DUMP)?;
 
-    if let Some(nlmsg) = responses.into_iter().next() {
+    let mut host = Host::default();
+    for nlmsg in responses {
         if let NetlinkMessage {
-            payload: NetlinkPayload::InnerMessage(message),
+            payload: NetlinkPayload::InnerMessage(ref message),
             ..
         } = nlmsg
         {
-            return Ok(Host::from_nlas(&message.payload.nlas));
+            host.append_nlas(&message.payload.nlas);
         } else {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("unexpected netlink payload: {:?}", nlmsg),
+                format!("unexpected netlink payload: {nlmsg:?}"),
             ));
         }
     }
 
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        "interface not found",
-    ))
+    Ok(host)
 }
 
 pub fn set_host(ifname: &str, host: &Host) -> io::Result<()> {

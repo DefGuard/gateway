@@ -12,7 +12,9 @@ pub mod proto {
 #[macro_use]
 extern crate log;
 
-use crate::{config::Config, error::GatewayError};
+use config::Config;
+use error::GatewayError;
+
 use std::str::FromStr;
 use syslog::{BasicLogger, Facility, Formatter3164};
 

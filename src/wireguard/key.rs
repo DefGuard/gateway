@@ -34,10 +34,12 @@ impl Key {
         Self(buf)
     }
 
+    #[must_use]
     pub fn as_array(&self) -> [u8; KEY_LENGTH] {
         self.0
     }
 
+    #[must_use]
     pub fn to_lower_hex(&self) -> String {
         let mut hex = String::with_capacity(64);
         let to_char = |nibble: u8| -> char {
@@ -83,6 +85,20 @@ impl TryFrom<&str> for Key {
     type Error = DecodeError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let v = decode(value)?;
+        if v.len() == KEY_LENGTH {
+            let buf = v.try_into().map_err(|_| Self::Error::InvalidLength)?;
+            Ok(Self::new(buf))
+        } else {
+            Err(Self::Error::InvalidLength)
+        }
+    }
+}
+
+impl TryFrom<String> for Key {
+    type Error = DecodeError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
         let v = decode(value)?;
         if v.len() == KEY_LENGTH {
             let buf = v.try_into().map_err(|_| Self::Error::InvalidLength)?;
