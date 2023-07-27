@@ -20,8 +20,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: cargo build
-        uses: houseabsolute/actions-rust-cross@v0
+        uses: actions-rs/cargo@v1
         with:
+          use-cross: true
           command: build
           args: --release --locked 
           target: x86_64-unknown-freebsd
