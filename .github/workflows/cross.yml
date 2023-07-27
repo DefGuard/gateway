@@ -8,30 +8,26 @@ on:
 jobs:
   build:
     runs-on: self-hosted
-
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-freebsd
+            compress: false
+            cargo_flags: ""
     steps:
-      - uses: actions/checkout@v3
-#        with:
-#          submodules: recursive
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y dosfstools rsync
-#      - name: Setup VM shared dir
-#        run: |
-#          mkdir -p /home/runner/work
-#          mkdir -p /home/runner/work/gateway/gateway
-#          mkdir -p /runner/_work/gateway/gateway
-      - name: Test
-        uses: cross-platform-actions/action@v0.15.0
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - run: sudo apt install musl-tools
+
+      - name: cargo build
+        uses: houseabsolute/actions-rust-cross@v0
         with:
-          operating_system: freebsd
-          version: '13.2'
-#          shell: bash
-          run: |
-            uname -a
-            echo $SHELL
-            pwd
-            ls -lah
-            whoami
-            env | sort
+          command: build
+          args: --release --locked 
+          target: x86_64-unknown-freebsd
