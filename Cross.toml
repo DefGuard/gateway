@@ -5,4 +5,4 @@ image = "ghcr.io/defguard/cross:x86_64-unknown-linux-gnu"
 image = "ghcr.io/defguard/cross:armv7-unknown-linux-gnueabihf"
 
 [target.x86_64-unknown-freebsd]
-pre-build = ["apt-get update && apt-get install protobuf-compiler"]
+pre-build = ["pkg install -y protobuf"]
