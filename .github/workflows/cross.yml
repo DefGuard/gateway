@@ -22,7 +22,7 @@ jobs:
       - name: install Deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools curl
+          sudo apt-get install -y musl-tools curl protobuf-compiler
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
