@@ -24,8 +24,6 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - run: sudo apt install musl-tools
-
       - name: cargo build
         uses: houseabsolute/actions-rust-cross@v0
         with:
