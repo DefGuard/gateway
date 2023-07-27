@@ -5,4 +5,5 @@ image = "ghcr.io/defguard/cross:x86_64-unknown-linux-gnu"
 image = "ghcr.io/defguard/cross:armv7-unknown-linux-gnueabihf"
 
 [target.x86_64-unknown-freebsd]
+image = "x86_64-unknown-freebsd-cross-v3:latest"
 pre-build = ["pkg install rust curl protobuf"]
