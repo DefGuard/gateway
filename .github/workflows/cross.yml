@@ -8,21 +8,13 @@ on:
 jobs:
   build:
     runs-on: self-hosted
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-freebsd
-            compress: false
-            cargo_flags: ""
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
       - name: install Deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools curl protobuf-compiler
+          sudo apt-get install -y musl-tools 
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
