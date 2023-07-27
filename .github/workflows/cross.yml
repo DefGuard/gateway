@@ -24,5 +24,4 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --release --locked 
-          target: x86_64-unknown-freebsd
+          args: --release --locked --target x86_64-unknown-freebsd
