@@ -68,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build: [linux, linux-arm]
+        build: [linux, linux-arm, freebsd]
         include:
           - build: linux
             os: self-hosted
@@ -78,6 +78,10 @@ jobs:
             os: self-hosted
             asset_name: defguard-gateway-linux-armv7
             target: armv7-unknown-linux-gnueabihf
+          - build: freebsd
+            os: self-hosted
+            asset_name: defguard-gateway-freebsd-x86_64
+            target: x86_64-unknown-freebsd
     steps:
       # Store the version, stripping any v-prefix
       - name: Write release version
@@ -172,14 +176,14 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Build freebsd package
-        if: matrix.build == 'linux'
+        if: matrix.build == 'freebsd'
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug -t freebsd --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.txz"
 
       - name: Upload freebsd
-        if: matrix.build == 'linux'
+        if: matrix.build == 'freebsd'
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
