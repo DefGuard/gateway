@@ -7,6 +7,8 @@
 // wg set wg0 peer 3GKEctPDnTg/h1/9e4Q72iN4N6mcpd+4jG+OpJFrpxE=
 use std::{
     alloc::{alloc, dealloc, Layout},
+    error::Error,
+    fmt,
     os::fd::RawFd,
     ptr::null_mut,
     slice::from_raw_parts,
@@ -15,6 +17,21 @@ use std::{
 use nix::{errno, ioctl_readwrite, sys::socket};
 
 use defguard_gateway::nvlist::NvList;
+
+#[derive(Debug)]
+pub enum WgIoError {
+    MemAlloc,
+}
+
+impl Error for WgIoError {}
+
+impl fmt::Display for WgIoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MemAlloc => write!(f, "memory allocation"),
+        }
+    }
+}
 
 /// Create socket for ioctl communication.
 fn get_dgram_socket() -> Result<RawFd, errno::Errno> {
@@ -42,7 +59,7 @@ pub struct WgDataIo {
 }
 
 impl WgDataIo {
-    /// Create empty `WgDataIo`
+    /// Create `WgDataIo` without data buffer.
     #[must_use]
     pub fn new(if_name: &str) -> Self {
         let mut wgd_name = [0u8; 16];
@@ -58,12 +75,17 @@ impl WgDataIo {
         }
     }
 
-    pub fn alloc_data(&mut self) {
-        // TODO: if self.wgd_size != 0 {}
-        let layout = Layout::array::<u8>(self.wgd_size).expect("Bad layout");
-        unsafe {
-            self.wgd_data = alloc(layout);
+    /// Allocate data buffer.
+    pub fn alloc_data(&mut self) -> Result<(), WgIoError> {
+        if self.wgd_data.is_null() {
+            if let Ok(layout) = Layout::array::<u8>(self.wgd_size) {
+                unsafe {
+                    self.wgd_data = alloc(layout);
+                }
+                return Ok(());
+            }
         }
+        Err(WgIoError::MemAlloc)
     }
 
     pub fn as_buf<'a>(&self) -> &'a [u8] {
@@ -92,7 +114,7 @@ fn kernel_get_device() {
         println!("{x:?}");
         println!("{}", wg_data.wgd_size);
 
-        wg_data.alloc_data();
+        wg_data.alloc_data().unwrap();
 
         // Second call to ioctl with allocated buffer.
         let x = read_wireguard_data(s, &mut wg_data);
@@ -105,7 +127,6 @@ fn kernel_get_device() {
 }
 
 /*
-#include <sys/nv.h>
 #include <dev/if_wg/if_wg.h>
 
 static int kernel_get_wireguard_interfaces(struct string_list *list)
@@ -438,59 +459,8 @@ err:
     nvlist_destroy(nvl_device);
     return ret;
 }
-
-#define	NV_NAME_MAX	2048
-
-#define	NV_TYPE_NONE			0
-#define	NV_TYPE_NULL			1
-#define	NV_TYPE_BOOL			2
-#define	NV_TYPE_NUMBER			3
-#define	NV_TYPE_STRING			4
-#define	NV_TYPE_NVLIST			5
-#define	NV_TYPE_DESCRIPTOR		6
-#define	NV_TYPE_BINARY			7
-#define	NV_TYPE_BOOL_ARRAY		8
-#define	NV_TYPE_NUMBER_ARRAY		9
-#define	NV_TYPE_STRING_ARRAY		10
-// only in kernel
-#define	NV_TYPE_NVLIST_ARRAY		11
-#define	NV_TYPE_DESCRIPTOR_ARRAY	12
-
-#define	NVLIST_HEADER_MAGIC	0x6c // 'l'
-#define	NVLIST_HEADER_VERSION	0x00
-struct nvlist_header {
-    uint8_t		nvlh_magic;
-    uint8_t		nvlh_version;
-    uint8_t		nvlh_flags;
-    uint64_t	nvlh_descriptors;
-    uint64_t	nvlh_size;
-} __packed;
-struct nvpair_header {
-    uint8_t		nvph_type;
-    uint16_t	nvph_namesize;
-    uint64_t	nvph_datasize;
-    uint64_t	nvph_nitems;
-} __packed;
 */
 
 fn main() {
     kernel_get_device();
-
-    // let data = [
-    //     // *** nvlist_header (19 bytes)
-    //     108, // nvlh_magic
-    //     0, // nvlh_version
-    //     0, // nvlh_flags
-    //     0, 0, 0, 0, 0, 0, 0, 0, // nvlh_descriptors
-    //     39, 0, 0, 0, 0, 0, 0, 0, // nvlh_size
-    //     // *** data (nvlh_size bytes)
-    //     // *** nvpair_header (19 bytes)
-    //     3, // nvph_type = NV_TYPE_NUMBER
-    //     12, 0, // nvph_namesize
-    //     8, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
-    //     0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-    //     108, 105, 115, 116, 101, 110, 45, 112, 111, 114, 116, 0, // "listen-port\0"
-    //     57, 48, 0, 0, 0, 0, 0, 0, // 18519
-    // ];
-    // println!("len {}", data.len());
 }

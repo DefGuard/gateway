@@ -4,7 +4,7 @@ use std::{collections::HashMap, error::Error, ffi::CStr, fmt};
 
 /// `NV_HEADER_SIZE` is for both: `nvlist_header` and `nvpair_header`.
 const NV_HEADER_SIZE: usize = 19;
-const NV_NAME_MAX: u16 = 2048;
+const NV_NAME_MAX: usize = 2048;
 const NVLIST_HEADER_MAGIC: u8 = 0x6c; // 'l'
 const NVLIST_HEADER_VERSION: u8 = 0;
 // Public flags
@@ -17,7 +17,7 @@ const NV_FLAG_BIG_ENDIAN: u8 = 0x80;
 // const NV_FLAG_IN_ARRAY: u8 = 0x100;
 
 #[repr(u8)]
-enum NvType {
+pub enum NvType {
     None,
     Null,
     Bool,
@@ -74,8 +74,58 @@ pub enum NvValue<'a> {
     NvList(NvList<'a>),
     Descriptor, // not implemented
     Binary(&'a [u8]),
+    BoolArray(Vec<bool>),
+    NumberArray(Vec<u64>),
+    StringArray(Vec<&'a str>),
     NvListArray(Vec<NvList<'a>>),
-    // TODO: cover other variants
+    DescriptorArray, // not implemented
+}
+
+impl<'a> NvValue<'a> {
+    #[must_use]
+    pub fn data_size(&self) -> usize {
+        match self {
+            Self::Null | Self::Descriptor | Self::DescriptorArray => 0,
+            Self::Bool(_) => 1,
+            Self::Number(_) => 8,
+            Self::String(s) => s.len() + 1, // +1 for NUL
+            Self::NvList(list) => list.data_size(),
+            Self::Binary(b) => b.len(),
+            Self::BoolArray(v) => v.len(),
+            Self::NumberArray(v) => v.len() * 4,
+            Self::StringArray(v) => v.iter().fold(0, |size, el| size + el.len() + 1),
+            Self::NvListArray(v) => v.iter().fold(0, |size, el| size + el.data_size()),
+        }
+    }
+
+    #[must_use]
+    pub fn nv_type(&self) -> NvType {
+        match self {
+            Self::Null => NvType::Null,
+            Self::Bool(_) => NvType::Bool,
+            Self::Number(_) => NvType::Number,
+            Self::String(_) => NvType::String,
+            Self::NvList(_) => NvType::NvList,
+            Self::Descriptor => NvType::Descriptor,
+            Self::Binary(_) => NvType::Binary,
+            Self::BoolArray(_) => NvType::BoolArray,
+            Self::NumberArray(_) => NvType::NumberArray,
+            Self::StringArray(_) => NvType::StringArray,
+            Self::NvListArray(_) => NvType::NvListArray,
+            Self::DescriptorArray => NvType::DescriptorArray,
+        }
+    }
+
+    #[must_use]
+    pub fn no_items(&self) -> usize {
+        match self {
+            Self::BoolArray(v) => v.len(),
+            Self::NumberArray(v) => v.len(),
+            Self::StringArray(v) => v.len(),
+            Self::NvListArray(v) => v.len(),
+            _ => 0, // non-array
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -125,7 +175,7 @@ impl<'a> NvList<'a> {
         println!("{:#?}", self.items);
     }
 
-    fn read_u16(&self, buf: &[u8]) -> Result<u16, NvListError> {
+    fn load_u16(&self, buf: &[u8]) -> Result<u16, NvListError> {
         if let Ok(bytes) = <[u8; 2]>::try_from(buf) {
             Ok(if self.is_big_endian {
                 u16::from_be_bytes(bytes)
@@ -137,7 +187,7 @@ impl<'a> NvList<'a> {
         }
     }
 
-    fn read_u64(&self, buf: &[u8]) -> Result<u64, NvListError> {
+    fn load_u64(&self, buf: &[u8]) -> Result<u64, NvListError> {
         if let Ok(bytes) = <[u8; 8]>::try_from(buf) {
             Ok(if self.is_big_endian {
                 u64::from_be_bytes(bytes)
@@ -146,6 +196,81 @@ impl<'a> NvList<'a> {
             })
         } else {
             Err(NvListError::NotEnoughBytes)
+        }
+    }
+
+    fn store_u16(&self, value: u16, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(&if self.is_big_endian {
+            value.to_be_bytes()
+        } else {
+            value.to_le_bytes()
+        });
+    }
+
+    fn store_u64(&self, value: u64, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(&if self.is_big_endian {
+            value.to_be_bytes()
+        } else {
+            value.to_le_bytes()
+        });
+    }
+
+    #[must_use]
+    fn data_size(&self) -> usize {
+        let mut size = 0;
+        for (name, value) in &self.items {
+            size += NV_HEADER_SIZE + name.len() + 1; // +1 for NUL
+            size += value.data_size();
+        }
+
+        size
+    }
+
+    /// Pack name-value list to binary representation.
+    pub fn pack(&self, buf: &mut Vec<u8>) {
+        // pack header
+        buf.push(NVLIST_HEADER_MAGIC);
+        buf.push(NVLIST_HEADER_VERSION);
+        buf.push(if self.is_big_endian {
+            NV_FLAG_BIG_ENDIAN
+        } else {
+            0
+        });
+        // descriptors
+        self.store_u64(0, buf);
+        // size
+        let size = self.data_size() as u64;
+        self.store_u64(size, buf);
+
+        for (name, value) in &self.items {
+            buf.push(value.nv_type() as u8);
+            // name length
+            let name_len = name.len() + 1;
+            if name_len > NV_NAME_MAX {
+                // error
+            }
+            self.store_u16(name_len as u16, buf);
+            // data size
+            self.store_u64(value.data_size() as u64, buf);
+            // no. items
+            self.store_u64(value.no_items() as u64, buf);
+            // name
+            buf.extend_from_slice(name.as_bytes());
+            buf.push(0); // NUL
+
+            match value {
+                NvValue::Bool(boolean) => buf.push(u8::from(*boolean)),
+                NvValue::Number(number) => self.store_u64(*number, buf),
+                NvValue::String(string) => {
+                    buf.extend_from_slice(string.as_bytes());
+                    buf.push(0); // NUL
+                }
+                NvValue::Binary(bytes) => buf.extend_from_slice(bytes),
+                NvValue::NvListArray(_la) => {
+                    // remember the size hack!
+                }
+                _ => (),
+            }
         }
     }
 
@@ -164,8 +289,8 @@ impl<'a> NvList<'a> {
         }
         self.is_big_endian = buf[2] & NV_FLAG_BIG_ENDIAN != 0;
 
-        let descriptors = self.read_u64(&buf[3..11])?;
-        let size = self.read_u64(&buf[11..19])? as usize;
+        let descriptors = self.load_u64(&buf[3..11])?;
+        let size = self.load_u64(&buf[11..19])? as usize;
         println!("header {descriptors} {size}");
 
         // check total size
@@ -193,14 +318,14 @@ impl<'a> NvList<'a> {
     /// Return `Err` when buffer contains invalid data.
     fn nvpair_unpack(&mut self, buf: &'a [u8]) -> Result<usize, NvListError> {
         let pair_type = NvType::from(buf[0]);
-        let name_size = self.read_u16(&buf[1..3])?;
+        let name_size = self.load_u16(&buf[1..3])? as usize;
         if name_size > NV_NAME_MAX {
             return Err(NvListError::WrongPair);
         }
-        let size = self.read_u64(&buf[3..11])? as usize;
+        let size = self.load_u64(&buf[3..11])? as usize;
         // Used only for array types.
-        let mut item_count = self.read_u64(&buf[11..NV_HEADER_SIZE])?;
-        let mut index = NV_HEADER_SIZE + name_size as usize;
+        let mut item_count = self.load_u64(&buf[11..NV_HEADER_SIZE])?;
+        let mut index = NV_HEADER_SIZE + name_size;
         let name = CStr::from_bytes_with_nul(&buf[NV_HEADER_SIZE..index])
             .map_err(|_| NvListError::WrongName)?
             .to_str()
@@ -227,7 +352,7 @@ impl<'a> NvList<'a> {
                 if size != 8 {
                     return Err(NvListError::WrongPairData);
                 }
-                let number = self.read_u64(&buf[index..index + size])?;
+                let number = self.load_u64(&buf[index..index + size])?;
                 println!("Number {number}");
                 NvValue::Number(number)
             }
@@ -300,7 +425,7 @@ mod test {
             0,   // nvlh_version
             0,   // nvlh_flags
             0, 0, 0, 0, 0, 0, 0, 0, // nvlh_descriptors
-            39 + 19, 0, 0, 0, 0, 0, 0, 0, // nvlh_size
+            39 + 23, 0, 0, 0, 0, 0, 0, 0, // nvlh_size
             // *** data (nvlh_size bytes)
             // *** nvpair_header (19 bytes)
             3, // nvph_type = NV_TYPE_NUMBER
@@ -308,74 +433,24 @@ mod test {
             8, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
             0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
             108, 105, 115, 116, 101, 110, 45, 112, 111, 114, 116, 0, // "listen-port\0"
-            57, 48, 0, 0, 0, 0, 0, 0, // 18519
+            57, 48, 0, 0, 0, 0, 0, 0, // 12345
 
             1, // nvph_type = NV_TYPE_NULL
             4, 0, // nvph_namesize (incl. NUL)
             0, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
             0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
             'n' as u8, 'u' as u8, 'l' as u8, 0,
-
-            11, // nvph_type = NV_TYPE_NVLIST_ARRAY
-            6, 0, // nvph_namesize (incl. NUL)
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize (ZERO!)
-            1, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-            112, 101, 101, 114, 115, 0, // "peers\0"
-
-            // == item #0 - nvlist
-            108, // nvlh_magic
-            0, // nvlh_version
-            0, // nvlh_flags
-            0, 0, 0, 0, 0, 0, 0, 0, // nvlh_descriptors
-            75, 1, 0, 0, 0, 0, 0, 0, // nvlh_size
-
-            7, // nvph_type = NV_TYPE_BINARY
-            11, 0, // nvph_namesize (incl. NUL)
-            32, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-            112, 117, 98, 108, 105, 99, 45, 107, 101, 121, 0, // "public-key\0"
-            220, 98, 132, 114, 211, 195, 157, 56, 63, 135, 95, 253, 123, 132, 59, 218,
-            35, 120, 55, 169, 156, 165, 223, 184, 140, 111, 142, 164, 145, 107, 167, 17,
-
-            7, // nvph_type = NV_TYPE_BINARY
-            14, 0, // nvph_namesize (incl. NUL)
-            32, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-            112, 114, 101, 115, 104, 97, 114, 101, 100, 45, 107, 101, 121, 0, // "preshared-key\0"
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            
-            7, // nvph_type = NV_TYPE_BINARY
-            20, 0, // nvph_namesize (incl. NUL)
-            16, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-            108, 97, 115, 116, 45, 104, 97, 110, 100, 115, 104, 97, 107, 101, 45, 116, 105, 109, 101, 0, // "last-handshake-time\0"
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            
-            3, // nvph_type = NV_TYPE_NUMBER
-            30, 0, // nvph_namesize (incl. NUL)
-            8, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-            112, 101, 114, 115, 105, 115, 116, 101, 110, 116, 45, 107, 101, 101, 112,
-            97, 108, 105, 118, 101, 45, 105, 110, 116, 101, 114, 118, 97, 108, 0, // "persistent-keepalive-interval\0"
-            0, 0, 0, 0, 0, 0, 0, 0,
-            
-            3, // nvph_type = NV_TYPE_NUMBER
-            9, 0, // nvph_namesize (incl. NUL)
-            8, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-            114, 120, 45, 98, 121, 116, 101, 115, 0, // "rx-bytes\0"
-            0, 0, 0, 0, 0, 0, 0, 0,
-            
-            3, // nvph_type = NV_TYPE_NUMBER
-            9, 0, // nvph_namesize (incl. NUL)
-            8, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-            116, 120, 45, 98, 121, 116, 101, 115, 0, // "tx-bytes\0"
-            0, 0, 0, 0, 0, 0, 0, 0,
         ];
         let mut nvlist = NvList::new();
         nvlist.unpack(&data).unwrap();
+        nvlist.debug();
+
+        let mut buf = Vec::new();
+        nvlist.pack(&mut buf);
+        println!("PACK {buf:?}");
+
+        let mut nvlist = NvList::new();
+        nvlist.unpack(&buf).unwrap();
         nvlist.debug();
     }
 
@@ -391,13 +466,13 @@ mod test {
             3, 12, 0,
             8, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            108, 105, 115, 116, 101, 110, 45, 112, 111, 114, 116, 0,
+            108, 105, 115, 116, 101, 110, 45, 112, 111, 114, 116, 0, // "listen-port\0"
             133, 28, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_BINARY
             7, 11, 0,
             32, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            112, 117, 98, 108, 105, 99, 45, 107, 101, 121, 0,
+            112, 117, 98, 108, 105, 99, 45, 107, 101, 121, 0, // "public-key\0"
             77, 206, 217, 13, 140, 115, 50, 63, 20, 85, 182, 151, 82, 219, 246, 40, 224, 195, 180, 210, 240, 16, 47, 189, 89, 167, 240, 131, 81, 17, 68, 111,
             // NV_TYPE_NUMBER
             7, 12, 0,
@@ -409,7 +484,7 @@ mod test {
             11, 6, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
             2, 0, 0, 0, 0, 0, 0, 0,
-            112, 101, 101, 114, 115, 0,
+            112, 101, 101, 114, 115, 0, // "peers\0"
             // nvlist
             108, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -424,31 +499,31 @@ mod test {
             7, 14, 0,
             32, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            112, 114, 101, 115, 104, 97, 114, 101, 100, 45, 107, 101, 121, 0,
+            112, 114, 101, 115, 104, 97, 114, 101, 100, 45, 107, 101, 121, 0, // "preshared-key\0"
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_BINARY
             7, 20, 0,
             16, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            108, 97, 115, 116, 45, 104, 97, 110, 100, 115, 104, 97, 107, 101, 45, 116, 105, 109, 101, 0,
+            108, 97, 115, 116, 45, 104, 97, 110, 100, 115, 104, 97, 107, 101, 45, 116, 105, 109, 101, 0, // "last-handshake-time\0"
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_NUMBER
             3, 30, 0,
             8, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            112, 101, 114, 115, 105, 115, 116, 101, 110, 116, 45, 107, 101, 101, 112, 97, 108, 105, 118, 101, 45, 105, 110, 116, 101, 114, 118, 97, 108, 0,
+            112, 101, 114, 115, 105, 115, 116, 101, 110, 116, 45, 107, 101, 101, 112, 97, 108, 105, 118, 101, 45, 105, 110, 116, 101, 114, 118, 97, 108, 0, // "persistent-keepalive-interval\0"
             0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_NUMBER
             3, 9, 0,
             8, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            114, 120, 45, 98, 121, 116, 101, 115, 0,
+            114, 120, 45, 98, 121, 116, 101, 115, 0, // "rx-bytes\0"
             0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_NUMBER
             3, 9, 0,
             8, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            116, 120, 45, 98, 121, 116, 101, 115, 0,
+            116, 120, 45, 98, 121, 116, 101, 115, 0, // "tx-bytes\0"
             0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_NVLIST_ARRAY_NEXT
             254, 1, 0,
@@ -475,25 +550,25 @@ mod test {
             7, 20, 0,
             16, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            108, 97, 115, 116, 45, 104, 97, 110, 100, 115, 104, 97, 107, 101, 45, 116, 105, 109, 101, 0,
+            108, 97, 115, 116, 45, 104, 97, 110, 100, 115, 104, 97, 107, 101, 45, 116, 105, 109, 101, 0, // "last-handshake-time\0"
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_NUMBER
             3, 30, 0,
             8, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            112, 101, 114, 115, 105, 115, 116, 101, 110, 116, 45, 107, 101, 101, 112, 97, 108, 105, 118, 101, 45, 105, 110, 116, 101, 114, 118, 97, 108, 0,
+            112, 101, 114, 115, 105, 115, 116, 101, 110, 116, 45, 107, 101, 101, 112, 97, 108, 105, 118, 101, 45, 105, 110, 116, 101, 114, 118, 97, 108, 0, // "persistent-keepalive-interval\0"
             0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_NUMBER
             3, 9, 0,
             8, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            114, 120, 45, 98, 121, 116, 101, 115, 0,
+            114, 120, 45, 98, 121, 116, 101, 115, 0, // "rx-bytes\0"
             0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_NUMBER
             3, 9, 0,
             8, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            116, 120, 45, 98, 121, 116, 101, 115, 0,
+            116, 120, 45, 98, 121, 116, 101, 115, 0, // "tx-bytes\0"
             0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_NVLIST_ARRAY_NEXT
             254, 1, 0,
