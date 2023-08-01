@@ -82,7 +82,7 @@ where
     I: Clone + Debug + Eq + NetlinkSerializable + NetlinkDeserializable,
 {
     debug!(
-        "Sending Netlink request: {:?}, flags: {}, socket: {}",
+        "Sending Netlink request: {message:?}, flags: {message}, socket: {socket}",
         message, flags, socket
     );
     let mut req = NetlinkMessage::from(message);
