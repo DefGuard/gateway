@@ -267,7 +267,7 @@ pub fn delete_interface(ifname: &str) -> io::Result<()> {
 }
 
 pub fn get_host(ifname: &str) -> Result<Host, io::Error> {
-    debug!("Reading Netlink data for interface {}", ifname);
+    debug!("Reading Netlink data for interface {ifname}");
     let genlmsg = GenlMessage::from_payload(Wireguard {
         cmd: WireguardCmd::GetDevice,
         nlas: vec![WgDeviceAttrs::IfName(ifname.into())],
