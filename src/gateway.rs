@@ -158,7 +158,7 @@ impl Gateway {
                                     peer_map.insert(peer.public_key.clone(), peer.clone());
                                     yield (&peer).into();
                                 };
-                                debug!("Stats for peer {:?} have not changed. Skipping...", peer)
+                                debug!("Stats for peer {peer:?} have not changed. Skipping...");
                             }
                     },
                     Err(err) => error!("Failed to retrieve WireGuard interface stats {}", err),
