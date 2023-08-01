@@ -143,7 +143,7 @@ impl Gateway {
                 match api.read_host() {
                     Ok(host) => {
                         let peers = host.peers;
-                        debug!("Found {} peers configured on wireguard interface: {:?}", peers.len(), peers);
+                        debug!("Found {} peers configured on WireGuard interface: {peers:?}", peers.len());
                         for peer in peers
                             .into_values()
                             .filter(|p| p.last_handshake.map_or(
