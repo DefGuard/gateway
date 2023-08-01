@@ -81,6 +81,10 @@ where
     NetlinkPayload<I>: From<I>,
     I: Clone + Debug + Eq + NetlinkSerializable + NetlinkDeserializable,
 {
+    debug!(
+        "Sending Netlink request: {:?}, flags: {}, socket: {}",
+        message, flags, socket
+    );
     let mut req = NetlinkMessage::from(message);
 
     if req.buffer_len() > SOCKET_BUFFER_LENGTH {
@@ -117,6 +121,7 @@ where
         loop {
             let response = NetlinkMessage::<I>::deserialize(&buf[offset..])
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            debug!("Read netlink response from socket: {:?}", response);
             match response.payload {
                 // We've parsed all parts of the response and can leave the loop.
                 NetlinkPayload::Error(msg) if msg.code.is_none() => return Ok(responses),
@@ -262,6 +267,7 @@ pub fn delete_interface(ifname: &str) -> io::Result<()> {
 }
 
 pub fn get_host(ifname: &str) -> Result<Host, io::Error> {
+    debug!("Reading Netlink data for interface {}", ifname);
     let genlmsg = GenlMessage::from_payload(Wireguard {
         cmd: WireguardCmd::GetDevice,
         nlas: vec![WgDeviceAttrs::IfName(ifname.into())],
