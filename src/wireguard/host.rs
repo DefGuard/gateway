@@ -240,7 +240,6 @@ impl Host {
     }
 
     // TODO: use custom Error
-    #[must_use]
     pub fn parse_uapi(buf: impl Read) -> io::Result<Self> {
         let reader = BufReader::new(buf);
         let mut host = Self::default();
