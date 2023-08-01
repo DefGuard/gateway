@@ -81,10 +81,7 @@ where
     NetlinkPayload<I>: From<I>,
     I: Clone + Debug + Eq + NetlinkSerializable + NetlinkDeserializable,
 {
-    debug!(
-        "Sending Netlink request: {message:?}, flags: {message}, socket: {socket}",
-        message, flags, socket
-    );
+    debug!("Sending Netlink request: {message:?}, flags: {flags}, socket: {socket}",);
     let mut req = NetlinkMessage::from(message);
 
     if req.buffer_len() > SOCKET_BUFFER_LENGTH {
@@ -121,7 +118,7 @@ where
         loop {
             let response = NetlinkMessage::<I>::deserialize(&buf[offset..])
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-            debug!("Read netlink response from socket: {:?}", response);
+            debug!("Read netlink response from socket: {response:?}");
             match response.payload {
                 // We've parsed all parts of the response and can leave the loop.
                 NetlinkPayload::Error(msg) if msg.code.is_none() => return Ok(responses),
