@@ -1,0 +1,9 @@
+<acl>
+    <page-system-cron>
+        <name>System: Settings: Cron</name>
+        <patterns>
+            <pattern>ui/cron/*</pattern>
+            <pattern>api/cron/*</pattern>
+        </patterns>
+    </page-system-cron>
+</acl>

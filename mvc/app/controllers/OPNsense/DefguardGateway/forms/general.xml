@@ -1,0 +1,81 @@
+<form>
+      <field>
+        <id>defguardgateway.general.Enabled</id>
+        <label>Enable Defguard Gateway</label>
+        <type>checkbox</type>
+        <help>Enable or disable the Defguard Gateway service.</help>
+      </field>
+    <field>
+	<id>defguardgateway.general.Token</id>
+	<label>Defguard Auth Token</label>
+	<type>text</type>
+	<help>Enter the token from Defguard after you created your network</help>
+    </field>
+    <field>
+	<id>defguardgateway.general.GrpcUrl</id>
+	<label>Grpc Url</label>
+	<type>text</type>
+	<help>Enter the GRPC url of your Defguard instance</help>
+    </field>
+    <field>
+	<id>defguardgateway.general.GrpcCertPath</id>
+	<label>Grpc Cert path</label>
+	<type>text</type>
+	<hint>Optional: path to TLS cert file</hint>
+	<help>Optional: path to TLS cert file</help>
+    </field>
+    <field>
+	<id>defguardgateway.general.Name</id>
+	<label>Gateway Name</label>
+	<type>text</type>
+	<help>Name that will be displayed in defguard</help>
+	<hint>Gateway OPNSense</hint>
+    </field>
+    <field>
+	<id>defguardgateway.general.UseSyslog</id>
+	<label>Use Syslog</label>
+	<type>checkbox</type>
+	<help>Enable syslog usage</help>
+    </field>
+    <field>
+	<id>defguardgateway.general.PidFile</id>
+	<label>PID File</label>
+	<type>text</type>
+	<hint>Set the PID file name</hint>
+	<help>Optional write PID to this file</help>
+    </field>
+    <field>
+	<id>defguardgateway.general.SyslogSocket</id>
+	<label>Syslog Socket</label>
+	<type>text</type>
+	<help>Specify the Syslog socket</help>
+	<hint>Default value: /var/run/log</hint>
+    </field>
+    <field>
+	<id>defguardgateway.general.SyslogFacility</id>
+	<label>SyslogFacility</label>
+	<type>text</type>
+	<hint>Default value: LOG_USER</hint>
+	<help>Specify the Syslog facility</help>
+    </field>
+    <field>
+	<id>defguardgateway.general.IfName</id>
+	<label>IfName</label>
+	<type>text</type>
+	<help>Specify the wireguard interface name</help>
+	<hint>Default value: wg0</hint>
+    </field>
+    <field>
+	<id>defguardgateway.general.StatsPeriod</id>
+	<label>StatsPeriod</label>
+	<type>text</type>
+	<help>Specify the stats period in seconds</help>
+	<hint>Default value: 60</hint>
+    </field>
+    <field>
+	<id>defguardgateway.general.Userspace</id>
+	<label>Use wireguard Userspace kernel implementation</label>
+	<type>checkbox</type>
+	<help>Use userspace wireguard implementation, useful on systems without native wireguard support</help>
+    </field>
+</form>

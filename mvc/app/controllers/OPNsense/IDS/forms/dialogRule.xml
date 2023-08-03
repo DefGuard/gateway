@@ -1,0 +1,30 @@
+<form>
+    <field>
+        <id>sid</id>
+        <label>Signature Id</label>
+        <type>info</type>
+    </field>
+    <field>
+        <id>rev</id>
+        <label>Revision</label>
+        <type>info</type>
+    </field>
+    <field>
+        <id>msg</id>
+        <label>Message</label>
+        <type>info</type>
+    </field>
+    <!-- template field, copied for every metadata record on dialog show -->
+    <field>
+      <id>__template__</id>
+      <label>__template__label__</label>
+      <type>info</type>
+      <style>rule_template</style>
+    </field>
+    <field>
+        <id>action</id>
+        <label>Action</label>
+        <type>dropdown</type>
+        <help>Set action to perform here, only used when in IPS mode.</help>
+    </field>
+</form>

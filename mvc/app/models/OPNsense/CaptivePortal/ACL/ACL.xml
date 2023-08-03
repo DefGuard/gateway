@@ -1,0 +1,9 @@
+<acl>
+    <page-services-captiveportal>
+        <name>Services: Captive Portal</name>
+        <patterns>
+            <pattern>ui/captiveportal/*</pattern>
+            <pattern>api/captiveportal/*</pattern>
+        </patterns>
+    </page-services-captiveportal>
+</acl>

@@ -1,0 +1,11 @@
+<acl>
+    <page-services-zabbixagent>
+        <name>Services: Zabbix Agent</name>
+        <patterns>
+            <pattern>ui/zabbixagent/*</pattern>
+            <pattern>api/zabbixagent/*</pattern>
+            <pattern>ui/diagnostics/log/zabbix/zabbix_agentd/*</pattern>
+            <pattern>api/diagnostics/log/zabbix/zabbix_agentd/*</pattern>
+        </patterns>
+    </page-services-zabbixagent>
+</acl>

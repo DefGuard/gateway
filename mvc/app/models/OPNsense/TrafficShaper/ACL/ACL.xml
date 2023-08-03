@@ -1,0 +1,9 @@
+<acl>
+    <page-firewall-trafficshaper>
+        <name>Firewall: Shaper</name>
+        <patterns>
+            <pattern>ui/trafficshaper/*</pattern>
+            <pattern>api/trafficshaper/*</pattern>
+        </patterns>
+    </page-firewall-trafficshaper>
+</acl>

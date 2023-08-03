@@ -1,0 +1,76 @@
+<form>
+    <field>
+        <id>queue.enabled</id>
+        <label>Enabled</label>
+        <type>checkbox</type>
+        <help>Enable this queue and its related rules</help>
+    </field>
+    <field>
+        <id>queue.pipe</id>
+        <label>Pipe</label>
+        <type>dropdown</type>
+        <help>connected pipe for this queue</help>
+    </field>
+    <field>
+        <id>queue.weight</id>
+        <label>Weight</label>
+        <type>text</type>
+        <help>Weight of this queue (1..100), used to prioritize within a pipe. (1 is low, 100 is high)</help>
+    </field>
+    <field>
+        <id>queue.mask</id>
+        <label>mask</label>
+        <type>dropdown</type>
+        <help><![CDATA[Dynamic queue creation by source or destination address.
+        <li>Choose destination to evenly share every IP in destination field of rules the specified bandwidth. A pipe with 1Mbit e.g. would let 4 clients lend 250Kbit each. Normally this is used for download queues.</li>
+        <li>Choose source to evenly share every IP in the source field of rules the specified bandwidth. Normally this is used for upload queues.</li>
+        <li>Leave this value empty if you want to specify multiple queues with different weights.</li>
+        ]]></help>
+    </field>
+    <field>
+        <id>queue.buckets</id>
+        <label>Buckets</label>
+        <type>text</type>
+        <help>Specifies the size of the hash table used for storing the various dynamic queues configured with the mask setting</help>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>queue.codel_enable</id>
+        <label>Enable CoDel</label>
+        <type>checkbox</type>
+        <help>Enable CoDel active queue management</help>
+    </field>
+    <field>
+        <id>queue.codel_target</id>
+        <label>(FQ-)CoDel target</label>
+        <type>text</type>
+        <advanced>true</advanced>
+        <help>Minimum acceptable persistent queue delay (in ms), leave empty for default</help>
+    </field>
+    <field>
+        <id>queue.codel_interval</id>
+        <label>(FQ-)CoDel interval</label>
+        <type>text</type>
+        <advanced>true</advanced>
+        <help>Interval before dropping packets (in ms), leave empty for default</help>
+    </field>
+    <field>
+        <id>queue.codel_ecn_enable</id>
+        <label>(FQ-)CoDel ECN</label>
+        <type>checkbox</type>
+        <advanced>true</advanced>
+        <help>Explicit Congestion Notification</help>
+    </field>
+        <field>
+        <id>queue.pie_enable</id>
+        <label>Enable PIE</label>
+        <type>checkbox</type>
+        <help>Enable PIE active queue management</help>
+    </field>
+    <field>
+        <id>queue.description</id>
+        <label>Description</label>
+        <type>text</type>
+        <help>Description to identify this queue.</help>
+    </field>
+</form>

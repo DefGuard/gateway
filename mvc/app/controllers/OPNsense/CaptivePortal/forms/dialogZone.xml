@@ -1,0 +1,120 @@
+<form>
+    <field>
+        <id>zone.enabled</id>
+        <label>Enabled</label>
+        <type>checkbox</type>
+        <help>Enable this zone</help>
+    </field>
+    <field>
+        <id>zone.zoneid</id>
+        <label>Zone number</label>
+        <type>info</type>
+        <help>Internal number used for this zone</help>
+    </field>
+    <field>
+        <id>zone.interfaces</id>
+        <label>Interfaces</label>
+        <type>select_multiple</type>
+        <help><![CDATA[Select interface(s) to enable for captive portal.]]></help>
+        <hint>Type or select interface.</hint>
+    </field>
+    <field>
+        <id>zone.authservers</id>
+        <label>Authenticate using</label>
+        <type>select_multiple</type>
+        <help><![CDATA[Select authentication methods to use, leave empty for no authentication needed.]]></help>
+    </field>
+    <field>
+        <id>zone.alwaysSendAccountingReqs</id>
+        <label>Always send accounting requests</label>
+        <type>checkbox</type>
+        <help><![CDATA[This will make the captive portal always send accounting requests, rather than just when there is a need for accounting (e.g. when there is a daily session limit).]]></help>
+    </field>
+    <field>
+        <id>zone.authEnforceGroup</id>
+        <label>Enforce local group</label>
+        <type>dropdown</type>
+        <help><![CDATA[Restrict access to users in the selected (local)group. <br/>
+        <b>NOTE:</b> please be aware that users (or vouchers) which aren't administered locally will be denied when using this option.]]></help>
+    </field>
+    <field>
+        <id>zone.idletimeout</id>
+        <label>Idle timeout (minutes)</label>
+        <type>text</type>
+        <help><![CDATA[Clients will be disconnected after this amount of inactivity. They may log in again immediately, though. Enter 0 to disable idle timeout.]]></help>
+    </field>
+    <field>
+        <id>zone.hardtimeout</id>
+        <label>Hard timeout (minutes)</label>
+        <type>text</type>
+        <help><![CDATA[Clients will be disconnected after this amount of time, regardless of activity. They may log in again immediately, though. Enter 0 to disable hard timeout (not recommended unless an idle timeout is set).]]></help>
+    </field>
+    <field>
+        <id>zone.concurrentlogins</id>
+        <type>checkbox</type>
+        <label>Concurrent user logins</label>
+        <help><![CDATA[If this option is set, users can login on multiple machines at once. If disabled subsequent logins will cause machines previously logged in with the same username to be disconnected.]]></help>
+    </field>
+    <field>
+        <id>zone.certificate</id>
+        <label>SSL certificate</label>
+        <type>dropdown</type>
+        <help><![CDATA[If provided, all traffic will be transmitted over an HTTPS connection to protect against eavesdroppers.]]></help>
+    </field>
+    <field>
+        <id>zone.servername</id>
+        <label>Hostname</label>
+        <type>text</type>
+        <help><![CDATA[Hostname (of this machine) to redirect login page to, leave blank to use this interface IP address, otherwise make sure the client can access DNS to resolve this location. When using a SSL certificate, make sure both this name and the cert name are equal.]]></help>
+    </field>
+    <field>
+        <id>zone.allowedAddresses</id>
+        <label>Allowed addresses</label>
+        <type>select_multiple</type>
+        <style>tokenize</style>
+        <help><![CDATA[Avoid authentication for addresses and subnets in this list]]></help>
+        <allownew>true</allownew>
+    </field>
+    <field>
+        <id>zone.allowedMACAddresses</id>
+        <label>Allowed MAC addresses</label>
+        <type>select_multiple</type>
+        <style>tokenize</style>
+        <help><![CDATA[Avoid authentication for physical addresses in this list]]></help>
+        <allownew>true</allownew>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>zone.transparentHTTPProxy</id>
+        <label>Transparent proxy (HTTP)</label>
+        <type>checkbox</type>
+        <help><![CDATA[Forward HTTP traffic to transparent proxy]]></help>
+        <allownew>true</allownew>
+    </field>
+    <field>
+        <id>zone.transparentHTTPSProxy</id>
+        <label>Transparent proxy (HTTPS)</label>
+        <type>checkbox</type>
+        <help><![CDATA[Forward HTTPS traffic to transparent proxy]]></help>
+        <allownew>true</allownew>
+    </field>
+    <field>
+        <id>zone.extendedPreAuthData</id>
+        <type>checkbox</type>
+        <label>Extended pre auth data</label>
+        <advanced>true</advanced>
+        <help><![CDATA[Offer extended data to the login template before authentication  (mac addresses for upstream use).]]></help>
+    </field>
+    <field>
+        <id>zone.template</id>
+        <label>Custom template</label>
+        <type>dropdown</type>
+        <help>Use custom template package for user login</help>
+    </field>
+    <field>
+        <id>zone.description</id>
+        <label>Description</label>
+        <type>text</type>
+        <help>Description to identify this zone.</help>
+    </field>
+</form>

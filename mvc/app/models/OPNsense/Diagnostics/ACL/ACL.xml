@@ -1,0 +1,62 @@
+<acl>
+    <page-diagnostics-arptable>
+        <name>Diagnostics: ARP Table</name>
+        <patterns>
+            <pattern>ui/diagnostics/interface/arp/*</pattern>
+            <pattern>api/diagnostics/interface/getArp*</pattern>
+        </patterns>
+    </page-diagnostics-arptable>
+    <page-diagnostics-ndptable>
+        <name>Diagnostics: NDP Table</name>
+        <patterns>
+            <pattern>ui/diagnostics/interface/ndp/*</pattern>
+            <pattern>api/diagnostics/interface/getNdp*</pattern>
+        </patterns>
+    </page-diagnostics-ndptable>
+    <page-diagnostics-netstat>
+        <name>Diagnostics: Netstat</name>
+        <patterns>
+            <pattern>ui/diagnostics/interface/netstat/*</pattern>
+            <pattern>api/diagnostics/interface/getInterfaceStatistics*</pattern>
+            <pattern>api/diagnostics/interface/getProtocolStatistics*</pattern>
+            <pattern>api/diagnostics/interface/getSocketStatistics*</pattern>
+        </patterns>
+    </page-diagnostics-netstat>
+    <page-diagnostics-routingtables>
+        <name>Diagnostics: Routing tables</name>
+        <patterns>
+            <pattern>ui/diagnostics/interface/routes/*</pattern>
+            <pattern>api/diagnostics/interface/getRoutes*</pattern>
+        </patterns>
+    </page-diagnostics-routingtables>
+    <page-diagnostics-system-activity>
+        <name>Diagnostics: System Activity</name>
+        <patterns>
+            <pattern>ui/diagnostics/activity/*</pattern>
+            <pattern>api/diagnostics/activity/*</pattern>
+        </patterns>
+    </page-diagnostics-system-activity>
+    <page-diagnostics-health>
+        <name>Diagnostics: System Health</name>
+        <patterns>
+            <pattern>ui/diagnostics/systemhealth/*</pattern>
+            <pattern>api/diagnostics/systemhealth/*</pattern>
+            <pattern>reporting_settings.php</pattern>
+        </patterns>
+    </page-diagnostics-health>
+    <page-diagnostics-networkinsight>
+        <name>Diagnostics: Network Insight</name>
+        <patterns>
+            <pattern>ui/diagnostics/networkinsight/*</pattern>
+            <pattern>api/diagnostics/networkinsight/*</pattern>
+            <pattern>api/diagnostics/dns/reverse_lookup*</pattern>
+        </patterns>
+    </page-diagnostics-networkinsight>
+    <page-diagnostics-netflow>
+        <name>Diagnostics: Netflow configuration</name>
+        <patterns>
+            <pattern>ui/diagnostics/netflow/*</pattern>
+            <pattern>api/diagnostics/netflow/*</pattern>
+        </patterns>
+    </page-diagnostics-netflow>
+</acl>

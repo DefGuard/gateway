@@ -1,0 +1,18 @@
+<form>
+    <field>
+        <id>enabled</id>
+        <label>Enabled</label>
+        <type>checkbox</type>
+        <help>Enable ruleset</help>
+    </field>
+    <field>
+        <id>filename</id>
+        <label>Filename</label>
+        <type>info</type>
+    </field>
+    <field>
+        <id>documentation</id>
+        <label>Source</label>
+        <type>info</type>
+    </field>
+</form>
