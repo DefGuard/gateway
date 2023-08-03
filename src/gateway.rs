@@ -17,7 +17,10 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use tokio::{sync::Mutex, time::sleep};
+use tokio::{
+    sync::Mutex,
+    time::{interval, sleep},
+};
 use tonic::{
     codegen::InterceptedService,
     metadata::MetadataValue,
@@ -138,7 +141,10 @@ impl Gateway {
             // helper map to track if peer data is actually changing
             // and avoid sending duplicate stats
             let mut peer_map = HashMap::new();
+            let mut interval = interval(period);
             loop {
+                // wait till next iteration
+                interval.tick().await;
                 debug!("Sending active peer stats update");
                 match api.read_host() {
                     Ok(host) => {
@@ -164,7 +170,6 @@ impl Gateway {
                     Err(err) => error!("Failed to retrieve WireGuard interface stats {}", err),
                 }
                 debug!("Finished sending active peer stats update");
-                sleep(period).await;
             }
         };
         // Spawn the thread
