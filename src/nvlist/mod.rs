@@ -1,6 +1,6 @@
 // https://github.com/freebsd/freebsd-src/tree/main/sys/contrib/libnv
 // https://github.com/freebsd/freebsd-src/blob/main/sys/sys/nv.h
-use std::{collections::HashMap, error::Error, ffi::CStr, fmt};
+use std::{error::Error, ffi::CStr, fmt};
 
 /// `NV_HEADER_SIZE` is for both: `nvlist_header` and `nvpair_header`.
 const NV_HEADER_SIZE: usize = 19;
@@ -16,6 +16,7 @@ const NVLIST_HEADER_VERSION: u8 = 0;
 const NV_FLAG_BIG_ENDIAN: u8 = 0x80;
 // const NV_FLAG_IN_ARRAY: u8 = 0x100;
 
+#[derive(Debug)]
 #[repr(u8)]
 pub enum NvType {
     None,
@@ -58,13 +59,6 @@ impl From<u8> for NvType {
     }
 }
 
-/// `NvList` is a name-value list.
-#[derive(Debug)]
-pub struct NvList<'a> {
-    items: HashMap<&'a str, NvValue<'a>>,
-    is_big_endian: bool,
-}
-
 #[derive(Debug)]
 pub enum NvValue<'a> {
     Null,
@@ -79,9 +73,33 @@ pub enum NvValue<'a> {
     StringArray(Vec<&'a str>),
     NvListArray(Vec<NvList<'a>>),
     DescriptorArray, // not implemented
+    NvListArrayNext,
+    // NvListAUp,
 }
 
 impl<'a> NvValue<'a> {
+    /// Return number of bytes this value occupies when packed.
+    #[must_use]
+    pub fn byte_size(&self) -> usize {
+        match self {
+            Self::Null | Self::Descriptor | Self::DescriptorArray => 0,
+            Self::Bool(_) => 1,
+            Self::Number(_) => 8,
+            Self::String(s) => s.len() + 1, // +1 for NUL
+            Self::NvList(list) => list.byte_size(),
+            Self::Binary(b) => b.len(),
+            Self::BoolArray(v) => v.len(),
+            Self::NumberArray(v) => v.len() * 4,
+            Self::StringArray(v) => v.iter().fold(0, |size, el| size + el.len() + 1),
+            Self::NvListArray(v) => v
+                .iter()
+                .fold(0, |size, el| size + el.byte_size() + NV_HEADER_SIZE),
+            Self::NvListArrayNext => 0,
+        }
+    }
+
+    /// Return value that should be stored in `nvph_datasize`.
+    /// Note that arrays store 0.
     #[must_use]
     pub fn data_size(&self) -> usize {
         match self {
@@ -89,12 +107,13 @@ impl<'a> NvValue<'a> {
             Self::Bool(_) => 1,
             Self::Number(_) => 8,
             Self::String(s) => s.len() + 1, // +1 for NUL
-            Self::NvList(list) => list.data_size(),
+            Self::NvList(_) => 0,           // FIXME: not sure about this
             Self::Binary(b) => b.len(),
-            Self::BoolArray(v) => v.len(),
-            Self::NumberArray(v) => v.len() * 4,
-            Self::StringArray(v) => v.iter().fold(0, |size, el| size + el.len() + 1),
-            Self::NvListArray(v) => v.iter().fold(0, |size, el| size + el.data_size()),
+            Self::BoolArray(_)
+            | Self::NumberArray(_)
+            | Self::StringArray(_)
+            | Self::NvListArray(_) => 0,
+            Self::NvListArrayNext => 0,
         }
     }
 
@@ -113,6 +132,7 @@ impl<'a> NvValue<'a> {
             Self::StringArray(_) => NvType::StringArray,
             Self::NvListArray(_) => NvType::NvListArray,
             Self::DescriptorArray => NvType::DescriptorArray,
+            Self::NvListArrayNext => NvType::NvListArrayNext,
         }
     }
 
@@ -130,7 +150,6 @@ impl<'a> NvValue<'a> {
 
 #[derive(Debug)]
 pub enum NvListError {
-    ArrayNextHack(usize),
     NotEnoughBytes,
     WrongHeader,
     WrongName,
@@ -143,7 +162,6 @@ impl Error for NvListError {}
 impl fmt::Display for NvListError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ArrayNextHack(_) => write!(f, "end of array"),
             Self::NotEnoughBytes => write!(f, "not enough bytes"),
             Self::WrongHeader => write!(f, "wrong header"),
             Self::WrongName => write!(f, "wrong name"),
@@ -153,6 +171,14 @@ impl fmt::Display for NvListError {
     }
 }
 
+/// `NvList` is a name-value list.
+type NameValue<'a> = (&'a str, NvValue<'a>);
+#[derive(Debug)]
+pub struct NvList<'a> {
+    items: Vec<NameValue<'a>>,
+    is_big_endian: bool,
+}
+
 impl<'a> Default for NvList<'a> {
     fn default() -> Self {
         Self::new()
@@ -160,10 +186,11 @@ impl<'a> Default for NvList<'a> {
 }
 
 impl<'a> NvList<'a> {
+    /// Create new `NvList`.
     #[must_use]
     pub fn new() -> Self {
         Self {
-            items: HashMap::new(),
+            items: Vec::new(),
             #[cfg(target_endian = "big")]
             is_big_endian: true,
             #[cfg(target_endian = "little")]
@@ -172,7 +199,12 @@ impl<'a> NvList<'a> {
     }
 
     pub fn debug(&self) {
-        println!("{:#?}", self.items);
+        println!("{:?}", self.items);
+    }
+
+    /// Get value for a given `name`.
+    pub fn get(&self, name: &str) -> Option<&NvValue> {
+        self.items.iter().find(|(n, _)| n == &name).map(|(_, v)| v)
     }
 
     fn load_u16(&self, buf: &[u8]) -> Result<u16, NvListError> {
@@ -215,12 +247,13 @@ impl<'a> NvList<'a> {
         });
     }
 
+    /// Return number of bytes this list occupies when packed.
     #[must_use]
-    fn data_size(&self) -> usize {
+    fn byte_size(&self) -> usize {
         let mut size = 0;
         for (name, value) in &self.items {
             size += NV_HEADER_SIZE + name.len() + 1; // +1 for NUL
-            size += value.data_size();
+            size += value.byte_size();
         }
 
         size
@@ -238,9 +271,7 @@ impl<'a> NvList<'a> {
         });
         // descriptors
         self.store_u64(0, buf);
-        // size
-        let size = self.data_size() as u64;
-        self.store_u64(size, buf);
+        self.store_u64(self.byte_size() as u64, buf);
 
         for (name, value) in &self.items {
             buf.push(value.nv_type() as u8);
@@ -266,8 +297,10 @@ impl<'a> NvList<'a> {
                     buf.push(0); // NUL
                 }
                 NvValue::Binary(bytes) => buf.extend_from_slice(bytes),
-                NvValue::NvListArray(_la) => {
-                    // remember the size hack!
+                NvValue::NvListArray(nvlist_array) => {
+                    for nvlist in nvlist_array {
+                        nvlist.pack(buf);
+                    }
                 }
                 _ => (),
             }
@@ -301,9 +334,11 @@ impl<'a> NvList<'a> {
         let mut index = NV_HEADER_SIZE;
         while index < size {
             match self.nvpair_unpack(&buf[index..]) {
-                Ok(count) => index += count,
-                Err(NvListError::ArrayNextHack(count)) => {
-                    return Ok(index + count);
+                Ok((count, last_element)) => {
+                    index += count;
+                    if last_element {
+                        break;
+                    }
                 }
                 Err(err) => return Err(err),
             }
@@ -312,11 +347,12 @@ impl<'a> NvList<'a> {
         Ok(index)
     }
 
-    /// Unpack binary name-value pair and return number of consumed bytes.
+    /// Unpack binary name-value pair and return number of consumed bytes and
+    /// a flag indicating if array processing should be stopped (`true`), or not (`false`).
     ///
     /// # Errors
     /// Return `Err` when buffer contains invalid data.
-    fn nvpair_unpack(&mut self, buf: &'a [u8]) -> Result<usize, NvListError> {
+    fn nvpair_unpack(&mut self, buf: &'a [u8]) -> Result<(usize, bool), NvListError> {
         let pair_type = NvType::from(buf[0]);
         let name_size = self.load_u16(&buf[1..3])? as usize;
         if name_size > NV_NAME_MAX {
@@ -326,18 +362,19 @@ impl<'a> NvList<'a> {
         // Used only for array types.
         let mut item_count = self.load_u64(&buf[11..NV_HEADER_SIZE])?;
         let mut index = NV_HEADER_SIZE + name_size;
+        println!("pair: name_size={name_size} size={size} item_count={item_count}");
         let name = CStr::from_bytes_with_nul(&buf[NV_HEADER_SIZE..index])
             .map_err(|_| NvListError::WrongName)?
             .to_str()
             .map_err(|_| NvListError::WrongName)?;
-        println!("pair: {name_size} {size} {item_count} {name}");
+        // println!("type: {pair_type:?}");
+        let mut last_element = false;
 
         let value = match pair_type {
             NvType::Null => {
                 if size != 0 {
                     return Err(NvListError::WrongPairData);
                 }
-                println!("Null");
                 NvValue::Null
             }
             NvType::Bool => {
@@ -345,7 +382,6 @@ impl<'a> NvList<'a> {
                     return Err(NvListError::WrongPairData);
                 }
                 let boolean = buf[index] != 0;
-                println!("Bool {boolean}");
                 NvValue::Bool(boolean)
             }
             NvType::Number => {
@@ -353,7 +389,6 @@ impl<'a> NvList<'a> {
                     return Err(NvListError::WrongPairData);
                 }
                 let number = self.load_u64(&buf[index..index + size])?;
-                println!("Number {number}");
                 NvValue::Number(number)
             }
             NvType::String => {
@@ -364,11 +399,9 @@ impl<'a> NvList<'a> {
                     .map_err(|_| NvListError::WrongName)?
                     .to_str()
                     .map_err(|_| NvListError::WrongName)?;
-                println!("String {string}");
                 NvValue::String(string)
             }
             NvType::NvList => {
-                println!("NvList");
                 // TODO: read list elements
                 NvValue::NvList(NvList::new())
             }
@@ -377,11 +410,9 @@ impl<'a> NvList<'a> {
                     return Err(NvListError::WrongPairData);
                 }
                 let binary = &buf[index..index + size];
-                println!("Binary {binary:?}");
                 NvValue::Binary(binary)
             }
             NvType::NvListArray => {
-                println!("NvListArray");
                 if size != 0 || item_count == 0 {
                     return Err(NvListError::WrongPairData);
                 }
@@ -395,20 +426,20 @@ impl<'a> NvList<'a> {
                 NvValue::NvListArray(array)
             }
             // This is a nasty hack: this type means we've reach the last item in the array.
-            // Stop processing the array regardless of size in (nested) NvList header.
+            // Stop processing the array regardless of `nvlh_size` in (nested) NvList header.
             NvType::NvListArrayNext => {
-                println!("NvListArrayNext");
-                return if size != 0 || item_count != 0 {
-                    Err(NvListError::WrongPairData)
-                } else {
-                    Err(NvListError::ArrayNextHack(index))
-                };
+                if size != 0 || item_count != 0 {
+                    return Err(NvListError::WrongPairData);
+                }
+                last_element = true;
+                NvValue::NvListArrayNext
             }
             _ => unimplemented!(),
         };
-        self.items.insert(name, value);
+        println!("insert '{name}' = {value:?}");
+        self.items.push((name, value));
 
-        Ok(index + size)
+        Ok((index + size, last_element))
     }
 }
 
@@ -447,11 +478,12 @@ mod test {
 
         let mut buf = Vec::new();
         nvlist.pack(&mut buf);
-        println!("PACK {buf:?}");
 
         let mut nvlist = NvList::new();
         nvlist.unpack(&buf).unwrap();
         nvlist.debug();
+
+        assert_eq!(data.as_slice(), buf.as_slice());
     }
 
     #[test]
@@ -478,7 +510,7 @@ mod test {
             7, 12, 0,
             32, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            112, 114, 105, 118, 97, 116, 101, 45, 107, 101, 121, 0, 
+            112, 114, 105, 118, 97, 116, 101, 45, 107, 101, 121, 0, // "private-key\0"
             184, 70, 130, 139, 240, 172, 115, 210, 42, 253, 145, 16, 84, 163, 217, 206, 219, 207, 194, 29, 250, 97, 48, 232, 184, 78, 19, 62, 194, 45, 133, 77,
             // NV_TYPE_NVLIST_ARRAY
             11, 6, 0,
@@ -488,12 +520,13 @@ mod test {
             // nvlist
             108, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            169, 2, 0, 0, 0, 0, 0, 0,
+            75, 1, 0, 0, 0, 0, 0, 0, // MODIFIED
+            //169, 2, 0, 0, 0, 0, 0, 0, // ORIGINAL
             // NV_TYPE_BINARY
             7, 11, 0,
             32, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            112, 117, 98, 108, 105, 99, 45, 107, 101, 121, 0,
+            112, 117, 98, 108, 105, 99, 45, 107, 101, 121, 0, // "public-key\0"
             220, 98, 132, 114, 211, 195, 157, 56, 63, 135, 95, 253, 123, 132, 59, 218, 35, 120, 55, 169, 156, 165, 223, 184, 140, 111, 142, 164, 145, 107, 167, 17,
             // NV_TYPE_BINARY
             7, 14, 0,
@@ -538,13 +571,13 @@ mod test {
             7, 11, 0,
             32, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            112, 117, 98, 108, 105, 99, 45, 107, 101, 121, 0,
+            112, 117, 98, 108, 105, 99, 45, 107, 101, 121, 0, // "public-key\0"
             60, 195, 52, 243, 24, 229, 218, 5, 142, 193, 30, 194, 241, 176, 169, 221, 121, 39, 172, 116, 158, 67, 46, 115, 119, 155, 107, 159, 128, 201, 79, 54,
             // NV_TYPE_BINARY
             7, 14, 0,
             32, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            112, 114, 101, 115, 104, 97, 114, 101, 100, 45, 107, 101, 121, 0,
+            112, 114, 101, 115, 104, 97, 114, 101, 100, 45, 107, 101, 121, 0, // "preshared-key\0"
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_BINARY
             7, 20, 0,
@@ -578,5 +611,23 @@ mod test {
         let mut nvlist = NvList::new();
         nvlist.unpack(&data).unwrap();
         nvlist.debug();
+
+        let mut buf = Vec::new();
+        nvlist.pack(&mut buf);
+        println!("PACKED {}/{} {buf:?}", data.len(), buf.len());
+
+        let mut nvlist = NvList::new();
+        nvlist.unpack(&buf).unwrap();
+        nvlist.debug();
+
+        if data.len() == buf.len() {
+            for (i, v) in buf.iter().enumerate() {
+                if v != &data[i] {
+                    println!("💩 {i:4} {:3} != {:3}", data[i], v);
+                }
+            }
+        }
+
+        assert_eq!(data.as_slice(), buf.as_slice());
     }
 }
