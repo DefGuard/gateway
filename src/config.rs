@@ -39,7 +39,7 @@ pub struct Config {
     pub grpc_ca: Option<String>,
 
     /// Defines how often (in seconds) interface statistics are sent to Defguard server
-    #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "60")]
+    #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "30")]
     pub stats_period: u64,
 
     /// Network interface name (e.g. wg0)

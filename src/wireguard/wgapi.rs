@@ -46,6 +46,7 @@ impl WGApi {
     }
 
     pub fn read_host(&self) -> io::Result<Host> {
+        debug!("Reading host interface info");
         if self.userspace {
             let mut socket = self.socket()?;
             socket.write_all(b"get=1\n\n")?;

@@ -17,7 +17,10 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use tokio::{sync::Mutex, time::sleep};
+use tokio::{
+    sync::Mutex,
+    time::{interval, sleep},
+};
 use tonic::{
     codegen::InterceptedService,
     metadata::MetadataValue,
@@ -46,6 +49,7 @@ impl From<Configuration> for InterfaceConfiguration {
 }
 
 type Pubkey = String;
+
 pub struct Gateway {
     config: Config,
     interface_configuration: Option<InterfaceConfiguration>,
@@ -137,30 +141,35 @@ impl Gateway {
             // helper map to track if peer data is actually changing
             // and avoid sending duplicate stats
             let mut peer_map = HashMap::new();
+            let mut interval = interval(period);
             loop {
-                debug!("Sending peer stats update");
+                // wait till next iteration
+                interval.tick().await;
+                debug!("Sending active peer stats update");
                 match api.read_host() {
                     Ok(host) => {
-                        for peer in host
-                            .peers
+                        let peers = host.peers;
+                        debug!("Found {} peers configured on WireGuard interface: {peers:?}", peers.len());
+                        for peer in peers
                             .into_values()
                             .filter(|p| p.last_handshake.map_or(
                                 false,
                                 |lhs| lhs != SystemTime::UNIX_EPOCH)
                             ) {
-                            let has_changed = match peer_map.get(&peer.public_key) {
-                                Some(last_peer) => *last_peer != peer,
-                                None => true,
-                            };
-                            if has_changed {
-                                peer_map.insert(peer.public_key.clone(), peer.clone());
-                                yield (&peer).into();
+                                let has_changed = match peer_map.get(&peer.public_key) {
+                                    Some(last_peer) => *last_peer != peer,
+                                    None => true,
+                                };
+                                if has_changed {
+                                    peer_map.insert(peer.public_key.clone(), peer.clone());
+                                    yield (&peer).into();
+                                };
+                                debug!("Stats for peer {peer:?} have not changed. Skipping...");
                             }
-                        }
                     },
                     Err(err) => error!("Failed to retrieve WireGuard interface stats {}", err),
                 }
-                sleep(period).await;
+                debug!("Finished sending active peer stats update");
             }
         };
         // Spawn the thread
