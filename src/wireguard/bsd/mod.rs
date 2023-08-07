@@ -14,6 +14,28 @@ use super::{Host, IpAddrMask, Peer};
 use nvlist::{NvList, NvValue};
 use wgio::{WgDataIo, WgIoError};
 
+// nvlist key names
+static NV_LISTEN_PORT: &str = "listen-port";
+static NV_FWMARK: &str = "user-cookie";
+static NV_PUBLIC_KEY: &str = "public-key";
+static NV_PRIVATE_KEY: &str = "private-key";
+static NV_PEERS: &str = "peers";
+static NV_REPLACE_PEERS: &str = "replace-peers";
+
+static NV_PRESHARED_KEY: &str = "preshared-key";
+static NV_KEEPALIVE_INTERVAL: &str = "persistent-keepalive-interval";
+static NV_ENDPOINT: &str = "endpoint";
+static NV_RX_BYTES: &str = "rx-bytes";
+static NV_TX_BYTES: &str = "tx-bytes";
+static NV_LAST_HANDSHAKE: &str = "last-handshake-time";
+static NV_ALLOWED_IPS: &str = "allowed-ips";
+static NV_REPLACE_ALLOWED_IPS: &str = "replace-allowed-ips";
+static NV_REMOVE: &str = "remove";
+
+static NV_CIDR: &str = "cidr";
+static NV_IPV4: &str = "ipv4";
+static NV_IPV6: &str = "ipv6";
+
 // FIXME: `WgDataIo` has to be declared as public
 ioctl_readwrite!(write_wireguard_data, b'i', 210, WgDataIo);
 ioctl_readwrite!(read_wireguard_data, b'i', 211, WgDataIo);
@@ -32,11 +54,11 @@ impl IpAddrMask {
     #[must_use]
     fn try_from_nvlist(nvlist: &NvList) -> Option<Self> {
         // cidr is mendatory
-        nvlist.get_number("cidr").and_then(|cidr| {
-            match nvlist.get_binary("ipv4") {
+        nvlist.get_number(NV_CIDR).and_then(|cidr| {
+            match nvlist.get_binary(NV_IPV4) {
                 Some(ipv4) => <[u8; 4]>::try_from(ipv4).ok().map(IpAddr::from),
                 None => nvlist
-                    .get_binary("ipv6")
+                    .get_binary(NV_IPV6)
                     .and_then(|ipv6| <[u8; 16]>::try_from(ipv6).ok().map(IpAddr::from)),
             }
             .map(|ip| Self {
@@ -50,13 +72,13 @@ impl IpAddrMask {
 impl Host {
     #[must_use]
     fn from_nvlist(nvlist: &NvList) -> Self {
-        let listen_port = nvlist.get_number("listen-port").unwrap_or_default();
+        let listen_port = nvlist.get_number(NV_LISTEN_PORT).unwrap_or_default();
         let private_key = nvlist
-            .get_binary("private-key")
+            .get_binary(NV_PRIVATE_KEY)
             .and_then(|value| (*value).try_into().ok());
 
         let mut peers = HashMap::new();
-        if let Some(peer_array) = nvlist.get_nvlist_array("peers") {
+        if let Some(peer_array) = nvlist.get_nvlist_array(NV_PEERS) {
             for peer_list in peer_array {
                 if let Some(peer) = Peer::try_from_nvlist(peer_list) {
                     peers.insert(peer.public_key.clone(), peer);
@@ -67,9 +89,26 @@ impl Host {
         Self {
             listen_port: listen_port as u16,
             private_key,
-            fwmark: nvlist.get_number("user-cookie").map(|num| num as u32),
+            fwmark: nvlist.get_number(NV_FWMARK).map(|num| num as u32),
             peers,
         }
+    }
+}
+
+impl<'a> Host {
+    #[must_use]
+    fn to_nvlist(&'a self) -> NvList<'a> {
+        let mut nvlist = NvList::new();
+
+        nvlist.append_number(NV_LISTEN_PORT, self.listen_port as u64);
+        if let Some(ref private_key) = self.private_key {
+            nvlist.append_binary(NV_PRIVATE_KEY, private_key.as_slice());
+        }
+        if let Some(fwmark) = self.fwmark {
+            nvlist.append_number(NV_FWMARK, fwmark as u64);
+        }
+
+        nvlist
     }
 }
 
@@ -77,24 +116,47 @@ impl Peer {
     #[must_use]
     fn try_from_nvlist(nvlist: &NvList) -> Option<Self> {
         if let Some(public_key) = nvlist
-            .get_binary("public-key")
+            .get_binary(NV_PUBLIC_KEY)
             .and_then(|value| (*value).try_into().ok())
         {
             let preshared_key = nvlist
-                .get_binary("preshared-key")
+                .get_binary(NV_PRESHARED_KEY)
                 .and_then(|value| (*value).try_into().ok());
-            // TODO: check if is it seconds
+            // TODO: check if is it seconds - check endianess!
+            // struct timespec64 last_handshake_time
+            // struct timespec64 {
+            //     int64_t tv_sec;
+            //     int64_t tv_nsec;
+            // };
             let last_handshake = None; //nvlist
                                        // .get_binary("last-handshake-time")
                                        // .map(|value| SystemTime::UNIX_EPOCH + Duration::from_secs(value));
             let mut allowed_ips = Vec::new();
-            if let Some(ip_array) = nvlist.get_nvlist_array("allowed-ips") {
+            if let Some(ip_array) = nvlist.get_nvlist_array(NV_ALLOWED_IPS) {
                 for ip_list in ip_array {
                     if let Some(ip) = IpAddrMask::try_from_nvlist(ip_list) {
                         allowed_ips.push(ip);
                     }
                 }
             }
+            //       |- total size
+            // XXX: [16, 2, 28, 133, 185, 33, 37, 134, 0, 0, 0, 0, 0, 0, 0, 0] -> 185.33.37.134:7301
+            //              |<port>| |<--- IPv4 --->|
+            // 	union {
+            //     struct sockaddr addr;
+            //     struct sockaddr_in addr4;
+            //     struct sockaddr_in6 addr6;
+            // } endpoint;
+            //
+            // netinet/in.h:
+            // struct sockaddr_in {
+            //         uint8_t sin_len;
+            //         sa_family_t     sin_family;
+            //         in_port_t       sin_port;
+            //         struct  in_addr sin_addr; // uint32_t
+            //         char    sin_zero[8];
+            // };
+            let endpoint = nvlist.get_binary(NV_ENDPOINT).map(|binary| {});
 
             Some(Self {
                 public_key,
@@ -102,16 +164,27 @@ impl Peer {
                 protocol_version: None,
                 endpoint: None,
                 last_handshake,
-                tx_bytes: nvlist.get_number("tx-bytes").unwrap_or_default(),
-                rx_bytes: nvlist.get_number("rx-bytes").unwrap_or_default(),
+                tx_bytes: nvlist.get_number(NV_TX_BYTES).unwrap_or_default(),
+                rx_bytes: nvlist.get_number(NV_RX_BYTES).unwrap_or_default(),
                 persistent_keepalive_interval: nvlist
-                    .get_number("persistent-keepalive-interval")
+                    .get_number(NV_KEEPALIVE_INTERVAL)
                     .map(|value| value as u16),
                 allowed_ips,
             })
         } else {
             None
         }
+    }
+}
+
+impl<'a> Peer {
+    #[must_use]
+    fn to_nvlist(&'a self) -> NvList<'a> {
+        let mut nvlist = NvList::new();
+
+        nvlist.append_binary(NV_PUBLIC_KEY, self.public_key.as_slice());
+
+        nvlist
     }
 }
 
@@ -122,8 +195,8 @@ pub fn kernel_get_device(if_name: &str) -> Result<Host, WgIoError> {
         // First do ioctl with empty `wg_data` to obtain buffer size.
         let x = read_wireguard_data(s, &mut wg_data);
         println!("{x:?}");
-        println!("{}", wg_data.wgd_size);
 
+        // Allocate buffer.
         wg_data.alloc_data()?;
 
         // Second call to ioctl with allocated buffer.
@@ -131,15 +204,10 @@ pub fn kernel_get_device(if_name: &str) -> Result<Host, WgIoError> {
         println!("{x:?}");
     }
 
-    println!("{:?}", wg_data.as_buf());
-
     let mut nvlist = NvList::new();
     nvlist.unpack(wg_data.as_buf()).unwrap();
-    nvlist.debug();
 
-    let host = Host::from_nvlist(&nvlist);
-
-    Ok(host)
+    Ok(Host::from_nvlist(&nvlist))
 }
 
 pub fn kernel_set_device(if_name: &str) {

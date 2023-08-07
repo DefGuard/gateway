@@ -40,6 +40,11 @@ impl Key {
     }
 
     #[must_use]
+    pub fn as_slice(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+
+    #[must_use]
     pub fn to_lower_hex(&self) -> String {
         let mut hex = String::with_capacity(64);
         let to_char = |nibble: u8| -> char {

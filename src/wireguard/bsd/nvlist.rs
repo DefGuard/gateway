@@ -183,7 +183,7 @@ impl<'a> NvList<'a> {
     }
 
     /// Get value for a given `name`.
-    pub fn get(&self, name: &str) -> Option<&NvValue> {
+    fn get(&self, name: &str) -> Option<&NvValue> {
         self.items.iter().find(|(n, _)| n == &name).map(|(_, v)| v)
     }
 
@@ -229,6 +229,22 @@ impl<'a> NvList<'a> {
 
     pub fn append(&mut self, name: &'a str, value: NvValue<'a>) {
         self.items.push((name, value));
+    }
+
+    pub fn append_bool(&mut self, name: &'a str, boolean: bool) {
+        self.items.push((name, NvValue::Bool(boolean)));
+    }
+
+    pub fn append_number(&mut self, name: &'a str, number: u64) {
+        self.items.push((name, NvValue::Number(number)));
+    }
+
+    pub fn append_string(&mut self, name: &'a str, string: &'a str) {
+        self.items.push((name, NvValue::String(string)));
+    }
+
+    pub fn append_binary(&mut self, name: &'a str, binary: &'a [u8]) {
+        self.items.push((name, NvValue::Binary(binary)));
     }
 
     fn load_u16(&self, buf: &[u8]) -> Result<u16, NvListError> {
