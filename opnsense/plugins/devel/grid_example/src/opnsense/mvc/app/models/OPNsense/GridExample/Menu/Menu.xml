@@ -1,5 +1,0 @@
-<menu>
-    <Lobby>
-        <GridExample VisibleName="Grid Example" cssClass="fa fa-comment-o fa-fw" url="/ui/gridexample"/>
-    </Lobby>
-</menu>
