@@ -25,13 +25,13 @@ pub enum NvType {
     Number,
     String,
     NvList,
-    Descriptor,
+    _Descriptor,
     Binary,
     BoolArray,
     NumberArray,
     StringArray,
     NvListArray,
-    DescriptorArray,
+    _DescriptorArray,
     // must have a parent
     NvListArrayNext = 254,
     NvListAUp,
@@ -45,13 +45,13 @@ impl From<u8> for NvType {
             3 => Self::Number,
             4 => Self::String,
             5 => Self::NvList,
-            6 => Self::Descriptor,
+            6 => Self::_Descriptor,
             7 => Self::Binary,
             8 => Self::BoolArray,
             9 => Self::NumberArray,
             10 => Self::StringArray,
             11 => Self::NvListArray,
-            12 => Self::DescriptorArray,
+            12 => Self::_DescriptorArray,
             254 => Self::NvListArrayNext,
             255 => Self::NvListAUp,
             _ => Self::None,
@@ -66,13 +66,13 @@ pub enum NvValue<'a> {
     Number(u64),
     String(&'a str),
     NvList(NvList<'a>),
-    Descriptor, // not implemented
+    _Descriptor, // not implemented
     Binary(&'a [u8]),
     BoolArray(Vec<bool>),
     NumberArray(Vec<u64>),
     StringArray(Vec<&'a str>),
     NvListArray(Vec<NvList<'a>>),
-    DescriptorArray, // not implemented
+    _DescriptorArray, // not implemented
     NvListArrayNext,
     // NvListAUp,
 }
@@ -82,17 +82,16 @@ impl<'a> NvValue<'a> {
     #[must_use]
     pub fn byte_size(&self) -> usize {
         match self {
-            Self::Null | Self::Descriptor | Self::DescriptorArray => 0,
+            Self::Null | Self::_Descriptor | Self::_DescriptorArray | Self::NvListArrayNext => 0,
             Self::Bool(_) => 1,
             Self::Number(_) => 8,
-            Self::String(s) => s.len() + 1, // +1 for NUL
+            Self::String(string) => string.len() + 1, // +1 for NUL
             Self::NvList(list) => list.byte_size(),
-            Self::Binary(b) => b.len(),
-            Self::BoolArray(v) => v.len(),
-            Self::NumberArray(v) => v.len() * 4,
-            Self::StringArray(v) => v.iter().fold(0, |size, el| size + el.len() + 1),
-            Self::NvListArray(v) => v.iter().fold(0, |size, el| size + el.byte_size()),
-            Self::NvListArrayNext => 0,
+            Self::Binary(binary) => binary.len(),
+            Self::BoolArray(array) => array.len(),
+            Self::NumberArray(array) => array.len() * 8,
+            Self::StringArray(array) => array.iter().fold(0, |size, el| size + el.len() + 1),
+            Self::NvListArray(array) => array.iter().fold(0, |size, el| size + el.byte_size()),
         }
     }
 
@@ -101,17 +100,16 @@ impl<'a> NvValue<'a> {
     #[must_use]
     pub fn data_size(&self) -> usize {
         match self {
-            Self::Null | Self::Descriptor | Self::DescriptorArray => 0,
+            Self::Null | Self::_Descriptor | Self::_DescriptorArray | Self::NvListArrayNext => 0,
             Self::Bool(_) => 1,
             Self::Number(_) => 8,
-            Self::String(s) => s.len() + 1, // +1 for NUL
-            Self::NvList(_) => 0,           // FIXME: not sure about this
-            Self::Binary(b) => b.len(),
-            Self::BoolArray(_)
-            | Self::NumberArray(_)
-            | Self::StringArray(_)
-            | Self::NvListArray(_) => 0,
-            Self::NvListArrayNext => 0,
+            Self::String(string) => string.len() + 1, // +1 for NUL
+            Self::NvList(_) => 0,                     // FIXME: not sure about this
+            Self::Binary(binary) => binary.len(),
+            Self::BoolArray(array) => array.len(),
+            Self::NumberArray(array) => array.len() * 8,
+            Self::StringArray(array) => array.iter().fold(0, |size, el| size + el.len() + 1),
+            Self::NvListArray(_) => 0,
         }
     }
 
@@ -123,19 +121,19 @@ impl<'a> NvValue<'a> {
             Self::Number(_) => NvType::Number,
             Self::String(_) => NvType::String,
             Self::NvList(_) => NvType::NvList,
-            Self::Descriptor => NvType::Descriptor,
+            Self::_Descriptor => NvType::_Descriptor,
             Self::Binary(_) => NvType::Binary,
             Self::BoolArray(_) => NvType::BoolArray,
             Self::NumberArray(_) => NvType::NumberArray,
             Self::StringArray(_) => NvType::StringArray,
             Self::NvListArray(_) => NvType::NvListArray,
-            Self::DescriptorArray => NvType::DescriptorArray,
+            Self::_DescriptorArray => NvType::_DescriptorArray,
             Self::NvListArrayNext => NvType::NvListArrayNext,
         }
     }
 
     #[must_use]
-    pub fn no_items(&self) -> usize {
+    pub fn number_of_items(&self) -> usize {
         match self {
             Self::BoolArray(v) => v.len(),
             Self::NumberArray(v) => v.len(),
@@ -235,6 +233,20 @@ impl<'a> NvList<'a> {
         }
     }
 
+    fn load_name(buf: &'a [u8]) -> Result<&'a str, NvListError> {
+        CStr::from_bytes_with_nul(buf)
+            .map_err(|_| NvListError::WrongName)?
+            .to_str()
+            .map_err(|_| NvListError::WrongName)
+    }
+
+    fn load_string(buf: &'a [u8]) -> Result<&'a str, NvListError> {
+        CStr::from_bytes_until_nul(buf)
+            .map_err(|_| NvListError::WrongPairData)?
+            .to_str()
+            .map_err(|_| NvListError::WrongPairData)
+    }
+
     fn store_u16(&self, value: u16, buf: &mut Vec<u8>) {
         buf.extend_from_slice(&if self.is_big_endian {
             value.to_be_bytes()
@@ -265,8 +277,9 @@ impl<'a> NvList<'a> {
 
     /// Pack name-value list to binary representation.
     pub fn pack(&self) -> Result<Vec<u8>, NvListError> {
-        let mut buf = Vec::new();
-        self.pack_with_size(&mut buf, self.byte_size())?;
+        let size = self.byte_size();
+        let mut buf = Vec::with_capacity(size);
+        self.pack_with_size(&mut buf, size)?;
         Ok(buf)
     }
 
@@ -300,13 +313,13 @@ impl<'a> NvList<'a> {
             // data size
             let value_size = value.data_size();
             self.store_u64(value_size as u64, buf);
-            // no. items
-            self.store_u64(value.no_items() as u64, buf);
+            let number_of_items = value.number_of_items();
+            self.store_u64(number_of_items as u64, buf);
             // name
             buf.extend_from_slice(name.as_bytes());
             buf.push(0); // NUL
 
-            byte_size -= NV_HEADER_SIZE + name_len + value_size; // TODO: * no_items
+            byte_size -= NV_HEADER_SIZE + name_len + value_size;
 
             match value {
                 NvValue::Bool(boolean) => buf.push(u8::from(*boolean)),
@@ -316,12 +329,25 @@ impl<'a> NvList<'a> {
                     buf.push(0); // NUL
                 }
                 NvValue::Binary(bytes) => buf.extend_from_slice(bytes),
+                NvValue::BoolArray(array) => {
+                    array.iter().for_each(|boolean| buf.push((*boolean).into()));
+                }
+                NvValue::NumberArray(array) => {
+                    array.iter().for_each(|number| self.store_u64(*number, buf));
+                }
+                NvValue::StringArray(array) => {
+                    array.iter().for_each(|string| {
+                        buf.extend_from_slice(string.as_bytes());
+                        buf.push(0); // NUL
+                    });
+                }
                 NvValue::NvListArray(nvlist_array) => {
                     for nvlist in nvlist_array {
                         byte_size = nvlist.pack_with_size(buf, byte_size)?;
                     }
                 }
-                _ => (),
+                NvValue::Null | NvValue::NvListArrayNext => (),
+                _ => unimplemented!(),
             }
         }
 
@@ -383,10 +409,7 @@ impl<'a> NvList<'a> {
         let mut item_count = self.load_u64(&buf[11..NV_HEADER_SIZE])?;
         let mut index = NV_HEADER_SIZE + name_size;
 
-        let name = CStr::from_bytes_with_nul(&buf[NV_HEADER_SIZE..index])
-            .map_err(|_| NvListError::WrongName)?
-            .to_str()
-            .map_err(|_| NvListError::WrongName)?;
+        let name = Self::load_name(&buf[NV_HEADER_SIZE..index])?;
         let mut last_element = false;
 
         let value = match pair_type {
@@ -414,10 +437,8 @@ impl<'a> NvList<'a> {
                 if size == 0 {
                     return Err(NvListError::WrongPairData);
                 }
-                let string = CStr::from_bytes_with_nul(&buf[index..index + size])
-                    .map_err(|_| NvListError::WrongName)?
-                    .to_str()
-                    .map_err(|_| NvListError::WrongName)?;
+                let string = Self::load_string(&buf[index..index + size])?;
+                // TODO: if string.len() + 1 != size {}
                 NvValue::String(string)
             }
             NvType::NvList => {
@@ -430,6 +451,41 @@ impl<'a> NvList<'a> {
                 }
                 let binary = &buf[index..index + size];
                 NvValue::Binary(binary)
+            }
+            NvType::BoolArray => {
+                if size == 0 {
+                    return Err(NvListError::WrongPairData);
+                }
+                let array = buf[index..index + size]
+                    .iter()
+                    .map(|byte| *byte != 0)
+                    .collect();
+                NvValue::BoolArray(array)
+            }
+            NvType::NumberArray => {
+                if size == 0 {
+                    return Err(NvListError::WrongPairData);
+                }
+                let mut array = Vec::with_capacity(item_count as usize);
+                for chunk in buf[index..index + size].chunks(8) {
+                    array.push(self.load_u64(chunk)?);
+                }
+                NvValue::NumberArray(array)
+            }
+            NvType::StringArray => {
+                if size == 0 {
+                    return Err(NvListError::WrongPairData);
+                }
+                let mut array = Vec::with_capacity(item_count as usize);
+                let mut i = index;
+                let mut s = size;
+                for _ in 0..item_count {
+                    let string = Self::load_string(&buf[i..i + s])?;
+                    array.push(string);
+                    i += string.len() + 1;
+                    s -= string.len() + 1;
+                }
+                NvValue::StringArray(array)
             }
             NvType::NvListArray => {
                 if size != 0 || item_count == 0 {
@@ -511,8 +567,70 @@ mod test {
         nvlist.append("nul", NvValue::Null);
 
         let buf = nvlist.pack().unwrap();
-
         assert_eq!(TEST_DATA.as_slice(), buf.as_slice());
+    }
+
+    #[test]
+    fn bool_array() {
+        #[rustfmt::skip]
+        let data = [
+            108,0,0,
+            0,0,0,0,0,0,0,0,
+            27,0,0,0,0,0,0,0,
+            8,4,0, // NV_TYPE_BOOL_ARRAY
+            4,0,0,0,0,0,0,0, // size
+            4,0,0,0,0,0,0,0, // items
+            98,117,108,0, // "bul\0"
+            1,0,0,1,
+        ];
+        let mut nvlist = NvList::new();
+        nvlist.unpack(&data).unwrap();
+        nvlist.debug();
+
+        let buf = nvlist.pack().unwrap();
+        assert_eq!(data.as_slice(), buf.as_slice());
+    }
+
+    #[test]
+    fn number_array() {
+        #[rustfmt::skip]
+        let data = [
+            108,0,0,
+            0,0,0,0,0,0,0,0,
+            40,0,0,0,0,0,0,0,
+            9,5,0,
+            16,0,0,0,0,0,0,0,
+            2,0,0,0,0,0,0,0,
+            110,117,109,115,0, // "nums\0"
+            68,51,34,17,0,0,0,0, 136,119,102,85,0,0,0,0,
+        ];
+        let mut nvlist = NvList::new();
+        nvlist.unpack(&data).unwrap();
+        nvlist.debug();
+
+        let buf = nvlist.pack().unwrap();
+        assert_eq!(data.as_slice(), buf.as_slice());
+    }
+
+    #[test]
+    fn string_array() {
+        #[rustfmt::skip]
+        let data = [
+            108,0,0,
+            0,0,0,0,0,0,0,0,
+            42,0,0,0,0,0,0,0,
+            10,6,0,
+            17,0,0,0,0,0,0,0,
+            3,0,0,0,0,0,0,0,
+            110,97,109,101,115,0,
+            83,116,117,97,114,116,0, 75,101,118,105,110,0, 66,111,98,0,
+        ];
+        let mut nvlist = NvList::new();
+        nvlist.unpack(&data).unwrap();
+        nvlist.debug();
+
+        let buf = nvlist.pack().unwrap();
+        assert_eq!(data.as_slice(), buf.as_slice());
     }
 
     #[test]
@@ -642,10 +760,6 @@ mod test {
 
         let buf = nvlist.pack().unwrap();
 
-        let mut nvlist = NvList::new();
-        nvlist.unpack(&buf).unwrap();
-        nvlist.debug();
-
         if data.len() == buf.len() {
             for (i, v) in buf.iter().enumerate() {
                 if v != &data[i] {
@@ -655,5 +769,9 @@ mod test {
         }
 
         assert_eq!(data.as_slice(), buf.as_slice());
+
+        let mut nvlist = NvList::new();
+        nvlist.unpack(&buf).unwrap();
+        nvlist.debug();
     }
 }
