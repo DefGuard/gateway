@@ -3,7 +3,6 @@
 pub mod config;
 pub mod error;
 pub mod gateway;
-pub mod nvlist;
 pub mod wireguard;
 
 pub mod proto {

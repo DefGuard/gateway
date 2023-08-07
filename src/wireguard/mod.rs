@@ -1,6 +1,8 @@
-pub mod host;
-pub mod key;
-pub mod net;
+// #[cfg(target_os = "freebsd")]
+pub mod bsd;
+mod host;
+mod key;
+mod net;
 #[cfg(target_os = "linux")]
 pub mod netlink;
 pub mod wgapi;
@@ -104,5 +106,5 @@ pub fn setup_interface(
 pub use {
     host::{Host, Peer},
     key::Key,
-    net::IpAddrMask,
+    net::{IpAddrMask, IpAddrParseError},
 };

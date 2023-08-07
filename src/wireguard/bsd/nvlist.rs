@@ -91,9 +91,7 @@ impl<'a> NvValue<'a> {
             Self::BoolArray(v) => v.len(),
             Self::NumberArray(v) => v.len() * 4,
             Self::StringArray(v) => v.iter().fold(0, |size, el| size + el.len() + 1),
-            Self::NvListArray(v) => v
-                .iter()
-                .fold(0, |size, el| size + el.byte_size() + NV_HEADER_SIZE),
+            Self::NvListArray(v) => v.iter().fold(0, |size, el| size + el.byte_size()),
             Self::NvListArrayNext => 0,
         }
     }
@@ -150,6 +148,7 @@ impl<'a> NvValue<'a> {
 
 #[derive(Debug)]
 pub enum NvListError {
+    NameTooLong,
     NotEnoughBytes,
     WrongHeader,
     WrongName,
@@ -162,6 +161,7 @@ impl Error for NvListError {}
 impl fmt::Display for NvListError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NameTooLong => write!(f, "name is too long"),
             Self::NotEnoughBytes => write!(f, "not enough bytes"),
             Self::WrongHeader => write!(f, "wrong header"),
             Self::WrongName => write!(f, "wrong name"),
@@ -207,6 +207,10 @@ impl<'a> NvList<'a> {
         self.items.iter().find(|(n, _)| n == &name).map(|(_, v)| v)
     }
 
+    pub fn append(&mut self, name: &'a str, value: NvValue<'a>) {
+        self.items.push((name, value));
+    }
+
     fn load_u16(&self, buf: &[u8]) -> Result<u16, NvListError> {
         if let Ok(bytes) = <[u8; 2]>::try_from(buf) {
             Ok(if self.is_big_endian {
@@ -250,7 +254,7 @@ impl<'a> NvList<'a> {
     /// Return number of bytes this list occupies when packed.
     #[must_use]
     fn byte_size(&self) -> usize {
-        let mut size = 0;
+        let mut size = NV_HEADER_SIZE;
         for (name, value) in &self.items {
             size += NV_HEADER_SIZE + name.len() + 1; // +1 for NUL
             size += value.byte_size();
@@ -260,7 +264,19 @@ impl<'a> NvList<'a> {
     }
 
     /// Pack name-value list to binary representation.
-    pub fn pack(&self, buf: &mut Vec<u8>) {
+    pub fn pack(&self) -> Result<Vec<u8>, NvListError> {
+        let mut buf = Vec::new();
+        self.pack_with_size(&mut buf, self.byte_size())?;
+        Ok(buf)
+    }
+
+    /// Pack nvlist with pre-calculated buffer size.
+    /// This is needed for list arrays where lists have fishy size.
+    fn pack_with_size(
+        &self,
+        buf: &mut Vec<u8>,
+        mut byte_size: usize,
+    ) -> Result<usize, NvListError> {
         // pack header
         buf.push(NVLIST_HEADER_MAGIC);
         buf.push(NVLIST_HEADER_VERSION);
@@ -269,25 +285,28 @@ impl<'a> NvList<'a> {
         } else {
             0
         });
-        // descriptors
         self.store_u64(0, buf);
-        self.store_u64(self.byte_size() as u64, buf);
+        byte_size -= NV_HEADER_SIZE;
+        self.store_u64(byte_size as u64, buf);
 
         for (name, value) in &self.items {
             buf.push(value.nv_type() as u8);
             // name length
             let name_len = name.len() + 1;
             if name_len > NV_NAME_MAX {
-                // error
+                return Err(NvListError::NameTooLong);
             }
             self.store_u16(name_len as u16, buf);
             // data size
-            self.store_u64(value.data_size() as u64, buf);
+            let value_size = value.data_size();
+            self.store_u64(value_size as u64, buf);
             // no. items
             self.store_u64(value.no_items() as u64, buf);
             // name
             buf.extend_from_slice(name.as_bytes());
             buf.push(0); // NUL
+
+            byte_size -= NV_HEADER_SIZE + name_len + value_size; // TODO: * no_items
 
             match value {
                 NvValue::Bool(boolean) => buf.push(u8::from(*boolean)),
@@ -299,12 +318,14 @@ impl<'a> NvList<'a> {
                 NvValue::Binary(bytes) => buf.extend_from_slice(bytes),
                 NvValue::NvListArray(nvlist_array) => {
                     for nvlist in nvlist_array {
-                        nvlist.pack(buf);
+                        byte_size = nvlist.pack_with_size(buf, byte_size)?;
                     }
                 }
                 _ => (),
             }
         }
+
+        Ok(byte_size)
     }
 
     /// Unpack binary representation of name-value list.
@@ -322,9 +343,8 @@ impl<'a> NvList<'a> {
         }
         self.is_big_endian = buf[2] & NV_FLAG_BIG_ENDIAN != 0;
 
-        let descriptors = self.load_u64(&buf[3..11])?;
+        let _descriptors = self.load_u64(&buf[3..11])?;
         let size = self.load_u64(&buf[11..19])? as usize;
-        println!("header {descriptors} {size}");
 
         // check total size
         if length < NV_HEADER_SIZE + size {
@@ -362,12 +382,11 @@ impl<'a> NvList<'a> {
         // Used only for array types.
         let mut item_count = self.load_u64(&buf[11..NV_HEADER_SIZE])?;
         let mut index = NV_HEADER_SIZE + name_size;
-        println!("pair: name_size={name_size} size={size} item_count={item_count}");
+
         let name = CStr::from_bytes_with_nul(&buf[NV_HEADER_SIZE..index])
             .map_err(|_| NvListError::WrongName)?
             .to_str()
             .map_err(|_| NvListError::WrongName)?;
-        // println!("type: {pair_type:?}");
         let mut last_element = false;
 
         let value = match pair_type {
@@ -436,7 +455,6 @@ impl<'a> NvList<'a> {
             }
             _ => unimplemented!(),
         };
-        println!("insert '{name}' = {value:?}");
         self.items.push((name, value));
 
         Ok((index + size, last_element))
@@ -447,52 +465,63 @@ impl<'a> NvList<'a> {
 mod test {
     use super::*;
 
-    #[test]
-    fn test_nvlist_unpack() {
-        #[rustfmt::skip]
-        let data = [
-            // *** nvlist_header (19 bytes)
-            108, // nvlh_magic
-            0,   // nvlh_version
-            0,   // nvlh_flags
-            0, 0, 0, 0, 0, 0, 0, 0, // nvlh_descriptors
-            39 + 23, 0, 0, 0, 0, 0, 0, 0, // nvlh_size
-            // *** data (nvlh_size bytes)
-            // *** nvpair_header (19 bytes)
-            3, // nvph_type = NV_TYPE_NUMBER
-            12, 0, // nvph_namesize (incl. NUL)
-            8, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-            108, 105, 115, 116, 101, 110, 45, 112, 111, 114, 116, 0, // "listen-port\0"
-            57, 48, 0, 0, 0, 0, 0, 0, // 12345
+    #[rustfmt::skip]
+    static TEST_DATA: [u8; 81] = [
+        // *** nvlist_header (19 bytes)
+        108, // nvlh_magic
+        0,   // nvlh_version
+        0,   // nvlh_flags
+        0, 0, 0, 0, 0, 0, 0, 0, // nvlh_descriptors
+        39 + 23, 0, 0, 0, 0, 0, 0, 0, // nvlh_size
+        // *** data (nvlh_size bytes)
+        // *** nvpair_header (19 bytes)
+        3, // nvph_type = NV_TYPE_NUMBER
+        12, 0, // nvph_namesize (incl. NUL)
+        8, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
+        0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
+        108, 105, 115, 116, 101, 110, 45, 112, 111, 114, 116, 0, // "listen-port\0"
+        57, 48, 0, 0, 0, 0, 0, 0, // 12345
 
-            1, // nvph_type = NV_TYPE_NULL
-            4, 0, // nvph_namesize (incl. NUL)
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
-            0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
-            'n' as u8, 'u' as u8, 'l' as u8, 0,
-        ];
+        1, // nvph_type = NV_TYPE_NULL
+        4, 0, // nvph_namesize (incl. NUL)
+        0, 0, 0, 0, 0, 0, 0, 0, // nvph_datasize
+        0, 0, 0, 0, 0, 0, 0, 0, // nvph_nitems
+        'n' as u8, 'u' as u8, 'l' as u8, 0,
+    ];
+
+    #[test]
+    fn unpack() {
         let mut nvlist = NvList::new();
-        nvlist.unpack(&data).unwrap();
+        nvlist.unpack(&TEST_DATA).unwrap();
         nvlist.debug();
 
-        let mut buf = Vec::new();
-        nvlist.pack(&mut buf);
+        let buf = nvlist.pack().unwrap();
 
         let mut nvlist = NvList::new();
         nvlist.unpack(&buf).unwrap();
         nvlist.debug();
 
-        assert_eq!(data.as_slice(), buf.as_slice());
+        assert_eq!(TEST_DATA.as_slice(), buf.as_slice());
     }
 
     #[test]
-    fn test_two_peers() {
+    fn pack() {
+        let mut nvlist = NvList::new();
+        nvlist.append("listen-port", NvValue::Number(12345));
+        nvlist.append("nul", NvValue::Null);
+
+        let buf = nvlist.pack().unwrap();
+
+        assert_eq!(TEST_DATA.as_slice(), buf.as_slice());
+    }
+
+    #[test]
+    fn two_peers() {
         #[rustfmt::skip]
         let data = [
             // nvlist
-            108, 0, 0, 
-            0, 0, 0, 0, 0, 0, 0, 0, 
+            108, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
             121, 3, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_NUMBER
             3, 12, 0,
@@ -520,8 +549,7 @@ mod test {
             // nvlist
             108, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            75, 1, 0, 0, 0, 0, 0, 0, // MODIFIED
-            //169, 2, 0, 0, 0, 0, 0, 0, // ORIGINAL
+            169, 2, 0, 0, 0, 0, 0, 0,
             // NV_TYPE_BINARY
             7, 11, 0,
             32, 0, 0, 0, 0, 0, 0, 0,
@@ -612,9 +640,7 @@ mod test {
         nvlist.unpack(&data).unwrap();
         nvlist.debug();
 
-        let mut buf = Vec::new();
-        nvlist.pack(&mut buf);
-        println!("PACKED {}/{} {buf:?}", data.len(), buf.len());
+        let buf = nvlist.pack().unwrap();
 
         let mut nvlist = NvList::new();
         nvlist.unpack(&buf).unwrap();

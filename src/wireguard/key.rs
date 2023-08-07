@@ -95,6 +95,20 @@ impl TryFrom<&str> for Key {
     }
 }
 
+impl TryFrom<&[u8]> for Key {
+    type Error = DecodeError;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() == KEY_LENGTH {
+            let buf =
+                <[u8; KEY_LENGTH]>::try_from(value).map_err(|_| Self::Error::InvalidLength)?;
+            Ok(Self::new(buf))
+        } else {
+            Err(Self::Error::InvalidLength)
+        }
+    }
+}
+
 impl TryFrom<String> for Key {
     type Error = DecodeError;
 

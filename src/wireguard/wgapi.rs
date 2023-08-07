@@ -1,6 +1,6 @@
-use super::{Host, Peer};
 #[cfg(target_os = "linux")]
-use crate::wireguard::netlink::{delete_peer, get_host, set_host, set_peer};
+use super::netlink::{delete_peer, get_host, set_host, set_peer};
+use super::{Host, Peer};
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
     os::unix::net::UnixStream,

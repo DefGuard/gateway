@@ -16,7 +16,7 @@ pub enum GatewayError {
     KeyDecode(#[from] base64::DecodeError),
 
     #[error("IP address/mask error")]
-    IpAddrMask(#[from] super::wireguard::net::IpAddrParseError),
+    IpAddrMask(#[from] super::wireguard::IpAddrParseError),
 
     #[error("Logger error")]
     Logger(#[from] log::SetLoggerError),
