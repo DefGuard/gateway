@@ -86,30 +86,12 @@ impl<'a> NvValue<'a> {
             Self::Bool(_) => 1,
             Self::Number(_) => 8,
             Self::String(string) => string.len() + 1, // +1 for NUL
-            Self::NvList(list) => list.byte_size(),
+            Self::NvList(list) => list.byte_size(),   // FIXME: not sure about this
             Self::Binary(binary) => binary.len(),
             Self::BoolArray(array) => array.len(),
             Self::NumberArray(array) => array.len() * 8,
             Self::StringArray(array) => array.iter().fold(0, |size, el| size + el.len() + 1),
             Self::NvListArray(array) => array.iter().fold(0, |size, el| size + el.byte_size()),
-        }
-    }
-
-    /// Return value that should be stored in `nvph_datasize`.
-    /// Note that arrays store 0.
-    #[must_use]
-    pub fn data_size(&self) -> usize {
-        match self {
-            Self::Null | Self::_Descriptor | Self::_DescriptorArray | Self::NvListArrayNext => 0,
-            Self::Bool(_) => 1,
-            Self::Number(_) => 8,
-            Self::String(string) => string.len() + 1, // +1 for NUL
-            Self::NvList(_) => 0,                     // FIXME: not sure about this
-            Self::Binary(binary) => binary.len(),
-            Self::BoolArray(array) => array.len(),
-            Self::NumberArray(array) => array.len() * 8,
-            Self::StringArray(array) => array.iter().fold(0, |size, el| size + el.len() + 1),
-            Self::NvListArray(_) => 0,
         }
     }
 
@@ -203,6 +185,46 @@ impl<'a> NvList<'a> {
     /// Get value for a given `name`.
     pub fn get(&self, name: &str) -> Option<&NvValue> {
         self.items.iter().find(|(n, _)| n == &name).map(|(_, v)| v)
+    }
+
+    /// Get value as `bool`.
+    pub fn get_bool(&self, name: &str) -> Option<bool> {
+        self.get(name).and_then(|value| match value {
+            NvValue::Bool(boolean) => Some(*boolean),
+            _ => None,
+        })
+    }
+
+    /// Get value as `u64`.
+    pub fn get_number(&self, name: &str) -> Option<u64> {
+        self.get(name).and_then(|value| match value {
+            NvValue::Number(number) => Some(*number),
+            _ => None,
+        })
+    }
+
+    /// Get value as `&str`.
+    pub fn get_string(&self, name: &str) -> Option<&str> {
+        self.get(name).and_then(|value| match value {
+            NvValue::String(string) => Some(*string),
+            _ => None,
+        })
+    }
+
+    /// Get value as `&[u8]`.
+    pub fn get_binary(&self, name: &str) -> Option<&[u8]> {
+        self.get(name).and_then(|value| match value {
+            NvValue::Binary(binary) => Some(*binary),
+            _ => None,
+        })
+    }
+
+    /// Get value as `Vec<NvList>`
+    pub fn get_nvlist_array(&self, name: &str) -> Option<&[NvList]> {
+        self.get(name).and_then(|value| match value {
+            NvValue::NvListArray(array) => Some(array.as_slice()),
+            _ => None,
+        })
     }
 
     pub fn append(&mut self, name: &'a str, value: NvValue<'a>) {
@@ -310,11 +332,16 @@ impl<'a> NvList<'a> {
                 return Err(NvListError::NameTooLong);
             }
             self.store_u16(name_len as u16, buf);
-            // data size
-            let value_size = value.data_size();
+
+            let value_size = match value {
+                NvValue::NvListArray(_) => 0,
+                _ => value.byte_size(),
+            };
             self.store_u64(value_size as u64, buf);
+
             let number_of_items = value.number_of_items();
             self.store_u64(number_of_items as u64, buf);
+
             // name
             buf.extend_from_slice(name.as_bytes());
             buf.push(0); // NUL
@@ -336,10 +363,10 @@ impl<'a> NvList<'a> {
                     array.iter().for_each(|number| self.store_u64(*number, buf));
                 }
                 NvValue::StringArray(array) => {
-                    array.iter().for_each(|string| {
+                    for string in array.iter() {
                         buf.extend_from_slice(string.as_bytes());
                         buf.push(0); // NUL
-                    });
+                    }
                 }
                 NvValue::NvListArray(nvlist_array) => {
                     for nvlist in nvlist_array {

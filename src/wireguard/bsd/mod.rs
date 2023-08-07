@@ -1,11 +1,16 @@
 mod nvlist;
 mod wgio;
 
-use std::os::fd::RawFd;
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    // time::{Duration, SystemTime},
+    os::fd::RawFd,
+};
 
 use nix::{errno, ioctl_readwrite, sys::socket};
 
-use super::Host;
+use super::{Host, IpAddrMask, Peer};
 use nvlist::{NvList, NvValue};
 use wgio::{WgDataIo, WgIoError};
 
@@ -21,6 +26,93 @@ fn get_dgram_socket() -> Result<RawFd, errno::Errno> {
         socket::SockFlag::empty(),
         None,
     )
+}
+
+impl IpAddrMask {
+    #[must_use]
+    fn try_from_nvlist(nvlist: &NvList) -> Option<Self> {
+        // cidr is mendatory
+        nvlist.get_number("cidr").and_then(|cidr| {
+            match nvlist.get_binary("ipv4") {
+                Some(ipv4) => <[u8; 4]>::try_from(ipv4).ok().map(IpAddr::from),
+                None => nvlist
+                    .get_binary("ipv6")
+                    .and_then(|ipv6| <[u8; 16]>::try_from(ipv6).ok().map(IpAddr::from)),
+            }
+            .map(|ip| Self {
+                ip,
+                cidr: cidr as u8,
+            })
+        })
+    }
+}
+
+impl Host {
+    #[must_use]
+    fn from_nvlist(nvlist: &NvList) -> Self {
+        let listen_port = nvlist.get_number("listen-port").unwrap_or_default();
+        let private_key = nvlist
+            .get_binary("private-key")
+            .and_then(|value| (*value).try_into().ok());
+
+        let mut peers = HashMap::new();
+        if let Some(peer_array) = nvlist.get_nvlist_array("peers") {
+            for peer_list in peer_array {
+                if let Some(peer) = Peer::try_from_nvlist(peer_list) {
+                    peers.insert(peer.public_key.clone(), peer);
+                }
+            }
+        }
+
+        Self {
+            listen_port: listen_port as u16,
+            private_key,
+            fwmark: nvlist.get_number("user-cookie").map(|num| num as u32),
+            peers,
+        }
+    }
+}
+
+impl Peer {
+    #[must_use]
+    fn try_from_nvlist(nvlist: &NvList) -> Option<Self> {
+        if let Some(public_key) = nvlist
+            .get_binary("public-key")
+            .and_then(|value| (*value).try_into().ok())
+        {
+            let preshared_key = nvlist
+                .get_binary("preshared-key")
+                .and_then(|value| (*value).try_into().ok());
+            // TODO: check if is it seconds
+            let last_handshake = None; //nvlist
+                                       // .get_binary("last-handshake-time")
+                                       // .map(|value| SystemTime::UNIX_EPOCH + Duration::from_secs(value));
+            let mut allowed_ips = Vec::new();
+            if let Some(ip_array) = nvlist.get_nvlist_array("allowed-ips") {
+                for ip_list in ip_array {
+                    if let Some(ip) = IpAddrMask::try_from_nvlist(ip_list) {
+                        allowed_ips.push(ip);
+                    }
+                }
+            }
+
+            Some(Self {
+                public_key,
+                preshared_key,
+                protocol_version: None,
+                endpoint: None,
+                last_handshake,
+                tx_bytes: nvlist.get_number("tx-bytes").unwrap_or_default(),
+                rx_bytes: nvlist.get_number("rx-bytes").unwrap_or_default(),
+                persistent_keepalive_interval: nvlist
+                    .get_number("persistent-keepalive-interval")
+                    .map(|value| value as u16),
+                allowed_ips,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 pub fn kernel_get_device(if_name: &str) -> Result<Host, WgIoError> {
@@ -45,16 +137,7 @@ pub fn kernel_get_device(if_name: &str) -> Result<Host, WgIoError> {
     nvlist.unpack(wg_data.as_buf()).unwrap();
     nvlist.debug();
 
-    // build `Host`
-    let listen_port = match nvlist.get("listen-port").unwrap() {
-        NvValue::Number(n) => *n,
-        _ => 0,
-    };
-    let private_key = match nvlist.get("private-key").unwrap() {
-        NvValue::Binary(b) => (*b).try_into().unwrap(),
-        _ => unimplemented!(),
-    };
-    let host = Host::new(listen_port as u16, private_key);
+    let host = Host::from_nvlist(&nvlist);
 
     Ok(host)
 }
