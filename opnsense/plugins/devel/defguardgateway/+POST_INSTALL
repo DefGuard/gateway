@@ -1,0 +1,7 @@
+curl -s https://api.github.com/repos/defguard/gateway/releases/latest | 
+grep "defguard-gateway.*txz" |
+cut -d : -f 2,3 |
+tr -d \" |
+wget -i > /dev/null
+
+pkg install -f defguard-gateway*.txz
