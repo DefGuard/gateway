@@ -200,7 +200,7 @@ impl Gateway {
         if !self.config.userspace {
             #[cfg(target_os = "linux")]
             if let Some(pre_down) = &self.config.pre_down {
-                println!("Executing specified POST_UP command: {}", pre_down);
+                println!("Executing specified PRE_DOWN command: {}", pre_down);
                 execute_command(pre_down)?;
             }
             let _ = delete_interface(&self.config.ifname);
