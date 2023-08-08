@@ -1,22 +1,10 @@
-#[cfg(target_os = "linux")]
-use crate::wireguard::netlink::delete_interface;
-use crate::{
-    config::Config,
-    error::GatewayError,
-    mask,
-    proto::{
-        gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
-        Peer, Update,
-    },
-    wireguard::{setup_interface, wgapi::WGApi},
-    VERSION,
-};
-use gethostname::gethostname;
 use std::{
     collections::HashMap,
     sync::Arc,
     time::{Duration, SystemTime},
 };
+
+use gethostname::gethostname;
 use tokio::{
     sync::Mutex,
     time::{interval, sleep},
@@ -26,6 +14,21 @@ use tonic::{
     metadata::MetadataValue,
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
+};
+
+#[cfg(target_os = "linux")]
+use crate::wireguard::netlink::delete_interface;
+use crate::{
+    config::Config,
+    execute_command,
+    error::GatewayError,
+    mask,
+    proto::{
+        gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
+        Peer, Update,
+    },
+    wireguard::{setup_interface, wgapi::WGApi},
+    VERSION,
 };
 
 // helper struct which stores just the interface config without peers
@@ -326,6 +329,10 @@ impl Gateway {
 
         let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace);
         let mut updates_stream = self.connect(Arc::clone(&client)).await?;
+        if let Some(post_up) = &self.config.post_up {
+            println!("Executing specified POST_UP command: {}", post_up);
+            execute_command(post_up)?;
+        }
         loop {
             match updates_stream.message().await {
                 Ok(Some(update)) => {
@@ -373,9 +380,11 @@ impl Gateway {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::Config;
-    use crate::gateway::{Gateway, InterfaceConfiguration};
-    use crate::proto::Peer;
+    use crate::{
+        config::Config,
+        gateway::{Gateway, InterfaceConfiguration},
+        proto::Peer,
+    };
 
     #[test]
     fn test_configuration_comparison() {

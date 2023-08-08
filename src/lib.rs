@@ -12,10 +12,10 @@ pub mod proto {
 #[macro_use]
 extern crate log;
 
+use std::{process, str::FromStr};
+
 use config::Config;
 use error::GatewayError;
-
-use std::str::FromStr;
 use syslog::{BasicLogger, Facility, Formatter3164};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -42,5 +42,32 @@ pub fn init_syslog(config: &Config, pid: u32) -> Result<(), GatewayError> {
     let logger = syslog::unix_custom(formatter, &config.syslog_socket)?;
     log::set_boxed_logger(Box::new(BasicLogger::new(logger)))?;
     log::set_max_level(log::LevelFilter::Debug);
+    Ok(())
+}
+/// Execute command passed as argument.
+pub fn execute_command(command: &str) -> Result<(), GatewayError> {
+    let command_parts: Vec<_> = command.split_whitespace().collect();
+
+    if command_parts.is_empty() {
+        return Ok(());
+    }
+
+    let output = process::Command::new(&command_parts[0])
+        .args(&command_parts[1..])
+        .output()?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        println!("Command executed successfully. Stdout:\n{}", stdout);
+        if !stderr.is_empty() {
+            eprintln!("Stderr:\n{}", stderr);
+        }
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("Error executing command. Stderr:\n{}", stderr);
+    }
+
     Ok(())
 }
