@@ -44,30 +44,28 @@ pub fn init_syslog(config: &Config, pid: u32) -> Result<(), GatewayError> {
     log::set_max_level(log::LevelFilter::Debug);
     Ok(())
 }
+
 /// Execute command passed as argument.
 pub fn execute_command(command: &str) -> Result<(), GatewayError> {
-    let command_parts: Vec<_> = command.split_whitespace().collect();
+    let mut command_parts = command.split_whitespace();
 
-    if command_parts.is_empty() {
-        return Ok(());
-    }
+    if let Some(command) = command_parts.next() {
+        let output = process::Command::new(command)
+            .args(command_parts)
+            .output()?;
 
-    let output = process::Command::new(&command_parts[0])
-        .args(&command_parts[1..])
-        .output()?;
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
 
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        info!("Command executed successfully. Stdout:\n{}", stdout);
-        if !stderr.is_empty() {
-            error!("Stderr:\n{}", stderr);
+            info!("Command executed successfully. Stdout:\n{}", stdout);
+            if !stderr.is_empty() {
+                error!("Stderr:\n{}", stderr);
+            }
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            error!("Error executing command. Stderr:\n{}", stderr);
         }
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        error!("Error executing command. Stderr:\n{}", stderr);
     }
-
     Ok(())
 }
