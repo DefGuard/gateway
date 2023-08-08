@@ -46,15 +46,11 @@ pub fn init_syslog(config: &Config, pid: u32) -> Result<(), GatewayError> {
 }
 /// Execute command passed as argument.
 pub fn execute_command(command: &str) -> Result<(), GatewayError> {
-    let command_parts: Vec<_> = command.split_whitespace().collect();
-
-    if command_parts.is_empty() {
-        return Ok(());
-    }
-
-    let output = process::Command::new(&command_parts[0])
-        .args(&command_parts[1..])
-        .output()?;
+    let output = if cfg!(target_os = "windows") {
+        process::Command::new("cmd").arg("/C").arg(command).output()
+    } else {
+        process::Command::new("sh").arg("-c").arg(command).output()
+    }?;
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
