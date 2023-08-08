@@ -199,7 +199,7 @@ impl Gateway {
 
         if !self.config.userspace {
             if let Some(pre_down) = &self.config.pre_down {
-                println!("Executing specified PRE_DOWN command: {}", pre_down);
+                info!("Executing specified PRE_DOWN command: {}", pre_down);
                 execute_command(pre_down)?;
             }
             #[cfg(target_os = "linux")]
@@ -333,7 +333,7 @@ impl Gateway {
         let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace);
         let mut updates_stream = self.connect(Arc::clone(&client)).await?;
         if let Some(post_up) = &self.config.post_up {
-            println!("Executing specified POST_UP command: {}", post_up);
+            info!("Executing specified POST_UP command: {}", post_up);
             execute_command(post_up)?;
         }
         loop {

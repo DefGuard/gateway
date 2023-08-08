@@ -5,6 +5,7 @@ use defguard_gateway::{
 };
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 
+
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
     // parse config
@@ -30,14 +31,14 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     if let Some(pre_up) = &config.pre_up {
-        println!("Executing specified PRE_UP command: {}", pre_up);
+        log::info!("Executing specified PRE_UP command: {}", pre_up);
         execute_command(pre_up)?;
     }
     let mut gateway = Gateway::new(config.clone())?;
     gateway.start().await?;
 
     if let Some(post_down) = &config.post_down {
-        println!("Executing specified POST_DOWN command: {}", post_down);
+        log::info!("Executing specified POST_DOWN command: {}", post_down);
         execute_command(post_down)?;
     }
 
