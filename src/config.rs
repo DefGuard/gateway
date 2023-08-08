@@ -1,8 +1,10 @@
-use crate::error::GatewayError;
+use std::fs;
+
 use clap::Parser;
 use serde::Deserialize;
-use std::fs;
 use toml;
+
+use crate::error::GatewayError;
 
 #[derive(Debug, Parser, Clone, Deserialize)]
 #[clap(about = "Defguard VPN gateway service")]
@@ -66,6 +68,18 @@ pub struct Config {
     #[arg(long = "config", short)]
     #[serde(skip)]
     config_path: Option<std::path::PathBuf>,
+
+    #[arg(long, env = "PRE_UP")]
+    pub pre_up: Option<String>,
+
+    #[arg(long, env = "POST_UP")]
+    pub post_up: Option<String>,
+
+    #[arg(long, env = "PRE_DOWN")]
+    pub pre_down: Option<String>,
+
+    #[arg(long, env = "POST_DOWN")]
+    pub post_down: Option<String>,
 }
 
 impl Default for Config {
@@ -83,6 +97,10 @@ impl Default for Config {
             syslog_facility: String::new(),
             syslog_socket: String::new(),
             config_path: None,
+            pre_up: None,
+            post_up: None,
+            pre_down: None,
+            post_down: None,
         }
     }
 }
