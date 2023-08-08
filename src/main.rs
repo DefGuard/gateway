@@ -5,7 +5,6 @@ use defguard_gateway::{
 };
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 
-
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
     // parse config
