@@ -13,6 +13,7 @@ use nix::{errno::Errno, ioctl_readwrite, sys::socket};
 pub enum WgIoError {
     MemAlloc,
     ReadIo(Errno),
+    WriteIo(Errno),
 }
 
 impl Error for WgIoError {}
@@ -22,6 +23,7 @@ impl fmt::Display for WgIoError {
         match self {
             Self::MemAlloc => write!(f, "memory allocation"),
             Self::ReadIo(errno) => write!(f, "read error {errno}"),
+            Self::WriteIo(errno) => write!(f, "write error {errno}"),
         }
     }
 }
@@ -85,23 +87,23 @@ impl WgDataIo {
     }
 
     pub(super) fn read_data(&mut self) -> Result<(), WgIoError> {
-        let socket = get_dgram_socket().map_err(|errno| WgIoError::ReadIo(errno))?;
+        let socket = get_dgram_socket().map_err(WgIoError::ReadIo)?;
         unsafe {
             // First do ioctl with empty `wg_data` to obtain buffer size.
-            read_wireguard_data(socket, self).map_err(|errno| WgIoError::ReadIo(errno))?;
+            read_wireguard_data(socket, self).map_err(WgIoError::ReadIo)?;
             // Allocate buffer.
             self.alloc_data()?;
             // Second call to ioctl with allocated buffer.
-            read_wireguard_data(socket, self).map_err(|errno| WgIoError::ReadIo(errno))?;
+            read_wireguard_data(socket, self).map_err(WgIoError::ReadIo)?;
         }
 
         Ok(())
     }
 
     pub(super) fn write_data(&mut self) -> Result<(), WgIoError> {
-        let socket = get_dgram_socket().map_err(|errno| WgIoError::ReadIo(errno))?;
+        let socket = get_dgram_socket().map_err(WgIoError::WriteIo)?;
         unsafe {
-            write_wireguard_data(socket, self).map_err(|errno| WgIoError::ReadIo(errno))?;
+            write_wireguard_data(socket, self).map_err(WgIoError::WriteIo)?;
         }
 
         Ok(())

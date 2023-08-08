@@ -152,6 +152,7 @@ impl fmt::Display for NvListError {
 }
 
 /// `NvList` is a name-value list.
+/// It is meant to live shortly. Just build the list and serialize it to bytes.
 type NameValue<'a> = (&'a str, NvValue<'a>);
 #[derive(Debug)]
 pub struct NvList<'a> {

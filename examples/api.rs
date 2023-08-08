@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use base64::encode;
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
 #[cfg(target_os = "linux")]
@@ -27,12 +26,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // host
     let secret = StaticSecret::random();
-    let mut host = Host::new(12345, encode(secret.to_bytes()).try_into().unwrap());
+    let mut host = Host::new(12345, secret.to_bytes().as_ref().try_into().unwrap());
 
     let secret = EphemeralSecret::random();
-    let peer_key: Key = encode(PublicKey::from(&secret).to_bytes())
-        .try_into()
-        .unwrap();
+    let key = PublicKey::from(&secret);
+    let peer_key: Key = key.as_ref().try_into().unwrap();
     let mut peer = Peer::new(peer_key.clone());
     let addr = IpAddrMask::from_str("10.20.30.40/24").unwrap();
     peer.allowed_ips.push(addr);
@@ -43,7 +41,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // peer
     for _ in 0..32 {
         let secret = EphemeralSecret::random();
-        let peer = Peer::new(encode(PublicKey::from(&secret)).try_into().unwrap());
+        let key = PublicKey::from(&secret);
+        let peer = Peer::new(key.as_ref().try_into().unwrap());
         api.write_peer(&peer)?;
         // api.delete_peer(&peer)?;
     }

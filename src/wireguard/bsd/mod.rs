@@ -3,7 +3,7 @@ mod sockaddr;
 mod timespec;
 mod wgio;
 
-use std::{collections::HashMap, net::IpAddr};
+use std::{collections::HashMap, mem::size_of, net::IpAddr, ptr::addr_of, slice::from_raw_parts};
 
 use self::{
     nvlist::{NvList, NvValue},
@@ -41,6 +41,12 @@ unsafe fn cast_ref<T>(bytes: &[u8]) -> &T {
     ptr.cast::<T>().as_ref().unwrap()
 }
 
+/// Cast `T' to bytes.
+unsafe fn cast_bytes<T: Sized>(p: &T) -> &[u8] {
+    let ptr = addr_of!(p).cast::<u8>();
+    from_raw_parts(ptr, size_of::<T>())
+}
+
 impl IpAddrMask {
     #[must_use]
     fn try_from_nvlist(nvlist: &NvList) -> Option<Self> {
@@ -58,6 +64,11 @@ impl IpAddrMask {
             })
         })
     }
+
+    // #[must_use]
+    // fn to_nvlist(&self) {
+
+    // }
 }
 
 impl Host {
@@ -67,7 +78,7 @@ impl Host {
         let private_key = nvlist
             .get_binary(NV_PRIVATE_KEY)
             .and_then(|value| (*value).try_into().ok());
-
+        // peers
         let mut peers = HashMap::new();
         if let Some(peer_array) = nvlist.get_nvlist_array(NV_PEERS) {
             for peer_list in peer_array {
@@ -88,16 +99,19 @@ impl Host {
 
 impl<'a> Host {
     #[must_use]
-    fn to_nvlist(&'a self) -> NvList<'a> {
+    fn as_nvlist(&'a self) -> NvList<'a> {
         let mut nvlist = NvList::new();
 
         nvlist.append_number(NV_LISTEN_PORT, self.listen_port as u64);
-        if let Some(ref private_key) = self.private_key {
+        if let Some(private_key) = self.private_key.as_ref() {
             nvlist.append_binary(NV_PRIVATE_KEY, private_key.as_slice());
         }
         if let Some(fwmark) = self.fwmark {
             nvlist.append_number(NV_FWMARK, fwmark as u64);
         }
+
+        let peers: Vec<NvList> = self.peers.values().map(Peer::as_nvlist).collect();
+        // nvlist.append_nvlist_array(&peers);
 
         nvlist
     }
@@ -145,10 +159,16 @@ impl Peer {
 
 impl<'a> Peer {
     #[must_use]
-    fn to_nvlist(&'a self) -> NvList<'a> {
+    fn as_nvlist(&'a self) -> NvList<'a> {
         let mut nvlist = NvList::new();
 
         nvlist.append_binary(NV_PUBLIC_KEY, self.public_key.as_slice());
+        if let Some(preshared_key) = self.preshared_key.as_ref() {
+            nvlist.append_binary(NV_PRESHARED_KEY, preshared_key.as_slice());
+        }
+        // if let Some(endpoint) = self.endpoint.as_ref() {
+        //     nvlist.append_binary(NV_ENDPOINT, pack_sockaddr(endpoint).as_slice());
+        // }
 
         nvlist
     }
@@ -167,8 +187,13 @@ pub fn kernel_get_device(if_name: &str) -> Result<Host, WgIoError> {
 pub fn kernel_set_device(if_name: &str) {
     let mut wg_data = WgDataIo::new(if_name);
 
-    let mut nvlist = NvList::new();
-    nvlist.append("listen-port", NvValue::Number(12345));
+    let host = Host::new(
+        7301,
+        "vkaCi/Csc9Iq/ZEQVKPZztvPwh36YTDouE4TPsIthY0="
+            .parse()
+            .unwrap(),
+    );
+    let mut nvlist = host.as_nvlist();
 
     let mut ip1 = NvList::new();
     ip1.append("ipv4", NvValue::Binary(&[10, 6, 0, 0]));

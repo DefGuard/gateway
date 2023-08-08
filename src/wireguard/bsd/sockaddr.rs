@@ -1,12 +1,15 @@
+//! Convert binary `sockaddr_in` or `sockaddr_in6` (see netinet/in.h) to `SocketAddr`.
 use std::{
     mem::size_of,
-    net::{IpAddr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 
-use super::cast_ref;
+use super::{cast_bytes, cast_ref};
 
-/// Covert binary `sockaddr_in` or `sockaddr_in6` (see netinet/in.h) to `SocketAddr`.
-/// Only AF_INET (IPv4) and AF_INET6 (IPv6) addresses are supported.
+const AF_INET: u8 = 2; // IPv4
+const AF_INET6: u8 = 30; // IPv6
+const SA_IN_SIZE: usize = size_of::<SockAddrIn>();
+const SA_IN6_SIZE: usize = size_of::<SockAddrIn6>();
 
 // netinet/in.h
 #[repr(C)]
@@ -15,12 +18,27 @@ struct SockAddrIn {
     family: u8,
     port: u16,
     addr: [u8; 4],
-    _zero: [u8; 8],
+    zero: [u8; 8],
 }
 
 impl From<&SockAddrIn> for SocketAddr {
-    fn from(sa: &SockAddrIn) -> SocketAddr {
-        SocketAddr::new(IpAddr::from(sa.addr), u16::from_be(sa.port))
+    fn from(sa: &SockAddrIn) -> Self {
+        Self::V4(SocketAddrV4::new(
+            Ipv4Addr::from(sa.addr),
+            u16::from_be(sa.port),
+        ))
+    }
+}
+
+impl From<&SocketAddrV4> for SockAddrIn {
+    fn from(sa: &SocketAddrV4) -> Self {
+        Self {
+            len: SA_IN_SIZE as u8,
+            family: AF_INET,
+            port: sa.port().to_be(),
+            addr: sa.ip().octets(),
+            zero: [0u8; 8],
+        }
     }
 }
 
@@ -36,18 +54,45 @@ struct SockAddrIn6 {
 }
 
 impl From<&SockAddrIn6> for SocketAddr {
-    fn from(sa: &SockAddrIn6) -> SocketAddr {
-        SocketAddr::new(IpAddr::from(sa.addr), u16::from_be(sa.port))
+    fn from(sa: &SockAddrIn6) -> Self {
+        Self::V6(SocketAddrV6::new(
+            Ipv6Addr::from(sa.addr),
+            u16::from_be(sa.port),
+            u32::from_be(sa.flowinfo),
+            u32::from_be(sa.scope_id),
+        ))
+    }
+}
+
+impl From<&SocketAddrV6> for SockAddrIn6 {
+    fn from(sa: &SocketAddrV6) -> Self {
+        Self {
+            len: SA_IN6_SIZE as u8,
+            family: AF_INET6,
+            port: sa.port().to_be(),
+            flowinfo: sa.flowinfo().to_be(),
+            addr: sa.ip().octets(),
+            scope_id: sa.scope_id().to_be(),
+        }
+    }
+}
+
+pub(super) fn pack_sockaddr(sockaddr: &SocketAddr) -> Vec<u8> {
+    match sockaddr {
+        SocketAddr::V4(sockaddr_v4) => {
+            let sockaddr_in: SockAddrIn = sockaddr_v4.into();
+            let bytes = unsafe { cast_bytes(&sockaddr_in) };
+            Vec::from(bytes)
+        }
+        SocketAddr::V6(sockaddr_v6) => {
+            let sockaddr_in6: SockAddrIn6 = sockaddr_v6.into();
+            let bytes = unsafe { cast_bytes(&sockaddr_in6) };
+            Vec::from(bytes)
+        }
     }
 }
 
 pub(super) fn unpack_sockaddr(buf: &[u8]) -> Option<SocketAddr> {
-    const AF_INET: u8 = 2;
-    const AF_INET6: u8 = 30;
-
-    const SA_IN_SIZE: usize = size_of::<SockAddrIn>();
-    const SA_IN6_SIZE: usize = size_of::<SockAddrIn6>();
-
     match buf.len() {
         SA_IN_SIZE => {
             let sockaddr_in = unsafe { cast_ref::<SockAddrIn>(buf) };
@@ -75,7 +120,7 @@ pub(super) fn unpack_sockaddr(buf: &[u8]) -> Option<SocketAddr> {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::IpAddr;
 
     use super::*;
 

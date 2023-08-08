@@ -2,6 +2,7 @@ use base64::{decode, encode, DecodeError};
 use std::{
     error, fmt,
     hash::{Hash, Hasher},
+    str::FromStr,
 };
 
 const KEY_LENGTH: usize = 32;
@@ -114,16 +115,16 @@ impl TryFrom<&[u8]> for Key {
     }
 }
 
-impl TryFrom<String> for Key {
-    type Error = DecodeError;
+impl FromStr for Key {
+    type Err = DecodeError;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
         let v = decode(value)?;
         if v.len() == KEY_LENGTH {
-            let buf = v.try_into().map_err(|_| Self::Error::InvalidLength)?;
+            let buf = v.try_into().map_err(|_| Self::Err::InvalidLength)?;
             Ok(Self::new(buf))
         } else {
-            Err(Self::Error::InvalidLength)
+            Err(Self::Err::InvalidLength)
         }
     }
 }
