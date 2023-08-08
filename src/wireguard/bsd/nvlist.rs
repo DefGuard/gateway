@@ -178,10 +178,6 @@ impl<'a> NvList<'a> {
         }
     }
 
-    pub fn debug(&self) {
-        println!("{:?}", self.items);
-    }
-
     /// Get value for a given `name`.
     fn get(&self, name: &str) -> Option<&NvValue> {
         self.items.iter().find(|(n, _)| n == &name).map(|(_, v)| v)
@@ -561,7 +557,7 @@ impl<'a> NvList<'a> {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     #[rustfmt::skip]
@@ -592,13 +588,11 @@ mod test {
     fn unpack() {
         let mut nvlist = NvList::new();
         nvlist.unpack(&TEST_DATA).unwrap();
-        nvlist.debug();
 
         let buf = nvlist.pack().unwrap();
 
         let mut nvlist = NvList::new();
         nvlist.unpack(&buf).unwrap();
-        nvlist.debug();
 
         assert_eq!(TEST_DATA.as_slice(), buf.as_slice());
     }
@@ -628,7 +622,6 @@ mod test {
         ];
         let mut nvlist = NvList::new();
         nvlist.unpack(&data).unwrap();
-        nvlist.debug();
 
         let buf = nvlist.pack().unwrap();
         assert_eq!(data.as_slice(), buf.as_slice());
@@ -649,7 +642,6 @@ mod test {
         ];
         let mut nvlist = NvList::new();
         nvlist.unpack(&data).unwrap();
-        nvlist.debug();
 
         let buf = nvlist.pack().unwrap();
         assert_eq!(data.as_slice(), buf.as_slice());
@@ -670,7 +662,6 @@ mod test {
         ];
         let mut nvlist = NvList::new();
         nvlist.unpack(&data).unwrap();
-        nvlist.debug();
 
         let buf = nvlist.pack().unwrap();
         assert_eq!(data.as_slice(), buf.as_slice());
@@ -799,7 +790,6 @@ mod test {
             0];
         let mut nvlist = NvList::new();
         nvlist.unpack(&data).unwrap();
-        nvlist.debug();
 
         let buf = nvlist.pack().unwrap();
 
@@ -815,6 +805,5 @@ mod test {
 
         let mut nvlist = NvList::new();
         nvlist.unpack(&buf).unwrap();
-        nvlist.debug();
     }
 }
