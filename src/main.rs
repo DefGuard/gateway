@@ -1,6 +1,8 @@
 use std::{fs::File, io::Write, process};
 
-use defguard_gateway::{config::get_config, error::GatewayError, gateway::Gateway, init_syslog, execute_command};
+use defguard_gateway::{
+    config::get_config, error::GatewayError, execute_command, gateway::Gateway, init_syslog,
+};
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 
 #[tokio::main]
@@ -37,7 +39,6 @@ async fn main() -> Result<(), GatewayError> {
     if let Some(post_down) = &config.post_down {
         println!("Executing specified POST_DOWN command: {}", post_down);
         execute_command(post_down)?;
-
     }
 
     Ok(())

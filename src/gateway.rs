@@ -20,9 +20,8 @@ use tonic::{
 use crate::wireguard::netlink::delete_interface;
 use crate::{
     config::Config,
-    execute_command,
     error::GatewayError,
-    mask,
+    execute_command, mask,
     proto::{
         gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
         Peer, Update,
@@ -200,6 +199,10 @@ impl Gateway {
 
         if !self.config.userspace {
             #[cfg(target_os = "linux")]
+            if let Some(pre_down) = &self.config.pre_down {
+                println!("Executing specified POST_UP command: {}", pre_down);
+                execute_command(pre_down)?;
+            }
             let _ = delete_interface(&self.config.ifname);
         }
         setup_interface(
