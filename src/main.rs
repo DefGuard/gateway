@@ -19,7 +19,6 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     // setup logging
-    log::info!("Initializing logging facilities");
     if config.use_syslog {
         if let Err(error) = init_syslog(&config, pid) {
             log::error!("Unable to initialize syslog. Is the syslog daemon running?");
