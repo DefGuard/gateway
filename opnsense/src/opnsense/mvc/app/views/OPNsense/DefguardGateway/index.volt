@@ -12,11 +12,14 @@
             $("#responseMsg").removeClass("hidden");
             saveFormToEndpoint(url="/api/defguardgateway/settings/set", formid='frm_GeneralSettings',callback_ok=function(){
 								updateServiceControlUI('defguardgateway');
+								ajaxCall(url="/api/defguardgateway/service/reload", sendData={},callback=function(data,status) {
+										$("#responseMsg").html(data['status']);
+										// action to run after reload
+								});
                 // Reload configuration after save.
-							ajaxCall(url="/api/defguardgateway/service/reset", sendData={},callback=function(data,status) {
-									// action to run after reload
-                $("#responseMsg").html(data['status']);
-									updateServiceControlUI('defguard');
+								ajaxCall(url="/api/defguardgateway/service/reset", sendData={},callback=function(data,status) {
+										// action to run after reload
+										updateServiceControlUI('defguardgateway');
 							});
             });
         });

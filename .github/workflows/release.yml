@@ -183,7 +183,7 @@ jobs:
         if: matrix.build == 'freebsd'
         uses: bpicode/github-action-fpm@master
         with:
-          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard example-config.toml=/etc/defguard/gateway.toml defguard-rc.conf=/etc/rc.conf.d/defguard"
+          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard example-config.toml=/etc/defguard/gateway.toml defguard-rc.conf=/etc/rc.conf.d/defguard"
           fpm_opts: "--debug -t freebsd --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.txz"
 
       - name: Upload freebsd
@@ -202,7 +202,7 @@ jobs:
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: |
-            "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway 
+            "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway 
               defguard-gateway.service.freebsd=/etc/rc.d/defguard 
               example-config.toml=/etc/defguard/gateway.toml 
               defguard-rc.conf=/etc/rc.conf.d/defguard 

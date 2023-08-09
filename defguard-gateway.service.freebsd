@@ -8,7 +8,7 @@
 
 name="defguard"
 rcvar=defguard_enable
-command="/usr/sbin/defguard-gateway"
+command="/usr/local/sbin/defguard-gateway"
 config="/etc/defguard/gateway.toml"
 start_cmd="${name}_start"
 
