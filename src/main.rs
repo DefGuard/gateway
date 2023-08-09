@@ -19,12 +19,12 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     // setup logging
-    println!("Initializing logging facilities");
+    log::info!("Initializing logging facilities");
     if config.use_syslog {
         if let Err(error) = init_syslog(&config, pid) {
-            eprintln!("Unable to initialize syslog. Is the syslog daemon running?");
+            log::error!("Unable to initialize syslog. Is the syslog daemon running?");
             return Err(error);
-        };
+        }
     } else {
         init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
     }

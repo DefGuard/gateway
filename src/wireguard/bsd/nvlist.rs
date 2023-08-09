@@ -817,15 +817,6 @@ mod tests {
         nvlist.unpack(&data).unwrap();
 
         let buf = nvlist.pack().unwrap();
-
-        if data.len() == buf.len() {
-            for (i, v) in buf.iter().enumerate() {
-                if v != &data[i] {
-                    println!("💩 {i:4} {:3} != {:3}", data[i], v);
-                }
-            }
-        }
-
         assert_eq!(data.as_slice(), buf.as_slice());
 
         let mut nvlist = NvList::new();

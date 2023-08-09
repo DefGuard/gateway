@@ -10,9 +10,9 @@ use defguard_gateway::wireguard::{wgapi::WGApi, Host, IpAddrMask, Key, Peer};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "linux")]
     {
-        eprintln!("create interface");
+        println!("create interface");
         create_interface("wg0")?;
-        eprintln!("address interface");
+        println!("address interface");
         let addr = IpAddrMask::from_str("10.20.30.40/24").unwrap();
         address_interface("wg0", &addr)?;
     }
