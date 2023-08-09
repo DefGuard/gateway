@@ -68,6 +68,7 @@ pub enum NvValue<'a> {
     NvList(NvList<'a>),
     _Descriptor, // not implemented
     Binary(&'a [u8]),
+    Bytes(Vec<u8>), // similar to `Binary`, but owned
     BoolArray(Vec<bool>),
     NumberArray(Vec<u64>),
     StringArray(Vec<&'a str>),
@@ -88,6 +89,7 @@ impl<'a> NvValue<'a> {
             Self::String(string) => string.len() + 1, // +1 for NUL
             Self::NvList(list) => list.byte_size(),   // FIXME: not sure about this
             Self::Binary(binary) => binary.len(),
+            Self::Bytes(bytes) => bytes.len(),
             Self::BoolArray(array) => array.len(),
             Self::NumberArray(array) => array.len() * 8,
             Self::StringArray(array) => array.iter().fold(0, |size, el| size + el.len() + 1),
@@ -104,7 +106,7 @@ impl<'a> NvValue<'a> {
             Self::String(_) => NvType::String,
             Self::NvList(_) => NvType::NvList,
             Self::_Descriptor => NvType::_Descriptor,
-            Self::Binary(_) => NvType::Binary,
+            Self::Binary(_) | Self::Bytes(_) => NvType::Binary,
             Self::BoolArray(_) => NvType::BoolArray,
             Self::NumberArray(_) => NvType::NumberArray,
             Self::StringArray(_) => NvType::StringArray,
@@ -185,12 +187,12 @@ impl<'a> NvList<'a> {
     }
 
     /// Get value as `bool`.
-    pub fn get_bool(&self, name: &str) -> Option<bool> {
-        self.get(name).and_then(|value| match value {
-            NvValue::Bool(boolean) => Some(*boolean),
-            _ => None,
-        })
-    }
+    // pub fn get_bool(&self, name: &str) -> Option<bool> {
+    //     self.get(name).and_then(|value| match value {
+    //         NvValue::Bool(boolean) => Some(*boolean),
+    //         _ => None,
+    //     })
+    // }
 
     /// Get value as `u64`.
     pub fn get_number(&self, name: &str) -> Option<u64> {
@@ -201,12 +203,12 @@ impl<'a> NvList<'a> {
     }
 
     /// Get value as `&str`.
-    pub fn get_string(&self, name: &str) -> Option<&str> {
-        self.get(name).and_then(|value| match value {
-            NvValue::String(string) => Some(*string),
-            _ => None,
-        })
-    }
+    // pub fn get_string(&self, name: &str) -> Option<&str> {
+    //     self.get(name).and_then(|value| match value {
+    //         NvValue::String(string) => Some(*string),
+    //         _ => None,
+    //     })
+    // }
 
     /// Get value as `&[u8]`.
     pub fn get_binary(&self, name: &str) -> Option<&[u8]> {
@@ -224,24 +226,45 @@ impl<'a> NvList<'a> {
         })
     }
 
-    pub fn append(&mut self, name: &'a str, value: NvValue<'a>) {
-        self.items.push((name, value));
+    /// Append `Null` value to the list.
+    #[cfg(test)]
+    pub fn append_null(&mut self, name: &'a str) {
+        self.items.push((name, NvValue::Null));
     }
 
-    pub fn append_bool(&mut self, name: &'a str, boolean: bool) {
-        self.items.push((name, NvValue::Bool(boolean)));
-    }
+    /// Append `Bool` value to the list.
+    // pub fn append_bool(&mut self, name: &'a str, boolean: bool) {
+    //     self.items.push((name, NvValue::Bool(boolean)));
+    // }
 
+    /// Append `Number` value to the list.
     pub fn append_number(&mut self, name: &'a str, number: u64) {
         self.items.push((name, NvValue::Number(number)));
     }
 
-    pub fn append_string(&mut self, name: &'a str, string: &'a str) {
-        self.items.push((name, NvValue::String(string)));
-    }
+    /// Append `String` value to the list.
+    // pub fn append_string(&mut self, name: &'a str, string: &'a str) {
+    //     self.items.push((name, NvValue::String(string)));
+    // }
 
+    /// Append `Binary` value to the list.
     pub fn append_binary(&mut self, name: &'a str, binary: &'a [u8]) {
         self.items.push((name, NvValue::Binary(binary)));
+    }
+
+    /// Append `Bytes` value to the list.
+    pub fn append_bytes(&mut self, name: &'a str, bytes: Vec<u8>) {
+        self.items.push((name, NvValue::Bytes(bytes)));
+    }
+
+    /// Append `NvListArray` value to the list.
+    pub fn append_nvlist_array(&mut self, name: &'a str, array: Vec<NvList<'a>>) {
+        self.items.push((name, NvValue::NvListArray(array)));
+    }
+
+    /// Append `NvListArrayNext` value to the list.
+    pub fn append_nvlist_array_next(&mut self) {
+        self.items.push(("", NvValue::NvListArrayNext));
     }
 
     fn load_u16(&self, buf: &[u8]) -> Result<u16, NvListError> {
@@ -369,6 +392,7 @@ impl<'a> NvList<'a> {
                     buf.push(0); // NUL
                 }
                 NvValue::Binary(bytes) => buf.extend_from_slice(bytes),
+                NvValue::Bytes(bytes) => buf.extend_from_slice(bytes.as_slice()),
                 NvValue::BoolArray(array) => {
                     array.iter().for_each(|boolean| buf.push((*boolean).into()));
                 }
@@ -601,8 +625,8 @@ mod tests {
     #[test]
     fn pack() {
         let mut nvlist = NvList::new();
-        nvlist.append("listen-port", NvValue::Number(12345));
-        nvlist.append("nul", NvValue::Null);
+        nvlist.append_number("listen-port", 12345);
+        nvlist.append_null("nul");
 
         let buf = nvlist.pack().unwrap();
         assert_eq!(TEST_DATA.as_slice(), buf.as_slice());

@@ -3,12 +3,15 @@ mod sockaddr;
 mod timespec;
 mod wgio;
 
-use std::{collections::HashMap, mem::size_of, net::IpAddr, ptr::addr_of, slice::from_raw_parts};
+use std::{
+    collections::HashMap, mem::size_of, net::IpAddr, ptr::addr_of, slice::from_raw_parts,
+    str::FromStr,
+};
 
 use self::{
-    nvlist::{NvList, NvValue},
-    sockaddr::unpack_sockaddr,
-    timespec::unpack_timespec,
+    nvlist::NvList,
+    sockaddr::{pack_sockaddr, unpack_sockaddr},
+    timespec::{pack_timespec, unpack_timespec},
     wgio::{WgDataIo, WgIoError},
 };
 use super::{Host, IpAddrMask, Peer};
@@ -64,11 +67,22 @@ impl IpAddrMask {
             })
         })
     }
+}
 
-    // #[must_use]
-    // fn to_nvlist(&self) {
+impl<'a> IpAddrMask {
+    #[must_use]
+    fn as_nvlist(&'a self) -> NvList<'a> {
+        let mut nvlist = NvList::new();
 
-    // }
+        nvlist.append_number(NV_CIDR, u64::from(self.cidr));
+
+        match self.ip {
+            IpAddr::V4(ipv4) => nvlist.append_bytes(NV_IPV4, ipv4.octets().into()),
+            IpAddr::V6(ipv6) => nvlist.append_bytes(NV_IPV6, ipv6.octets().into()),
+        }
+
+        nvlist
+    }
 }
 
 impl Host {
@@ -102,16 +116,19 @@ impl<'a> Host {
     fn as_nvlist(&'a self) -> NvList<'a> {
         let mut nvlist = NvList::new();
 
-        nvlist.append_number(NV_LISTEN_PORT, self.listen_port as u64);
+        nvlist.append_number(NV_LISTEN_PORT, u64::from(self.listen_port));
         if let Some(private_key) = self.private_key.as_ref() {
             nvlist.append_binary(NV_PRIVATE_KEY, private_key.as_slice());
         }
         if let Some(fwmark) = self.fwmark {
-            nvlist.append_number(NV_FWMARK, fwmark as u64);
+            nvlist.append_number(NV_FWMARK, u64::from(fwmark));
         }
 
-        let peers: Vec<NvList> = self.peers.values().map(Peer::as_nvlist).collect();
-        // nvlist.append_nvlist_array(&peers);
+        if !self.peers.is_empty() {
+            let peers = self.peers.values().map(Peer::as_nvlist).collect();
+            nvlist.append_nvlist_array(NV_PEERS, peers);
+            nvlist.append_nvlist_array_next();
+        }
 
         nvlist
     }
@@ -166,9 +183,23 @@ impl<'a> Peer {
         if let Some(preshared_key) = self.preshared_key.as_ref() {
             nvlist.append_binary(NV_PRESHARED_KEY, preshared_key.as_slice());
         }
-        // if let Some(endpoint) = self.endpoint.as_ref() {
-        //     nvlist.append_binary(NV_ENDPOINT, pack_sockaddr(endpoint).as_slice());
-        // }
+        if let Some(endpoint) = self.endpoint.as_ref() {
+            nvlist.append_bytes(NV_ENDPOINT, pack_sockaddr(endpoint));
+        }
+        if let Some(last_handshake) = self.last_handshake.as_ref() {
+            nvlist.append_bytes(NV_LAST_HANDSHAKE, pack_timespec(last_handshake));
+        }
+        nvlist.append_number(NV_TX_BYTES, self.tx_bytes);
+        nvlist.append_number(NV_RX_BYTES, self.rx_bytes);
+        if let Some(keepalive_interval) = self.persistent_keepalive_interval {
+            nvlist.append_number(NV_KEEPALIVE_INTERVAL, u64::from(keepalive_interval));
+        }
+
+        if !self.allowed_ips.is_empty() {
+            let allowed_ips = self.allowed_ips.iter().map(IpAddrMask::as_nvlist).collect();
+            nvlist.append_nvlist_array(NV_ALLOWED_IPS, allowed_ips);
+            nvlist.append_nvlist_array_next();
+        }
 
         nvlist
     }
@@ -187,51 +218,22 @@ pub fn kernel_get_device(if_name: &str) -> Result<Host, WgIoError> {
 pub fn kernel_set_device(if_name: &str) {
     let mut wg_data = WgDataIo::new(if_name);
 
-    let host = Host::new(
+    let mut host = Host::new(
         7301,
         "vkaCi/Csc9Iq/ZEQVKPZztvPwh36YTDouE4TPsIthY0="
             .parse()
             .unwrap(),
     );
-    let mut nvlist = host.as_nvlist();
-
-    let mut ip1 = NvList::new();
-    ip1.append("ipv4", NvValue::Binary(&[10, 6, 0, 0]));
-    ip1.append("cidr", NvValue::Number(24));
-    ip1.append("", NvValue::NvListArrayNext);
-
-    let mut ip2 = NvList::new();
-    ip2.append("ipv4", NvValue::Binary(&[10, 7, 0, 0]));
-    ip2.append("cidr", NvValue::Number(24));
-    ip2.append("", NvValue::NvListArrayNext);
-
-    let mut ip3 = NvList::new();
-    ip3.append("ipv4", NvValue::Binary(&[10, 7, 0, 0]));
-    ip3.append("cidr", NvValue::Number(24));
-    ip3.append("", NvValue::NvListArrayNext);
-
-    let mut peer1 = NvList::new();
-    peer1.append(
-        "public-key",
-        NvValue::Binary(&[
-            220, 98, 132, 114, 211, 195, 157, 56, 63, 135, 95, 253, 123, 132, 59, 218, 35, 120, 55,
-            169, 156, 165, 223, 184, 140, 111, 142, 164, 145, 107, 167, 17,
-        ]),
+    let mut peer = Peer::new(
+        "3GKEctPDnTg/h1/9e4Q72iN4N6mcpd+4jG+OpJFrpxE="
+            .parse()
+            .unwrap(),
     );
-    peer1.append("allowed-ips", NvValue::NvListArray(vec![ip1, ip2, ip3]));
-    peer1.append("", NvValue::NvListArrayNext);
+    let addr = IpAddrMask::from_str("10.20.30.40/24").unwrap();
+    peer.allowed_ips.push(addr);
+    host.peers.insert(peer.public_key.clone(), peer);
 
-    let mut peer2 = NvList::new();
-    peer2.append(
-        "public-key",
-        NvValue::Binary(&[
-            60, 195, 52, 243, 24, 229, 218, 5, 142, 193, 30, 194, 241, 176, 169, 221, 121, 39, 172,
-            116, 158, 67, 46, 115, 119, 155, 107, 159, 128, 201, 79, 54,
-        ]),
-    );
-    peer2.append("", NvValue::NvListArrayNext);
-
-    nvlist.append("peers", NvValue::NvListArray(vec![peer1, peer2]));
+    let nvlist = host.as_nvlist();
 
     let mut buf = nvlist.pack().unwrap();
     wg_data.wgd_data = buf.as_mut_ptr();
