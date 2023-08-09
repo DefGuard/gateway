@@ -346,23 +346,21 @@ impl Gateway {
                         }
                         Some(update::Update::Peer(peer_config)) => {
                             info!("Applying peer configuration: {peer_config:?}");
-                            match update.update_type {
-                                // UpdateType::Delete
-                                2 => {
-                                    debug!("Deleting peer {peer_config:?}");
-                                    self.peers.remove(&peer_config.pubkey);
-                                    wgapi.delete_peer(&peer_config.into())
-                                }
-                                // UpdateType::Create, UpdateType::Modify
-                                _ => {
-                                    debug!(
-                                        "Updating peer {peer_config:?}, update type: {}",
-                                        update.update_type
-                                    );
-                                    self.peers
-                                        .insert(peer_config.pubkey.clone(), peer_config.clone());
-                                    wgapi.write_peer(&peer_config.into())
-                                }
+                            // UpdateType::Delete
+                            if update.update_type == 2 {
+                                debug!("Deleting peer {peer_config:?}");
+                                self.peers.remove(&peer_config.pubkey);
+                                wgapi.delete_peer(&peer_config.into())
+                            }
+                            // UpdateType::Create, UpdateType::Modify
+                            else {
+                                debug!(
+                                    "Updating peer {peer_config:?}, update type: {}",
+                                    update.update_type
+                                );
+                                self.peers
+                                    .insert(peer_config.pubkey.clone(), peer_config.clone());
+                                wgapi.write_peer(&peer_config.into())
                             }?;
                         }
                         _ => warn!("Unsupported kind of update"),

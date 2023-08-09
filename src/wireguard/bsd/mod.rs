@@ -29,7 +29,7 @@ static NV_TX_BYTES: &str = "tx-bytes";
 static NV_LAST_HANDSHAKE: &str = "last-handshake-time";
 static NV_ALLOWED_IPS: &str = "allowed-ips";
 static NV_REPLACE_ALLOWED_IPS: &str = "replace-allowed-ips";
-// static NV_REMOVE: &str = "remove";
+static NV_REMOVE: &str = "remove";
 
 static NV_CIDR: &str = "cidr";
 static NV_IPV4: &str = "ipv4";
@@ -202,6 +202,17 @@ impl<'a> Peer {
         nvlist.append_nvlist_array_next();
         nvlist
     }
+
+    #[must_use]
+    fn as_nvlist_for_removal(&'a self) -> NvList<'a> {
+        let mut nvlist = NvList::new();
+
+        nvlist.append_binary(NV_PUBLIC_KEY, self.public_key.as_slice());
+        nvlist.append_bool(NV_REMOVE, true);
+
+        nvlist.append_nvlist_array_next();
+        nvlist
+    }
 }
 
 pub fn get_host(if_name: &str) -> Result<Host, WgIoError> {
@@ -221,6 +232,32 @@ pub fn set_host(if_name: &str, host: &Host) -> Result<(), WgIoError> {
     let mut wg_data = WgDataIo::new(if_name);
 
     let nvlist = host.as_nvlist();
+    // FIXME: use proper error, here and above
+    let mut buf = nvlist.pack().map_err(|_| WgIoError::MemAlloc)?;
+
+    wg_data.wgd_data = buf.as_mut_ptr();
+    wg_data.wgd_size = buf.len();
+    wg_data.write_data()
+}
+
+pub fn set_peer(if_name: &str, peer: &Peer) -> Result<(), WgIoError> {
+    let mut wg_data = WgDataIo::new(if_name);
+
+    let mut nvlist = NvList::new();
+    nvlist.append_nvlist_array(NV_PEERS, vec![peer.as_nvlist()]);
+    // FIXME: use proper error, here and above
+    let mut buf = nvlist.pack().map_err(|_| WgIoError::MemAlloc)?;
+
+    wg_data.wgd_data = buf.as_mut_ptr();
+    wg_data.wgd_size = buf.len();
+    wg_data.write_data()
+}
+
+pub fn delete_peer(if_name: &str, peer: &Peer) -> Result<(), WgIoError> {
+    let mut wg_data = WgDataIo::new(if_name);
+
+    let mut nvlist = NvList::new();
+    nvlist.append_nvlist_array(NV_PEERS, vec![peer.as_nvlist_for_removal()]);
     // FIXME: use proper error, here and above
     let mut buf = nvlist.pack().map_err(|_| WgIoError::MemAlloc)?;
 
