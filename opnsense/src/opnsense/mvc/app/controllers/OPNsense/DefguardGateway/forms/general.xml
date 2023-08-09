@@ -78,4 +78,28 @@
 	<type>checkbox</type>
 	<help>Use userspace wireguard implementation, useful on systems without native wireguard support</help>
     </field>
+    <field>
+        <id>defguardgateway.general.PreUp</id>
+        <label>Pre Up</label>
+        <type>text</type>
+        <help>Command to run before bringing up the interface.</help>
+    </field>
+    <field>
+        <id>defguardgateway.general.PreDown</id>
+        <label>Pre Down</label>
+        <type>text</type>
+        <help>Command to run before bringing down the interface.</help>
+    </field>
+    <field>
+        <id>defguardgateway.general.PostUp</id>
+        <label>Post Up</label>
+        <type>text</type>
+        <help>Command to run after bringing up the interface.</help>
+    </field>
+    <field>
+        <id>defguardgateway.general.PostDown</id>
+        <label>Post Down</label>
+        <type>text</type>
+        <help>Command to run after bringing down the interface.</help>
+    </field>
 </form>

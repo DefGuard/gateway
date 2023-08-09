@@ -52,6 +52,18 @@
 		    <Required>Y</Required>
 		    <default>60</default>
 		</StatsPeriod>
+		<PreUp type="TextField">
+		    <Required>N</Required>
+		</PreUp>
+		<PreDown type="TextField">
+		    <Required>N</Required>
+		</PreDown>
+		<PostUp type="TextField">
+		    <Required>N</Required>
+		</PostUp>
+		<PostDown type="TextField">
+		    <Required>N</Required>
+		</PostDown>
 	    </general>
     </items>
 </model>

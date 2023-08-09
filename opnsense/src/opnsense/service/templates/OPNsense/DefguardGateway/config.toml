@@ -33,3 +33,19 @@ use_syslog = false
 syslog_facility = "{{ OPNsense.defguardgateway.general.SyslogFacility|default("LOG_USER") }}"
 # Required: which socket to use for logging
 syslog_socket = "{{ OPNsense.defguardgateway.general.SyslogSocket|default("/var/run/log") }}"
+
+{% if not helpers.empty('OPNsense.defguardgateway.general.PreUp') %}
+pre_up = "{{ OPNsense.defguardgateway.general.PreUp }}"
+{% endif %}
+
+{% if not helpers.empty('OPNsense.defguardgateway.general.PreDown') %}
+pre_down = "{{ OPNsense.defguardgateway.general.PreDown }}"
+{% endif %}
+
+{% if not helpers.empty('OPNsense.defguardgateway.general.PostUp') %}
+post_up = "{{ OPNsense.defguardgateway.general.PostUp }}"
+{% endif %}
+
+{% if not helpers.empty('OPNsense.defguardgateway.general.PostDown') %}
+post_down = "{{ OPNsense.defguardgateway.general.PostDown }}"
+{% endif %}
