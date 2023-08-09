@@ -19,7 +19,7 @@
     </field>
     <field>
 	<id>defguardgateway.general.GrpcCertPath</id>
-	<label>Grpc Cert path</label>
+	<label>gRPC cert file path</label>
 	<type>text</type>
 	<help>Optional: path to TLS cert file</help>
     </field>
