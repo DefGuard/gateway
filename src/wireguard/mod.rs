@@ -1,4 +1,4 @@
-// #[cfg(target_os = "freebsd")]
+#[cfg(target_os = "freebsd")]
 pub mod bsd;
 mod host;
 mod key;

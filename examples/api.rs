@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let addr = IpAddrMask::from_str("10.20.30.40/24").unwrap();
         address_interface("wg0", &addr)?;
     }
-    let api = if cfg!(target_os = "linux") {
+    let api = if cfg!(target_os = "linux") || cfg!(target_os = "freebsd") {
         WGApi::new("wg0".into(), false)
     } else {
         WGApi::new("utun3".into(), true)
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let key = PublicKey::from(&secret);
         let peer = Peer::new(key.as_ref().try_into().unwrap());
         api.write_peer(&peer)?;
-        // api.delete_peer(&peer)?;
+        api.delete_peer(&peer)?;
     }
 
     Ok(())
