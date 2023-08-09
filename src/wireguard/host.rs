@@ -194,7 +194,7 @@ impl From<&Peer> for proto::PeerStats {
             }),
             download: peer.rx_bytes as i64,
             upload: peer.tx_bytes as i64,
-            keepalive_interval: peer.persistent_keepalive_interval.unwrap_or_default() as i64,
+            keepalive_interval: i64::from(peer.persistent_keepalive_interval.unwrap_or_default()),
         }
     }
 }

@@ -233,9 +233,9 @@ impl<'a> NvList<'a> {
     }
 
     /// Append `Bool` value to the list.
-    // pub fn append_bool(&mut self, name: &'a str, boolean: bool) {
-    //     self.items.push((name, NvValue::Bool(boolean)));
-    // }
+    pub fn append_bool(&mut self, name: &'a str, boolean: bool) {
+        self.items.push((name, NvValue::Bool(boolean)));
+    }
 
     /// Append `Number` value to the list.
     pub fn append_number(&mut self, name: &'a str, number: u64) {

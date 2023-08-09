@@ -3,10 +3,7 @@ mod sockaddr;
 mod timespec;
 mod wgio;
 
-use std::{
-    collections::HashMap, mem::size_of, net::IpAddr, ptr::addr_of, slice::from_raw_parts,
-    str::FromStr,
-};
+use std::{collections::HashMap, mem::size_of, net::IpAddr, ptr::addr_of, slice::from_raw_parts};
 
 use self::{
     nvlist::NvList,
@@ -22,7 +19,7 @@ static NV_FWMARK: &str = "user-cookie";
 static NV_PUBLIC_KEY: &str = "public-key";
 static NV_PRIVATE_KEY: &str = "private-key";
 static NV_PEERS: &str = "peers";
-// static NV_REPLACE_PEERS: &str = "replace-peers";
+static NV_REPLACE_PEERS: &str = "replace-peers";
 
 static NV_PRESHARED_KEY: &str = "preshared-key";
 static NV_KEEPALIVE_INTERVAL: &str = "persistent-keepalive-interval";
@@ -31,7 +28,7 @@ static NV_RX_BYTES: &str = "rx-bytes";
 static NV_TX_BYTES: &str = "tx-bytes";
 static NV_LAST_HANDSHAKE: &str = "last-handshake-time";
 static NV_ALLOWED_IPS: &str = "allowed-ips";
-// static NV_REPLACE_ALLOWED_IPS: &str = "replace-allowed-ips";
+static NV_REPLACE_ALLOWED_IPS: &str = "replace-allowed-ips";
 // static NV_REMOVE: &str = "remove";
 
 static NV_CIDR: &str = "cidr";
@@ -81,6 +78,7 @@ impl<'a> IpAddrMask {
             IpAddr::V6(ipv6) => nvlist.append_bytes(NV_IPV6, ipv6.octets().into()),
         }
 
+        nvlist.append_nvlist_array_next();
         nvlist
     }
 }
@@ -92,7 +90,7 @@ impl Host {
         let private_key = nvlist
             .get_binary(NV_PRIVATE_KEY)
             .and_then(|value| (*value).try_into().ok());
-        // peers
+
         let mut peers = HashMap::new();
         if let Some(peer_array) = nvlist.get_nvlist_array(NV_PEERS) {
             for peer_list in peer_array {
@@ -124,10 +122,10 @@ impl<'a> Host {
             nvlist.append_number(NV_FWMARK, u64::from(fwmark));
         }
 
+        nvlist.append_bool(NV_REPLACE_PEERS, true);
         if !self.peers.is_empty() {
             let peers = self.peers.values().map(Peer::as_nvlist).collect();
             nvlist.append_nvlist_array(NV_PEERS, peers);
-            nvlist.append_nvlist_array_next();
         }
 
         nvlist
@@ -195,48 +193,38 @@ impl<'a> Peer {
             nvlist.append_number(NV_KEEPALIVE_INTERVAL, u64::from(keepalive_interval));
         }
 
+        nvlist.append_bool(NV_REPLACE_ALLOWED_IPS, true);
         if !self.allowed_ips.is_empty() {
             let allowed_ips = self.allowed_ips.iter().map(IpAddrMask::as_nvlist).collect();
             nvlist.append_nvlist_array(NV_ALLOWED_IPS, allowed_ips);
-            nvlist.append_nvlist_array_next();
         }
 
+        nvlist.append_nvlist_array_next();
         nvlist
     }
 }
 
-pub fn kernel_get_device(if_name: &str) -> Result<Host, WgIoError> {
+pub fn get_host(if_name: &str) -> Result<Host, WgIoError> {
     let mut wg_data = WgDataIo::new(if_name);
     wg_data.read_data()?;
 
     let mut nvlist = NvList::new();
-    nvlist.unpack(wg_data.as_slice()).unwrap(); // FIXME
+    // FIXME: use proper error, here and above
+    nvlist
+        .unpack(wg_data.as_slice())
+        .map_err(|_| WgIoError::MemAlloc)?;
 
     Ok(Host::from_nvlist(&nvlist))
 }
 
-pub fn kernel_set_device(if_name: &str) {
+pub fn set_host(if_name: &str, host: &Host) -> Result<(), WgIoError> {
     let mut wg_data = WgDataIo::new(if_name);
 
-    let mut host = Host::new(
-        7301,
-        "vkaCi/Csc9Iq/ZEQVKPZztvPwh36YTDouE4TPsIthY0="
-            .parse()
-            .unwrap(),
-    );
-    let mut peer = Peer::new(
-        "3GKEctPDnTg/h1/9e4Q72iN4N6mcpd+4jG+OpJFrpxE="
-            .parse()
-            .unwrap(),
-    );
-    let addr = IpAddrMask::from_str("10.20.30.40/24").unwrap();
-    peer.allowed_ips.push(addr);
-    host.peers.insert(peer.public_key.clone(), peer);
-
     let nvlist = host.as_nvlist();
+    // FIXME: use proper error, here and above
+    let mut buf = nvlist.pack().map_err(|_| WgIoError::MemAlloc)?;
 
-    let mut buf = nvlist.pack().unwrap();
     wg_data.wgd_data = buf.as_mut_ptr();
     wg_data.wgd_size = buf.len();
-    wg_data.write_data().unwrap();
+    wg_data.write_data()
 }
