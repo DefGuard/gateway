@@ -65,8 +65,6 @@ jobs:
     name: Release ${{ matrix.build }}
     needs: ['create-release']
     runs-on: ${{ matrix.os }}
-    env:
-      CROSS_DOCKER_IN_DOCKER: true
     strategy:
       fail-fast: false
       matrix:
