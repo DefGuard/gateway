@@ -16,13 +16,13 @@ use std::{
 #[derive(Debug, Default, PartialEq, Clone)]
 pub struct Peer {
     pub public_key: Key,
-    preshared_key: Option<Key>,
-    protocol_version: Option<u32>,
-    endpoint: Option<SocketAddr>,
+    pub(super) preshared_key: Option<Key>,
+    pub(super) protocol_version: Option<u32>,
+    pub(super) endpoint: Option<SocketAddr>,
     pub last_handshake: Option<SystemTime>,
-    tx_bytes: u64,
-    rx_bytes: u64,
-    persistent_keepalive_interval: Option<u16>,
+    pub(super) tx_bytes: u64,
+    pub(super) rx_bytes: u64,
+    pub(super) persistent_keepalive_interval: Option<u16>,
     pub allowed_ips: Vec<IpAddrMask>,
 }
 
@@ -194,7 +194,7 @@ impl From<&Peer> for proto::PeerStats {
             }),
             download: peer.rx_bytes as i64,
             upload: peer.tx_bytes as i64,
-            keepalive_interval: peer.persistent_keepalive_interval.unwrap_or_default() as i64,
+            keepalive_interval: i64::from(peer.persistent_keepalive_interval.unwrap_or_default()),
         }
     }
 }
@@ -203,7 +203,7 @@ impl From<&Peer> for proto::PeerStats {
 pub struct Host {
     pub listen_port: u16,
     pub private_key: Option<Key>,
-    fwmark: Option<u32>,
+    pub(super) fwmark: Option<u32>,
     pub peers: HashMap<Key, Peer>,
 }
 

@@ -238,7 +238,7 @@ pub fn address_interface(ifname: &str, address: &IpAddrMask) -> io::Result<()> {
                     return set_address(index, address);
                 }
             }
-            _ => eprintln!("UNKNOWN"),
+            _ => debug!("unknown nlmsg response"),
         }
     }
 

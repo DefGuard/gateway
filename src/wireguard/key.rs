@@ -2,6 +2,7 @@ use base64::{decode, encode, DecodeError};
 use std::{
     error, fmt,
     hash::{Hash, Hasher},
+    str::FromStr,
 };
 
 const KEY_LENGTH: usize = 32;
@@ -37,6 +38,11 @@ impl Key {
     #[must_use]
     pub fn as_array(&self) -> [u8; KEY_LENGTH] {
         self.0
+    }
+
+    #[must_use]
+    pub fn as_slice(&self) -> &[u8] {
+        self.0.as_slice()
     }
 
     #[must_use]
@@ -95,16 +101,30 @@ impl TryFrom<&str> for Key {
     }
 }
 
-impl TryFrom<String> for Key {
+impl TryFrom<&[u8]> for Key {
     type Error = DecodeError;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let v = decode(value)?;
-        if v.len() == KEY_LENGTH {
-            let buf = v.try_into().map_err(|_| Self::Error::InvalidLength)?;
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() == KEY_LENGTH {
+            let buf =
+                <[u8; KEY_LENGTH]>::try_from(value).map_err(|_| Self::Error::InvalidLength)?;
             Ok(Self::new(buf))
         } else {
             Err(Self::Error::InvalidLength)
+        }
+    }
+}
+
+impl FromStr for Key {
+    type Err = DecodeError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let v = decode(value)?;
+        if v.len() == KEY_LENGTH {
+            let buf = v.try_into().map_err(|_| Self::Err::InvalidLength)?;
+            Ok(Self::new(buf))
+        } else {
+            Err(Self::Err::InvalidLength)
         }
     }
 }

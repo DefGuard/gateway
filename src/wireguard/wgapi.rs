@@ -1,6 +1,8 @@
-use super::{Host, Peer};
+#[cfg(target_os = "freebsd")]
+use super::bsd::{delete_peer, get_host, set_host, set_peer};
 #[cfg(target_os = "linux")]
-use crate::wireguard::netlink::{delete_peer, get_host, set_host, set_peer};
+use super::netlink::{delete_peer, get_host, set_host, set_peer};
+use super::{Host, Peer};
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
     os::unix::net::UnixStream,
@@ -52,11 +54,18 @@ impl WGApi {
             socket.write_all(b"get=1\n\n")?;
             Host::parse_uapi(socket)
         } else {
+            #[cfg(target_os = "freebsd")]
+            {
+                // FIXME: use proper error
+                get_host(&self.ifname).map_err(|err| {
+                    io::Error::new(io::ErrorKind::Other, format!("kernel support error: {err}"))
+                })
+            }
             #[cfg(target_os = "linux")]
             {
                 get_host(&self.ifname)
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "kernel support is not available on this platform",
@@ -80,11 +89,18 @@ impl WGApi {
                 Ok(())
             }
         } else {
+            #[cfg(target_os = "freebsd")]
+            {
+                // FIXME: use proper error
+                set_host(&self.ifname, host).map_err(|err| {
+                    io::Error::new(io::ErrorKind::Other, format!("kernel support error: {err}"))
+                })
+            }
             #[cfg(target_os = "linux")]
             {
                 set_host(&self.ifname, host)
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "kernel support is not available on this platform",
@@ -108,11 +124,18 @@ impl WGApi {
                 Ok(())
             }
         } else {
+            #[cfg(target_os = "freebsd")]
+            {
+                // FIXME: use proper error
+                set_peer(&self.ifname, peer).map_err(|err| {
+                    io::Error::new(io::ErrorKind::Other, format!("kernel support error: {err}"))
+                })
+            }
             #[cfg(target_os = "linux")]
             {
                 set_peer(&self.ifname, peer)
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "kernel support is not available on this platform",
@@ -136,11 +159,18 @@ impl WGApi {
                 Ok(())
             }
         } else {
+            #[cfg(target_os = "freebsd")]
+            {
+                // FIXME: use proper error
+                delete_peer(&self.ifname, peer).map_err(|err| {
+                    io::Error::new(io::ErrorKind::Other, format!("kernel support error: {err}"))
+                })
+            }
             #[cfg(target_os = "linux")]
             {
                 delete_peer(&self.ifname, peer)
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "kernel support is not available on this platform",
