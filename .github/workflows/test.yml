@@ -25,7 +25,7 @@ jobs:
             os: self-hosted
             asset_name: defguard-gateway-freebsd-x86_64
             target: x86_64-unknown-freebsd
-          - build: freebsd
+          - build: opnsense
             os: self-hosted
             asset_name: defguard-gateway-opnsense-x86_64
             target: x86_64-unknown-freebsd
