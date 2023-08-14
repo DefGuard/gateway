@@ -69,15 +69,19 @@ pub struct Config {
     #[serde(skip)]
     config_path: Option<std::path::PathBuf>,
 
+    /// Command to run before bringing up the interface.
     #[arg(long, env = "PRE_UP")]
     pub pre_up: Option<String>,
 
+    /// Command to run after bringing up the interface.
     #[arg(long, env = "POST_UP")]
     pub post_up: Option<String>,
 
+    /// Command to run before bringing down the interface.
     #[arg(long, env = "PRE_DOWN")]
     pub pre_down: Option<String>,
 
+    /// Command to run after bringing down the interface.
     #[arg(long, env = "POST_DOWN")]
     pub post_down: Option<String>,
 }
