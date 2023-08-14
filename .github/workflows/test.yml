@@ -11,7 +11,7 @@ jobs:
     runs-on: self-hosted
     strategy:
       matrix:
-        build: [linux, linux-arm, freebsd]
+        build: [linux, linux-arm, freebsd, opnsense]
         include:
           - build: linux
             os: self-hosted
@@ -24,6 +24,10 @@ jobs:
           - build: freebsd
             os: self-hosted
             asset_name: defguard-gateway-freebsd-x86_64
+            target: x86_64-unknown-freebsd
+          - build: freebsd
+            os: self-hosted
+            asset_name: defguard-gateway-opnsense-x86_64
             target: x86_64-unknown-freebsd
 
     steps:
@@ -80,7 +84,7 @@ jobs:
           fpm_opts: "-t freebsd --version=test"
 
       - name: Build OPNsense package
-        if: matrix.build == 'freebsd'
+        if: matrix.build == 'opnsense'
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: |
