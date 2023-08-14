@@ -60,26 +60,26 @@ jobs:
 
       - name: Strip release binary (linux)
         if: matrix.build == 'linux'
-        run: strip "${{ matrix.asset_name }}-${{ github.ref_name }}"
+        run: strip "${{ matrix.asset_name }}-test"
 
       - name: Create DEB package
         uses: bpicode/github-action-fpm@master
         with:
-          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway"
+          fpm_args: "${{ matrix.asset_name }}-test=/usr/sbin/defguard-gateway"
           fpm_opts: "-t deb --version=${{ env.VERSION }}"
 
       - name: Create RPM package
         if: matrix.build == 'linux'
         uses: bpicode/github-action-fpm@master
         with:
-          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway"
+          fpm_args: "${{ matrix.asset_name }}-test=/usr/sbin/defguard-gateway"
           fpm_opts: "-t rpm --version=${{ env.VERSION }}"
 
       - name: Create FreeBSD package
         if: matrix.build == 'freebsd'
         uses: bpicode/github-action-fpm@master
         with:
-          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway"
+          fpm_args: "${{ matrix.asset_name }}-test=/usr/local/sbin/defguard-gateway"
           fpm_opts: "-t freebsd --version=${{ env.VERSION }}"
 
       - name: Build OPNsense package
@@ -87,7 +87,7 @@ jobs:
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: |
-            "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway
+            "${{ matrix.asset_name }}-test=/usr/local/sbin/defguard-gateway
               defguard-gateway.service.freebsd=/etc/rc.d/defguard
               example-config.toml=/etc/defguard/gateway.toml
               defguard-rc.conf=/etc/rc.conf.d/defguard
