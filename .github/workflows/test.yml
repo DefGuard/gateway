@@ -1,9 +1,6 @@
 name: Test  build
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
@@ -66,21 +63,21 @@ jobs:
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-test=/usr/sbin/defguard-gateway"
-          fpm_opts: "-t deb --version=${{ env.VERSION }}"
+          fpm_opts: "-t deb --version=test"
 
       - name: Create RPM package
         if: matrix.build == 'linux'
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-test=/usr/sbin/defguard-gateway"
-          fpm_opts: "-t rpm --version=${{ env.VERSION }}"
+          fpm_opts: "-t rpm --version=test"
 
       - name: Create FreeBSD package
         if: matrix.build == 'freebsd'
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-test=/usr/local/sbin/defguard-gateway"
-          fpm_opts: "-t freebsd --version=${{ env.VERSION }}"
+          fpm_opts: "-t freebsd --version=test"
 
       - name: Build OPNsense package
         if: matrix.build == 'freebsd'
@@ -96,4 +93,4 @@ jobs:
               opnsense/src/opnsense/mvc/app/views/OPNsense/DefguardGateway/=usr/local/opnsense/mvc/app/views/OPNsense/DefguardGateway
               opnsense/src/opnsense/service/templates/OPNsense/DefguardGateway/=/usr/local/opnsense/service/templates/OPNsense/DefguardGateway
               opnsense/src/opnsense/service/conf/actions.d/actions_defguardgateway.conf=/usr/local/opnsense/service/conf/actions.d/actions_defguardgateway.conf"
-          fpm_opts: "--debug -t freebsd --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.txz"
+          fpm_opts: "--debug -t freebsd --version=test -p defguard-gateway_test_x86_64-unknown-opnsense.txz"
