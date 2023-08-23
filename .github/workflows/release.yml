@@ -30,7 +30,6 @@ jobs:
             type=raw,value=latest
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
             type=sha
       - name: Login to GitHub Container Registry
         if: github.event_name != 'pull_request'
@@ -44,7 +43,7 @@ jobs:
       - name: Build container
         uses: docker/build-push-action@v3
         with:
-          # platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -68,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build: [linux, linux-arm, freebsd]
+        build: [linux, linux-arm, linux-arm64, freebsd]
         include:
           - build: linux
             os: self-hosted
@@ -78,6 +77,10 @@ jobs:
             os: self-hosted
             asset_name: defguard-gateway-linux-armv7
             target: armv7-unknown-linux-gnueabihf
+          - build: linux-arm64
+            os: self-hosted
+            asset_name: defguard-gateway-linux-arm64
+            target: aarch64-unknown-linux-gnu
           - build: freebsd
             os: self-hosted
             asset_name: defguard-gateway-freebsd-x86_64
@@ -142,12 +145,14 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Build DEB package
+        if: matrix.build != 'freebsd'
         uses: bpicode/github-action-fpm@master
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug -t deb --version=${{ env.VERSION }} -p defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb"
 
       - name: Upload DEB
+        if: matrix.build != 'freebsd'
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
