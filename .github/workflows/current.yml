@@ -11,6 +11,13 @@ on:
 jobs:
   publish:
     runs-on: self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm/v7
+          - linux/arm64
     steps:
       - name: Cache
         uses: actions/cache@v3
@@ -43,7 +50,7 @@ jobs:
       - name: Build container
         uses: docker/build-push-action@v3
         with:
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
