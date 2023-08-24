@@ -14,7 +14,7 @@ jobs:
   rustdoc:
     runs-on: self-hosted
     container:
-      image: rust:latest
+      image: rust:1.71
 
     steps:
     - name: Checkout
