@@ -9,7 +9,7 @@ on:
       - 'LICENSE'
 
 jobs:
-  publish:
+  build-docker:
     runs-on: self-hosted
     strategy:
       fail-fast: false
