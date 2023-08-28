@@ -1,4 +1,4 @@
-FROM rust:slim as builder
+FROM rust:1.72-slim as builder
 
 RUN apt-get update && apt-get -y install protobuf-compiler
 WORKDIR /app
