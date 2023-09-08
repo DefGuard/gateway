@@ -75,11 +75,7 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
 
 impl From<proto::Configuration> for InterfaceConfiguration {
     fn from(config: proto::Configuration) -> Self {
-        let peers = config
-            .peers
-            .into_iter()
-            .map(|entry| Peer::from(entry))
-            .collect();
+        let peers = config.peers.into_iter().map(Peer::from).collect();
         InterfaceConfiguration {
             name: config.name,
             prvkey: config.prvkey,
