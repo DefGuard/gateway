@@ -1,5 +1,4 @@
 use defguard_gateway::proto;
-use defguard_gateway::proto::ConfigurationRequest;
 use std::{
     collections::HashMap,
     io::{stdout, Write},
@@ -82,7 +81,7 @@ impl proto::gateway_service_server::GatewayService for GatewayServer {
 
     async fn config(
         &self,
-        request: Request<ConfigurationRequest>,
+        request: Request<proto::ConfigurationRequest>,
     ) -> Result<Response<proto::Configuration>, Status> {
         let address = request.remote_addr().unwrap();
         eprintln!("CONFIG connected from: {}", address);
