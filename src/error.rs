@@ -1,4 +1,5 @@
 use thiserror::Error;
+use wireguard_rs::{error::WireguardError, IpAddrParseError};
 
 #[derive(Debug, Error)]
 pub enum GatewayError {
@@ -16,7 +17,7 @@ pub enum GatewayError {
     KeyDecode(#[from] base64::DecodeError),
 
     #[error("IP address/mask error")]
-    IpAddrMask(#[from] super::wireguard::IpAddrParseError),
+    IpAddrMask(#[from] IpAddrParseError),
 
     #[error("Logger error")]
     Logger(#[from] log::SetLoggerError),
@@ -35,4 +36,7 @@ pub enum GatewayError {
 
     #[error("Invalid config file. Error: {0}")]
     InvalidConfigFile(String),
+
+    #[error("Wireguard error")]
+    WireguardError(#[from] WireguardError),
 }

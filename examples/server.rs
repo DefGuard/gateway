@@ -1,8 +1,6 @@
 use defguard_gateway::proto::ConfigurationRequest;
-use defguard_gateway::{
-    proto,
-    wireguard::{Host, IpAddrMask, Key, Peer},
-};
+use defguard_gateway::proto;
+use wireguard_rs::{Host, IpAddrMask, Key, Peer};
 use std::{
     collections::HashMap,
     io::{stdout, Write},

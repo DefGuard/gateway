@@ -1,3 +1,7 @@
 [submodule "proto"]
 	path = proto
 	url = ../proto.git
+
+[submodule "wireguard-rs"]
+	path = wireguard-rs
+	url = ../wireguard-rs.git
