@@ -3,8 +3,8 @@ use std::str::FromStr;
 use x25519_dalek::{EphemeralSecret, PublicKey, StaticSecret};
 
 #[cfg(target_os = "linux")]
-use defguard_gateway::wireguard::netlink::{address_interface, create_interface};
-use defguard_gateway::wireguard::{wgapi::WGApi, Host, IpAddrMask, Key, Peer};
+use wireguard_rs::netlink::{address_interface, create_interface};
+use wireguard_rs::{wgapi::WGApi, Host, IpAddrMask, Key, Peer};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
