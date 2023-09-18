@@ -16,8 +16,6 @@ use tonic::{
     Request, Status, Streaming,
 };
 
-#[cfg(target_os = "linux")]
-use crate::wireguard::netlink::delete_interface;
 use crate::{
     config::Config,
     error::GatewayError,
@@ -26,9 +24,11 @@ use crate::{
         gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
         Peer, Update,
     },
-    wireguard::{setup_interface, wgapi::WGApi},
+    wireguard_rs::{setup_interface, wgapi::WGApi},
     VERSION,
 };
+#[cfg(target_os = "linux")]
+use wireguard_rs::netlink::delete_interface;
 
 // helper struct which stores just the interface config without peers
 #[derive(Clone, PartialEq)]
@@ -208,7 +208,7 @@ impl Gateway {
         setup_interface(
             &self.config.ifname,
             self.config.userspace,
-            &new_configuration,
+            &new_configuration.clone().into(),
         )?;
         info!(
             "Reconfigured WireGuard interface: {:?}",
