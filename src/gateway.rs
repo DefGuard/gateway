@@ -198,14 +198,6 @@ impl Gateway {
             return Ok(());
         };
 
-        // if !self.config.userspace {
-        //     if let Some(pre_down) = &self.config.pre_down {
-        //         info!("Executing specified PRE_DOWN command: {}", pre_down);
-        //         execute_command(pre_down)?;
-        //     }
-        //     #[cfg(target_os = "linux")]
-        //     let _ = delete_interface(&self.config.ifname);
-        // }
         self.wgapi
             .configure_interface(&new_configuration.clone().into())?;
         info!(
