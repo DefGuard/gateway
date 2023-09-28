@@ -24,11 +24,9 @@ use crate::{
         gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
         Peer, Update,
     },
-    wireguard_rs::{setup_interface, wgapi::WGApi},
+    wireguard_rs::{WGApi, WireguardInterfaceApi},
     VERSION,
 };
-#[cfg(target_os = "linux")]
-use wireguard_rs::netlink::delete_interface;
 
 // helper struct which stores just the interface config without peers
 #[derive(Clone, PartialEq)]
@@ -56,14 +54,17 @@ pub struct Gateway {
     config: Config,
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<Pubkey, Peer>,
+    wgapi: WGApi,
 }
 
 impl Gateway {
     pub fn new(config: Config) -> Result<Self, GatewayError> {
+        let wgapi = WGApi::new(config.ifname.clone(), config.userspace)?;
         Ok(Self {
             config,
             interface_configuration: None,
             peers: HashMap::new(),
+            wgapi,
         })
     }
 
@@ -139,7 +140,7 @@ impl Gateway {
         let ifname = self.config.ifname.clone();
         let userspace = self.config.userspace;
         let stats_stream = async_stream::stream! {
-            let api = WGApi::new(ifname, userspace);
+            let wgapi = WGApi::new(ifname, userspace).expect("Failed to initialize WireGuard interface API");
             // helper map to track if peer data is actually changing
             // and avoid sending duplicate stats
             let mut peer_map = HashMap::new();
@@ -148,7 +149,7 @@ impl Gateway {
                 // wait till next iteration
                 interval.tick().await;
                 debug!("Sending active peer stats update");
-                match api.read_host() {
+                match wgapi.read_interface_data() {
                     Ok(host) => {
                         let peers = host.peers;
                         debug!("Found {} peers configured on WireGuard interface: {peers:?}", peers.len());
@@ -197,19 +198,16 @@ impl Gateway {
             return Ok(());
         };
 
-        if !self.config.userspace {
-            if let Some(pre_down) = &self.config.pre_down {
-                info!("Executing specified PRE_DOWN command: {}", pre_down);
-                execute_command(pre_down)?;
-            }
-            #[cfg(target_os = "linux")]
-            let _ = delete_interface(&self.config.ifname);
-        }
-        setup_interface(
-            &self.config.ifname,
-            self.config.userspace,
-            &new_configuration.clone().into(),
-        )?;
+        // if !self.config.userspace {
+        //     if let Some(pre_down) = &self.config.pre_down {
+        //         info!("Executing specified PRE_DOWN command: {}", pre_down);
+        //         execute_command(pre_down)?;
+        //     }
+        //     #[cfg(target_os = "linux")]
+        //     let _ = delete_interface(&self.config.ifname);
+        // }
+        self.wgapi
+            .configure_interface(&new_configuration.clone().into())?;
         info!(
             "Reconfigured WireGuard interface: {:?}",
             mask!(new_configuration, prvkey)
@@ -330,7 +328,7 @@ impl Gateway {
 
         let client = self.setup_client()?;
 
-        let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace);
+        let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace)?;
         let mut updates_stream = self.connect(Arc::clone(&client)).await?;
         if let Some(post_up) = &self.config.post_up {
             info!("Executing specified POST_UP command: {}", post_up);
@@ -350,7 +348,9 @@ impl Gateway {
                             if update.update_type == 2 {
                                 debug!("Deleting peer {peer_config:?}");
                                 self.peers.remove(&peer_config.pubkey);
-                                wgapi.delete_peer(&peer_config.into())
+                                wgapi.remove_peer(
+                                    &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
+                                )
                             }
                             // UpdateType::Create, UpdateType::Modify
                             else {
@@ -360,7 +360,7 @@ impl Gateway {
                                 );
                                 self.peers
                                     .insert(peer_config.pubkey.clone(), peer_config.clone());
-                                wgapi.write_peer(&peer_config.into())
+                                wgapi.configure_peer(&peer_config.into())
                             }?;
                         }
                         _ => warn!("Unsupported kind of update"),

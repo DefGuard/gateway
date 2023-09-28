@@ -1,5 +1,5 @@
 use thiserror::Error;
-use wireguard_rs::{error::WireguardError, IpAddrParseError};
+use wireguard_rs::{error::WireguardInterfaceError, IpAddrParseError};
 
 #[derive(Debug, Error)]
 pub enum GatewayError {
@@ -38,5 +38,5 @@ pub enum GatewayError {
     InvalidConfigFile(String),
 
     #[error("Wireguard error")]
-    WireguardError(#[from] WireguardError),
+    WireguardError(#[from] WireguardInterfaceError),
 }
