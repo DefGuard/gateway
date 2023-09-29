@@ -382,6 +382,7 @@ mod tests {
         gateway::{Gateway, InterfaceConfiguration},
         proto::Peer,
     };
+    use wireguard_rs::WGApi;
 
     #[test]
     fn test_configuration_comparison() {
@@ -412,6 +413,7 @@ mod tests {
             config: Config::default(),
             interface_configuration: Some(old_config.clone()),
             peers: old_peers_map,
+            wgapi: WGApi::new("wg0".into(), false).unwrap(),
         };
 
         // new config is the same
