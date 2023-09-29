@@ -321,6 +321,10 @@ impl Gateway {
         let client = self.setup_client()?;
 
         let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace)?;
+
+        // create WireGuard interface
+        wgapi.create_interface()?;
+
         let mut updates_stream = self.connect(Arc::clone(&client)).await?;
         if let Some(post_up) = &self.config.post_up {
             info!("Executing specified POST_UP command: {}", post_up);
