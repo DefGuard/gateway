@@ -43,5 +43,8 @@ syslog_socket = "/var/run/log"
 # Example: Remove the default route after WireGuard interface is down:
 #post_down = "ip route del default via 192.168.1.1 dev wg0"
 
-# Port which will run heatlh HTTP endpoint
-health_check = 50053
+# A HTTP port that will expose the REST HTTP gateway health status
+# STATUS CODES:
+# 200 - Gateway is working and is connected to CORE
+# 503 - gateway works but is not connected to CORE
+health_check = 55003
