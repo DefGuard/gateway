@@ -1,13 +1,11 @@
-use crate::error::GatewayError;
-use crate::gateway::GatewayState;
-use axum::{debug_handler, extract::Extension, http::StatusCode, routing::get, Router};
+use crate::{error::GatewayError, gateway::GatewayState};
+use axum::{extract::Extension, http::StatusCode, routing::get, Router};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
 };
 use tokio::sync::Mutex;
 
-#[debug_handler]
 async fn healthcheck(Extension(gateway_state): Extension<Arc<Mutex<GatewayState>>>) -> StatusCode {
     let gateway = gateway_state.lock().await;
     match gateway.connected {
@@ -15,7 +13,10 @@ async fn healthcheck(Extension(gateway_state): Extension<Arc<Mutex<GatewayState>
         false => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
-pub async fn run_server(http_port: u16, gateway_state: Arc<Mutex<GatewayState>>) -> Result<(), GatewayError> {
+pub async fn run_server(
+    http_port: u16,
+    gateway_state: Arc<Mutex<GatewayState>>,
+) -> Result<(), GatewayError> {
     let app = Router::new()
         .route("/health", get(healthcheck))
         .layer(Extension(gateway_state));

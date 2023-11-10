@@ -70,6 +70,12 @@ impl GatewayState {
     }
 }
 
+impl Default for GatewayState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gateway {
     pub fn new(config: Config) -> Result<Self, GatewayError> {
         let wgapi = WGApi::new(config.ifname.clone(), config.userspace)?;
