@@ -57,6 +57,19 @@ pub struct Gateway {
     wgapi: WGApi,
 }
 
+pub struct GatewayState {
+    pub connected: bool,
+}
+impl GatewayState {
+    pub fn new() -> Self {
+        Self { connected: false }
+    }
+
+    fn set_connected(&mut self, connected: bool) {
+        self.connected = connected
+    }
+}
+
 impl Gateway {
     pub fn new(config: Config) -> Result<Self, GatewayError> {
         let wgapi = WGApi::new(config.ifname.clone(), config.userspace)?;
@@ -226,6 +239,7 @@ impl Gateway {
                 >,
             >,
         >,
+        gateway_state: Arc<Mutex<GatewayState>>,
     ) -> Result<Streaming<Update>, GatewayError> {
         loop {
             debug!(
@@ -250,6 +264,8 @@ impl Gateway {
                         "Connected to Defguard GRPC endpoint: {}",
                         self.config.grpc_url
                     );
+                    let mut gateway_state = gateway_state.lock().await;
+                    gateway_state.set_connected(true);
                     break Ok(stream.into_inner());
                 }
                 (Err(err), _) => {
@@ -312,7 +328,10 @@ impl Gateway {
     /// * Retrieves configuration and configuration updates from Defguard GRPC server
     /// * Manages the interface according to configuration and updates
     /// * Sends interface statistics to Defguard server periodically
-    pub async fn start(&mut self) -> Result<(), GatewayError> {
+    pub async fn start(
+        &mut self,
+        gateway_state: Arc<Mutex<GatewayState>>,
+    ) -> Result<(), GatewayError> {
         info!(
             "Starting Defguard gateway version {VERSION} with configuration: {:?}",
             mask!(self.config, token)
@@ -325,7 +344,9 @@ impl Gateway {
         // create WireGuard interface
         wgapi.create_interface()?;
 
-        let mut updates_stream = self.connect(Arc::clone(&client)).await?;
+        let mut updates_stream = self
+            .connect(Arc::clone(&client), Arc::clone(&gateway_state))
+            .await?;
         if let Some(post_up) = &self.config.post_up {
             info!("Executing specified POST_UP command: {}", post_up);
             execute_command(post_up)?;
@@ -364,11 +385,24 @@ impl Gateway {
                 }
                 Ok(None) => {
                     warn!("Received empty message, reconnecting");
-                    updates_stream = self.connect(Arc::clone(&client)).await?;
+                    // set diconnected and drop mutex
+                    {
+                        let mut gateway_state = gateway_state.lock().await;
+                        gateway_state.set_connected(false);
+                    }
+                    updates_stream = self
+                        .connect(Arc::clone(&client), Arc::clone(&gateway_state))
+                        .await?;
                 }
                 Err(err) => {
                     error!("Server error {err}, reconnecting");
-                    updates_stream = self.connect(Arc::clone(&client)).await?;
+                    {
+                        let mut gateway_state = gateway_state.lock().await;
+                        gateway_state.set_connected(false);
+                    }
+                    updates_stream = self
+                        .connect(Arc::clone(&client), Arc::clone(&gateway_state))
+                        .await?;
                 }
             }
         }

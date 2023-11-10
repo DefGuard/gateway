@@ -84,6 +84,11 @@ pub struct Config {
     /// Command to run after bringing down the interface.
     #[arg(long, env = "POST_DOWN")]
     pub post_down: Option<String>,
+    /// A HTTP port that will expose the REST HTTP gateway health status
+    /// 200 Gateway is working and is connected to CORE
+    /// 503 - gateway works but is not connected to CORE
+    #[arg(long, env = "HEALTH_PORT", default_value = "55003")]
+    pub health_port: u16,
 }
 
 impl Default for Config {
@@ -105,6 +110,7 @@ impl Default for Config {
             post_up: None,
             pre_down: None,
             post_down: None,
+            health_port: 55003,
         }
     }
 }

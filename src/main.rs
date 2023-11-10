@@ -1,9 +1,14 @@
-use std::{fs::File, io::Write, process};
-
 use defguard_gateway::{
-    config::get_config, error::GatewayError, execute_command, gateway::Gateway, init_syslog,
+    config::get_config,
+    error::GatewayError,
+    execute_command,
+    gateway::{Gateway, GatewayState},
+    init_syslog,
+    server::run_server,
 };
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
+use std::{fs::File, io::Write, process, sync::Arc};
+use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
@@ -33,7 +38,13 @@ async fn main() -> Result<(), GatewayError> {
         execute_command(pre_up)?;
     }
     let mut gateway = Gateway::new(config.clone())?;
-    gateway.start().await?;
+    let gateway_state = Arc::new(Mutex::new(GatewayState::new()));
+
+    // Spawn the tasks onto the Tokio runtime
+    tokio::select! {
+        _ = run_server(config.health_port, Arc::clone(&gateway_state)) => (),
+        _ = gateway.start(Arc::clone(&gateway_state)) => (),
+    }
 
     if let Some(post_down) = &config.post_down {
         log::info!("Executing specified POST_DOWN command: {}", post_down);
