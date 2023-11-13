@@ -28,7 +28,7 @@ pub async fn run_server(
 
     // run server
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), http_port);
-    info!("Listening on {}", addr);
+    info!("Health check listening on {}/health", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await

@@ -40,10 +40,9 @@ async fn main() -> Result<(), GatewayError> {
     let mut gateway = Gateway::new(config.clone())?;
     let gateway_state = Arc::new(Mutex::new(GatewayState::new()));
 
-    // Spawn the tasks onto the Tokio runtime
     tokio::select! {
         _ = run_server(config.health_port, Arc::clone(&gateway_state)) => (),
-        _ = gateway.start(Arc::clone(&gateway_state)) => (),
+        result = gateway.start(Arc::clone(&gateway_state)) => result?,
     }
 
     if let Some(post_down) = &config.post_down {
