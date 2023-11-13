@@ -6,11 +6,16 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-async fn healthcheck(Extension(gateway_state): Extension<Arc<Mutex<GatewayState>>>) -> StatusCode {
+async fn healthcheck(
+    Extension(gateway_state): Extension<Arc<Mutex<GatewayState>>>,
+) -> (axum::http::StatusCode, String) {
     let gateway = gateway_state.lock().await;
     match gateway.connected {
-        true => StatusCode::OK,
-        false => StatusCode::SERVICE_UNAVAILABLE,
+        true => (StatusCode::OK, "Alive".to_string()),
+        false => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Not connected to core".to_string(),
+        ),
     }
 }
 pub async fn run_server(
