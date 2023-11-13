@@ -247,6 +247,11 @@ impl Gateway {
         >,
         gateway_state: Arc<Mutex<GatewayState>>,
     ) -> Result<Streaming<Update>, GatewayError> {
+        // set diconnected if we are in this function and drop mutex
+        {
+            let mut gateway_state = gateway_state.lock().await;
+            gateway_state.set_connected(false);
+        }
         loop {
             debug!(
                 "Connecting to Defguard GRPC endpoint: {}",
@@ -391,21 +396,12 @@ impl Gateway {
                 }
                 Ok(None) => {
                     warn!("Received empty message, reconnecting");
-                    // set diconnected and drop mutex
-                    {
-                        let mut gateway_state = gateway_state.lock().await;
-                        gateway_state.set_connected(false);
-                    }
                     updates_stream = self
                         .connect(Arc::clone(&client), Arc::clone(&gateway_state))
                         .await?;
                 }
                 Err(err) => {
                     error!("Server error {err}, reconnecting");
-                    {
-                        let mut gateway_state = gateway_state.lock().await;
-                        gateway_state.set_connected(false);
-                    }
                     updates_stream = self
                         .connect(Arc::clone(&client), Arc::clone(&gateway_state))
                         .await?;
