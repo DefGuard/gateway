@@ -24,7 +24,7 @@ tokio-stream = { version = "0.1", features = [] }
 toml = "0.7"
 serde = { version = "1.0", features = ["derive"] }
 wireguard_rs = { path = "wireguard-rs" }
-axum = {version =  "0.6.20", features = ["macros"] }
+axum = {version =  "0.6", features = ["macros"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
