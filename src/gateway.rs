@@ -55,6 +55,7 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<Pubkey, Peer>,
     wgapi: WGApi,
+    pub state: Arc<Mutex<GatewayState>>,
 }
 
 pub struct GatewayState {
@@ -84,6 +85,7 @@ impl Gateway {
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi,
+            state: Arc::new(Mutex::new(GatewayState::default())),
         })
     }
 
@@ -245,12 +247,11 @@ impl Gateway {
                 >,
             >,
         >,
-        gateway_state: Arc<Mutex<GatewayState>>,
     ) -> Result<Streaming<Update>, GatewayError> {
         // set diconnected if we are in this function and drop mutex
         {
-            let mut gateway_state = gateway_state.lock().await;
-            gateway_state.set_connected(false);
+            let mut state = self.state.lock().await;
+            state.set_connected(false);
         }
         loop {
             debug!(
@@ -275,8 +276,8 @@ impl Gateway {
                         "Connected to Defguard GRPC endpoint: {}",
                         self.config.grpc_url
                     );
-                    let mut gateway_state = gateway_state.lock().await;
-                    gateway_state.set_connected(true);
+                    let mut state = self.state.lock().await;
+                    state.set_connected(true);
                     break Ok(stream.into_inner());
                 }
                 (Err(err), _) => {
@@ -339,10 +340,7 @@ impl Gateway {
     /// * Retrieves configuration and configuration updates from Defguard GRPC server
     /// * Manages the interface according to configuration and updates
     /// * Sends interface statistics to Defguard server periodically
-    pub async fn start(
-        &mut self,
-        gateway_state: Arc<Mutex<GatewayState>>,
-    ) -> Result<(), GatewayError> {
+    pub async fn start(&mut self) -> Result<(), GatewayError> {
         info!(
             "Starting Defguard gateway version {VERSION} with configuration: {:?}",
             mask!(self.config, token)
@@ -355,9 +353,7 @@ impl Gateway {
         // create WireGuard interface
         wgapi.create_interface()?;
 
-        let mut updates_stream = self
-            .connect(Arc::clone(&client), Arc::clone(&gateway_state))
-            .await?;
+        let mut updates_stream = self.connect(Arc::clone(&client)).await?;
         if let Some(post_up) = &self.config.post_up {
             info!("Executing specified POST_UP command: {}", post_up);
             execute_command(post_up)?;
@@ -396,15 +392,11 @@ impl Gateway {
                 }
                 Ok(None) => {
                     warn!("Received empty message, reconnecting");
-                    updates_stream = self
-                        .connect(Arc::clone(&client), Arc::clone(&gateway_state))
-                        .await?;
+                    updates_stream = self.connect(Arc::clone(&client)).await?;
                 }
                 Err(err) => {
                     error!("Server error {err}, reconnecting");
-                    updates_stream = self
-                        .connect(Arc::clone(&client), Arc::clone(&gateway_state))
-                        .await?;
+                    updates_stream = self.connect(Arc::clone(&client)).await?;
                 }
             }
         }
@@ -450,6 +442,7 @@ mod tests {
             interface_configuration: Some(old_config.clone()),
             peers: old_peers_map,
             wgapi: WGApi::new("wg0".into(), false).unwrap(),
+            connected: false,
         };
 
         // new config is the same
