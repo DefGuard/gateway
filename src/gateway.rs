@@ -407,9 +407,11 @@ impl Gateway {
 mod tests {
     use crate::{
         config::Config,
-        gateway::{Gateway, InterfaceConfiguration},
+        gateway::{Gateway, GatewayState, InterfaceConfiguration},
         proto::Peer,
     };
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
     use wireguard_rs::WGApi;
 
     #[test]
@@ -442,7 +444,7 @@ mod tests {
             interface_configuration: Some(old_config.clone()),
             peers: old_peers_map,
             wgapi: WGApi::new("wg0".into(), false).unwrap(),
-            connected: false,
+            state: Arc::new(Mutex::new(GatewayState::default())),
         };
 
         // new config is the same
