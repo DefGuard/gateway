@@ -410,9 +410,9 @@ mod tests {
         gateway::{Gateway, GatewayState, InterfaceConfiguration},
         proto::Peer,
     };
+    use defguard_wireguard_rs::WGApi;
     use std::sync::Arc;
     use tokio::sync::Mutex;
-    use wireguard_rs::WGApi;
 
     #[test]
     fn test_configuration_comparison() {

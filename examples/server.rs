@@ -1,5 +1,9 @@
 use defguard_gateway::proto;
-use defguard_wireguard_rs::{Host, IpAddrMask, Key, Peer};
+use defguard_wireguard_rs::{
+    host::{Host, Peer},
+    key::Key,
+    net::IpAddrMask,
+};
 use std::{
     collections::HashMap,
     io::{stdout, Write},
