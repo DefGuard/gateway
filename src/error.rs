@@ -9,10 +9,6 @@ pub enum GatewayError {
     #[error("Command returned error status")]
     CommandExecutionError { stderr: String },
 
-    #[cfg(feature = "boringtun")]
-    #[error("BorningTun error")]
-    BorningTun(boringtun::device::Error),
-
     #[error("WireGuard key error")]
     KeyDecode(#[from] base64::DecodeError),
 
@@ -39,4 +35,6 @@ pub enum GatewayError {
 
     #[error("Wireguard error")]
     WireguardError(#[from] WireguardInterfaceError),
+    #[error("HTTP error")]
+    HttpServer(String),
 }

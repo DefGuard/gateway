@@ -55,6 +55,26 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<Pubkey, Peer>,
     wgapi: WGApi,
+    pub state: Arc<Mutex<GatewayState>>,
+}
+
+pub struct GatewayState {
+    pub connected: bool,
+}
+impl GatewayState {
+    pub fn new() -> Self {
+        Self { connected: false }
+    }
+
+    fn set_connected(&mut self, connected: bool) {
+        self.connected = connected
+    }
+}
+
+impl Default for GatewayState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Gateway {
@@ -65,6 +85,7 @@ impl Gateway {
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi,
+            state: Arc::new(Mutex::new(GatewayState::default())),
         })
     }
 
@@ -227,6 +248,11 @@ impl Gateway {
             >,
         >,
     ) -> Result<Streaming<Update>, GatewayError> {
+        // set diconnected if we are in this function and drop mutex
+        {
+            let mut state = self.state.lock().await;
+            state.set_connected(false);
+        }
         loop {
             debug!(
                 "Connecting to Defguard GRPC endpoint: {}",
@@ -250,6 +276,8 @@ impl Gateway {
                         "Connected to Defguard GRPC endpoint: {}",
                         self.config.grpc_url
                     );
+                    let mut state = self.state.lock().await;
+                    state.set_connected(true);
                     break Ok(stream.into_inner());
                 }
                 (Err(err), _) => {
@@ -379,9 +407,11 @@ impl Gateway {
 mod tests {
     use crate::{
         config::Config,
-        gateway::{Gateway, InterfaceConfiguration},
+        gateway::{Gateway, GatewayState, InterfaceConfiguration},
         proto::Peer,
     };
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
     use wireguard_rs::WGApi;
 
     #[test]
@@ -414,6 +444,7 @@ mod tests {
             interface_configuration: Some(old_config.clone()),
             peers: old_peers_map,
             wgapi: WGApi::new("wg0".into(), false).unwrap(),
+            state: Arc::new(Mutex::new(GatewayState::default())),
         };
 
         // new config is the same

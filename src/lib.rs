@@ -3,6 +3,7 @@
 pub mod config;
 pub mod error;
 pub mod gateway;
+pub mod server;
 
 #[allow(non_snake_case)]
 pub mod proto {
