@@ -407,6 +407,7 @@ dependencies = [
  "base64 0.13.1",
  "chrono",
  "clap",
+ "defguard_wireguard_rs",
  "env_logger",
  "gethostname",
  "log",
@@ -426,8 +427,26 @@ dependencies = [
  "toml",
  "tonic",
  "tonic-build",
- "wireguard_rs",
  "x25519-dalek",
+]
+
+[[package]]
+name = "defguard_wireguard_rs"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5934dd7e69476b9e67afc77566ac777194f0f60cea180ab1c9736ca6abfc0a1c"
+dependencies = [
+ "base64 0.21.4",
+ "log",
+ "netlink-packet-core",
+ "netlink-packet-generic",
+ "netlink-packet-route",
+ "netlink-packet-utils",
+ "netlink-packet-wireguard",
+ "netlink-sys",
+ "nix 0.27.1",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -2091,22 +2110,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c2e3184b9c4e92ad5167ca73039d0c42476302ab603e2fec4487511f38ccefc"
 dependencies = [
  "memchr",
-]
-
-[[package]]
-name = "wireguard_rs"
-version = "0.1.0"
-dependencies = [
- "base64 0.21.4",
- "log",
- "netlink-packet-core",
- "netlink-packet-generic",
- "netlink-packet-route",
- "netlink-packet-utils",
- "netlink-packet-wireguard",
- "netlink-sys",
- "nix 0.27.1",
- "thiserror",
 ]
 
 [[package]]

@@ -23,8 +23,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
 toml = "0.7"
 serde = { version = "1.0", features = ["derive"] }
-wireguard_rs = { path = "wireguard-rs" }
 axum = {version =  "0.6", features = ["macros"] }
+defguard_wireguard_rs = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
