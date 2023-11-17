@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use x25519_dalek::{EphemeralSecret, PublicKey};
 
-use wireguard_rs::{
+use defguard_wireguard_rs::{
     wgapi::WGApi, InterfaceConfiguration, IpAddrMask, Key, Peer, WireguardInterfaceApi,
 };
 

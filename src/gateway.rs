@@ -24,9 +24,9 @@ use crate::{
         gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
         Peer, Update,
     },
-    wireguard_rs::{WGApi, WireguardInterfaceApi},
     VERSION,
 };
+use defguard_wireguard_rs::{WGApi, WireguardInterfaceApi};
 
 // helper struct which stores just the interface config without peers
 #[derive(Clone, PartialEq)]

@@ -1,5 +1,5 @@
+use defguard_wireguard_rs::error::WireguardInterfaceError;
 use thiserror::Error;
-use wireguard_rs::{error::WireguardInterfaceError, IpAddrParseError};
 
 #[derive(Debug, Error)]
 pub enum GatewayError {
@@ -11,9 +11,6 @@ pub enum GatewayError {
 
     #[error("WireGuard key error")]
     KeyDecode(#[from] base64::DecodeError),
-
-    #[error("IP address/mask error")]
-    IpAddrMask(#[from] IpAddrParseError),
 
     #[error("Logger error")]
     Logger(#[from] log::SetLoggerError),
