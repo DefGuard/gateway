@@ -35,7 +35,7 @@ async fn main() -> Result<(), GatewayError> {
     let mut gateway = Gateway::new(config.clone())?;
 
     tokio::select! {
-        _ = run_server(config.health_port, Arc::clone(&gateway.state)) => (),
+        _ = run_server(config.health_port, Arc::clone(&gateway.state)), if config.health_port.is_some() => (),
         result = gateway.start() => result?,
     }
 

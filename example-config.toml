@@ -6,7 +6,7 @@
 token = "<your_gateway_token>"
 # Required: Defguard server gRPC endpoint URL
 # NOTE: must replace default with actual value
-grpc_url = "<defguard_grpc_url>"
+grpc_url = "http://localhost:50055"
 # Optional: gateway name which will be displayed in Defguard web UI
 name = "Gateway A"
 # Required: use userspace Wireguard implementation (e.g. wireguard-go)
@@ -46,5 +46,5 @@ syslog_socket = "/var/run/log"
 # A HTTP port that will expose the REST HTTP gateway health status
 # STATUS CODES:
 # 200 - Gateway is working and is connected to CORE
-# 503 - gateway works but is not connected to CORE
+#503 - gateway works but is not connected to CORE
 health_port = 55003

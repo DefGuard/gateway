@@ -19,7 +19,7 @@ async fn healthcheck(
     }
 }
 pub async fn run_server(
-    http_port: u16,
+    http_port: Option<u16>,
     gateway_state: Arc<Mutex<GatewayState>>,
 ) -> Result<(), GatewayError> {
     let app = Router::new()
@@ -27,10 +27,12 @@ pub async fn run_server(
         .layer(Extension(gateway_state));
 
     // run server
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), http_port);
-    info!("Listening on {}", addr);
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .map_err(|err| GatewayError::HttpServer(err.to_string()))
+    if let Some(port) = http_port {
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+        info!("Listening on {}", addr);
+        axum::Server::bind(&addr)
+            .serve(app.into_make_service())
+            .await
+            .map_err(|err| GatewayError::HttpServer(err.to_string()))
+    }
 }
