@@ -29,10 +29,13 @@ pub async fn run_server(
     // run server
     if let Some(port) = http_port {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        info!("Listening on {}", addr);
+        info!("Health check listening on {}", addr);
         axum::Server::bind(&addr)
             .serve(app.into_make_service())
             .await
             .map_err(|err| GatewayError::HttpServer(err.to_string()))
+    }
+    else {
+        Ok(())
     }
 }
