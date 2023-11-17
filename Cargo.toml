@@ -28,7 +28,6 @@ defguard_wireguard_rs = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
-defguard_wireguard_rs = "0.2"
 x25519-dalek = { version = "2.0.0-rc.3", features = [
     "getrandom",
     "static_secrets",
