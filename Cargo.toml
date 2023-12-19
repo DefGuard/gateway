@@ -6,39 +6,39 @@ edition = "2021"
 
 [dependencies]
 async-stream = "0.3"
-base64 = "0.13"
+base64 = "0.21"
 chrono = { version = "0.4", default-features = false, features = [
     "clock",
     "std",
 ] }
 clap = { version = "4.3", features = ["derive", "env"] }
-env_logger = "0.9"
+defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", branch = "main" }
+env_logger = "0.10"
 gethostname = "0.4"
 log = "0.4"
-prost = "0.11"
+prost = "0.12"
 syslog = "6.1"
 thiserror = "1.0"
-tonic = { version = "0.9", features = ["gzip", "tls", "tls-roots"] }
+tonic = { version = "0.10", features = ["gzip", "tls", "tls-roots"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
-toml = "0.7"
+toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 axum = {version =  "0.6", features = ["macros"] }
-defguard_wireguard_rs = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
-x25519-dalek = { version = "2.0.0-rc.3", features = [
+x25519-dalek = { version = "2.0", features = [
     "getrandom",
     "static_secrets",
 ] }
 
 [build-dependencies]
-tonic-build = { version = "0.9" }
-prost-build = { version = "0.11" }
+tonic-build = { version = "0.10" }
+prost-build = { version = "0.12" }
 
 [target.'cfg(target_os = "freebsd")'.dependencies]
-nix = { version = "0.26", features = ["ioctl", "socket"] }
+nix = { version = "0.27", features = ["ioctl", "socket"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 netlink-packet-core = "0.7"
