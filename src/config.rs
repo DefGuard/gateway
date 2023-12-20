@@ -87,8 +87,8 @@ pub struct Config {
     /// A HTTP port that will expose the REST HTTP gateway health status
     /// 200 Gateway is working and is connected to CORE
     /// 503 - gateway works but is not connected to CORE
-    #[arg(long, env = "HEALTH_PORT", default_value = "55003")]
-    pub health_port: u16,
+    #[arg(long, env = "HEALTH_PORT")]
+    pub health_port: Option<u16>,
 }
 
 impl Default for Config {
@@ -110,7 +110,7 @@ impl Default for Config {
             post_up: None,
             pre_down: None,
             post_down: None,
-            health_port: 55003,
+            health_port: None,
         }
     }
 }

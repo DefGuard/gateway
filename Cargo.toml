@@ -6,12 +6,13 @@ edition = "2021"
 
 [dependencies]
 async-stream = "0.3"
+axum = {version =  "0.7", features = ["macros"] }
 base64 = "0.21"
 chrono = { version = "0.4", default-features = false, features = [
     "clock",
     "std",
 ] }
-clap = { version = "4.3", features = ["derive", "env"] }
+clap = { version = "4.4", features = ["derive", "env"] }
 defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", branch = "main" }
 env_logger = "0.10"
 gethostname = "0.4"
@@ -24,7 +25,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
 toml = "0.8"
 serde = { version = "1.0", features = ["derive"] }
-axum = {version =  "0.6", features = ["macros"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
@@ -36,16 +36,6 @@ x25519-dalek = { version = "2.0", features = [
 [build-dependencies]
 tonic-build = { version = "0.10" }
 prost-build = { version = "0.12" }
-
-[target.'cfg(target_os = "freebsd")'.dependencies]
-nix = { version = "0.27", features = ["ioctl", "socket"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-netlink-packet-core = "0.7"
-netlink-packet-generic = "0.3"
-netlink-packet-route = "0.17"
-netlink-packet-wireguard = "0.2"
-netlink-sys = "0.8"
 
 [profile.release]
 lto = "thin"

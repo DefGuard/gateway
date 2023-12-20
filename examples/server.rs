@@ -88,7 +88,7 @@ impl proto::gateway_service_server::GatewayService for GatewayServer {
         request: Request<proto::ConfigurationRequest>,
     ) -> Result<Response<proto::Configuration>, Status> {
         let address = request.remote_addr().unwrap();
-        eprintln!("CONFIG connected from: {}", address);
+        eprintln!("CONFIG connected from: {address}");
         Ok(Response::new((&*self.config_rx.borrow()).into()))
     }
 
@@ -97,7 +97,7 @@ impl proto::gateway_service_server::GatewayService for GatewayServer {
         request: Request<Streaming<proto::PeerStats>>,
     ) -> Result<Response<()>, Status> {
         let address = request.remote_addr().unwrap();
-        eprintln!("STATS connected from: {}", address);
+        eprintln!("STATS connected from: {address}");
 
         let mut stream = request.into_inner();
         while let Some(peer_stats) = stream.message().await? {

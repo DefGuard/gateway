@@ -47,4 +47,4 @@ syslog_socket = "/var/run/log"
 # STATUS CODES:
 # 200 - Gateway is working and is connected to CORE
 # 503 - gateway works but is not connected to CORE
-health_port = 55003
+#health_port = 55003
