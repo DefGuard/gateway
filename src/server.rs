@@ -34,8 +34,7 @@ pub async fn run_server(
             .serve(app.into_make_service())
             .await
             .map_err(|err| GatewayError::HttpServer(err.to_string()))
-    }
-    else {
+    } else {
         Ok(())
     }
 }
