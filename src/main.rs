@@ -1,9 +1,12 @@
+use std::{fs::File, io::Write, process, sync::Arc};
+
+use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
+use tokio::task::JoinSet;
+
 use defguard_gateway::{
     config::get_config, error::GatewayError, execute_command, gateway::Gateway, init_syslog,
     server::run_server,
 };
-use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
-use std::{fs::File, io::Write, process, sync::Arc};
 
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
@@ -29,18 +32,23 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     if let Some(pre_up) = &config.pre_up {
-        log::info!("Executing specified PRE_UP command: {}", pre_up);
+        log::info!("Executing specified PRE_UP command: {pre_up}");
         execute_command(pre_up)?;
     }
+
     let mut gateway = Gateway::new(config.clone())?;
 
-    tokio::select! {
-        _ = run_server(config.health_port, Arc::clone(&gateway.state)), if config.health_port.is_some() => (),
-        result = gateway.start() => result?,
+    let mut tasks = JoinSet::new();
+    if let Some(health_port) = config.health_port {
+        tasks.spawn(run_server(health_port, Arc::clone(&gateway.state)));
+    }
+    tasks.spawn(async move { gateway.start().await });
+    while let Some(Ok(result)) = tasks.join_next().await {
+        result?;
     }
 
     if let Some(post_down) = &config.post_down {
-        log::info!("Executing specified POST_DOWN command: {}", post_down);
+        log::info!("Executing specified POST_DOWN command: {post_down}");
         execute_command(post_down)?;
     }
 

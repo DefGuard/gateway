@@ -1,11 +1,8 @@
-#![allow(clippy::derive_partial_eq_without_eq)]
-
 pub mod config;
 pub mod error;
 pub mod gateway;
 pub mod server;
 
-#[allow(non_snake_case)]
 pub mod proto {
     tonic::include_proto!("gateway");
 }
