@@ -17,7 +17,7 @@ use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration}
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
 
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub static VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Masks object's field with "***" string.
 /// Used to log sensitive/secret objects.
@@ -59,11 +59,11 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
 
             info!("Command executed successfully. Stdout:\n{}", stdout);
             if !stderr.is_empty() {
-                error!("Stderr:\n{}", stderr);
+                error!("Stderr:\n{stderr}");
             }
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("Error executing command. Stderr:\n{}", stderr);
+            error!("Error executing command. Stderr:\n{stderr}");
         }
     }
     Ok(())
