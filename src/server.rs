@@ -1,21 +1,24 @@
-use crate::{error::GatewayError, gateway::GatewayState};
-use axum::{extract::Extension, http::StatusCode, routing::get, Router};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::Arc,
 };
+
+use axum::{extract::Extension, http::StatusCode, routing::get, Router};
 use tokio::sync::Mutex;
+
+use crate::{error::GatewayError, gateway::GatewayState};
 
 async fn healthcheck(
     Extension(gateway_state): Extension<Arc<Mutex<GatewayState>>>,
 ) -> (axum::http::StatusCode, String) {
     let gateway = gateway_state.lock().await;
-    match gateway.connected {
-        true => (StatusCode::OK, "Alive".to_string()),
-        false => (
+    if gateway.connected {
+        (StatusCode::OK, "Alive".to_string())
+    } else {
+        (
             StatusCode::SERVICE_UNAVAILABLE,
             "Not connected to core".to_string(),
-        ),
+        )
     }
 }
 pub async fn run_server(
@@ -28,8 +31,8 @@ pub async fn run_server(
 
     // run server
     if let Some(port) = http_port {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
-        info!("Health check listening on {}", addr);
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
+        info!("Health check listening on {addr}");
         axum::Server::bind(&addr)
             .serve(app.into_make_service())
             .await

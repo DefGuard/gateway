@@ -61,13 +61,15 @@ pub struct Gateway {
 pub struct GatewayState {
     pub connected: bool,
 }
+
 impl GatewayState {
+    #[must_use]
     pub fn new() -> Self {
         Self { connected: false }
     }
 
     fn set_connected(&mut self, connected: bool) {
-        self.connected = connected
+        self.connected = connected;
     }
 }
 
@@ -103,7 +105,7 @@ impl Gateway {
     fn is_config_changed(
         &self,
         new_interface_configuration: &InterfaceConfiguration,
-        new_peers: &Vec<Peer>,
+        new_peers: &[Peer],
     ) -> bool {
         if let Some(current_configuration) = self.interface_configuration.clone() {
             return current_configuration != *new_interface_configuration
@@ -113,7 +115,7 @@ impl Gateway {
     }
 
     // check if new peers are the same as the stored ones
-    fn is_peer_list_changed(&self, new_peers: &Vec<Peer>) -> bool {
+    fn is_peer_list_changed(&self, new_peers: &[Peer]) -> bool {
         // check if number of peers is different
         if self.peers.len() != new_peers.len() {
             return true;
@@ -191,7 +193,7 @@ impl Gateway {
                                 debug!("Stats for peer {peer:?} have not changed. Skipping...");
                             }
                     },
-                    Err(err) => error!("Failed to retrieve WireGuard interface stats {}", err),
+                    Err(err) => error!("Failed to retrieve WireGuard interface stats {err}"),
                 }
                 debug!("Finished sending active peer stats update");
             }
@@ -281,10 +283,10 @@ impl Gateway {
                     break Ok(stream.into_inner());
                 }
                 (Err(err), _) => {
-                    error!("Couldn't retrieve gateway configuration, retrying: {}", err);
+                    error!("Couldn't retrieve gateway configuration, retrying: {err}");
                 }
                 (_, Err(err)) => {
-                    error!("Couldn't establish streaming connection, retrying: {}", err);
+                    error!("Couldn't establish streaming connection, retrying: {err}");
                 }
             }
             sleep(Duration::from_secs(1)).await;
