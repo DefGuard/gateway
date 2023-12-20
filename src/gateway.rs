@@ -24,9 +24,9 @@ use crate::{
         gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
         Peer, Update,
     },
-    wireguard_rs::{WGApi, WireguardInterfaceApi},
     VERSION,
 };
+use defguard_wireguard_rs::{WGApi, WireguardInterfaceApi};
 
 // helper struct which stores just the interface config without peers
 #[derive(Clone, PartialEq)]
@@ -410,9 +410,9 @@ mod tests {
         gateway::{Gateway, GatewayState, InterfaceConfiguration},
         proto::Peer,
     };
+    use defguard_wireguard_rs::WGApi;
     use std::sync::Arc;
     use tokio::sync::Mutex;
-    use wireguard_rs::WGApi;
 
     #[test]
     fn test_configuration_comparison() {

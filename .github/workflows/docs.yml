@@ -12,9 +12,9 @@ env:
 
 jobs:
   rustdoc:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux]
     container:
-      image: rust:1.72
+      image: rust:1.74
 
     steps:
     - name: Checkout

@@ -1,4 +1,9 @@
 use defguard_gateway::proto;
+use defguard_wireguard_rs::{
+    host::{Host, Peer},
+    key::Key,
+    net::IpAddrMask,
+};
 use std::{
     collections::HashMap,
     io::{stdout, Write},
@@ -14,7 +19,6 @@ use tokio::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
-use wireguard_rs::{Host, IpAddrMask, Key, Peer};
 
 pub struct HostConfig {
     name: String,

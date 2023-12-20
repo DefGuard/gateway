@@ -13,14 +13,12 @@ pub mod proto {
 #[macro_use]
 extern crate log;
 
-extern crate wireguard_rs;
-
 use std::{process, str::FromStr, time::SystemTime};
 
 use config::Config;
+use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration};
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
-use wireguard_rs::{InterfaceConfiguration, IpAddrMask, Peer};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
