@@ -85,6 +85,9 @@ impl From<proto::Configuration> for InterfaceConfiguration {
 impl From<proto::Peer> for Peer {
     fn from(proto_peer: proto::Peer) -> Self {
         let mut peer = Self::new(proto_peer.pubkey.as_str().try_into().unwrap_or_default());
+        peer.persistent_keepalive_interval = proto_peer
+            .keepalive_interval
+            .map(|interval| interval as u16);
         peer.preshared_key = proto_peer
             .preshared_key
             .map(|key| key.as_str().try_into().unwrap_or_default());
@@ -104,6 +107,9 @@ impl From<&Peer> for proto::Peer {
             pubkey: peer.public_key.to_string(),
             allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
             preshared_key,
+            keepalive_interval: peer
+                .persistent_keepalive_interval
+                .map(|interval| interval as u32),
         }
     }
 }
