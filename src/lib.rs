@@ -96,9 +96,11 @@ impl From<proto::Peer> for Peer {
 
 impl From<&Peer> for proto::Peer {
     fn from(peer: &Peer) -> Self {
+        let preshared_key = peer.preshared_key.as_ref().map(|key| key.to_string());
         Self {
             pubkey: peer.public_key.to_string(),
             allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
+            preshared_key,
         }
     }
 }
