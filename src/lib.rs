@@ -85,6 +85,9 @@ impl From<proto::Configuration> for InterfaceConfiguration {
 impl From<proto::Peer> for Peer {
     fn from(proto_peer: proto::Peer) -> Self {
         let mut peer = Self::new(proto_peer.pubkey.as_str().try_into().unwrap_or_default());
+        peer.preshared_key = proto_peer
+            .preshared_key
+            .map(|key| key.as_str().try_into().unwrap_or_default());
         peer.allowed_ips = proto_peer
             .allowed_ips
             .iter()
