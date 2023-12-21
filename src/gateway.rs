@@ -429,10 +429,12 @@ mod tests {
             Peer {
                 pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
                 allowed_ips: vec!["10.6.1.2/24".to_string()],
+                preshared_key: None,
             },
             Peer {
                 pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
                 allowed_ips: vec!["10.6.1.3/24".to_string()],
+                preshared_key: None,
             },
         ];
         let old_peers_map = old_peers
@@ -477,6 +479,7 @@ mod tests {
         new_peers.push(Peer {
             pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
             allowed_ips: vec!["10.6.1.4/24".to_string()],
+            preshared_key: None,
         });
 
         assert!(gateway.is_config_changed(&new_config, &new_peers));
@@ -487,10 +490,12 @@ mod tests {
             Peer {
                 pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
                 allowed_ips: vec!["10.6.1.2/24".to_string()],
+                preshared_key: None,
             },
             Peer {
                 pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
                 allowed_ips: vec!["10.6.1.3/24".to_string()],
+                preshared_key: None,
             },
         ];
 
@@ -502,10 +507,29 @@ mod tests {
             Peer {
                 pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
                 allowed_ips: vec!["10.6.1.2/24".to_string()],
+                preshared_key: None,
             },
             Peer {
                 pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
                 allowed_ips: vec!["10.6.1.4/24".to_string()],
+                preshared_key: None,
+            },
+        ];
+
+        assert!(gateway.is_config_changed(&new_config, &new_peers));
+
+        // peer preshared key changed
+        let new_config = old_config.clone();
+        let new_peers = vec![
+            Peer {
+                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
+                allowed_ips: vec!["10.6.1.2/24".to_string()],
+                preshared_key: Some("VGhpc2lzdGhlcGFzc3dvcmQzMWNoYXJhY3RlcnNsbwo=".into()),
+            },
+            Peer {
+                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
+                allowed_ips: vec!["10.6.1.4/24".to_string()],
+                preshared_key: None,
             },
         ];
 
