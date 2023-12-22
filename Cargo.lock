@@ -432,7 +432,7 @@ dependencies = [
 
 [[package]]
 name = "defguard-gateway"
-version = "0.5.5"
+version = "0.5.6"
 dependencies = [
  "async-stream",
  "axum 0.7.2",
