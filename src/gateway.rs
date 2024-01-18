@@ -353,6 +353,7 @@ impl Gateway {
         let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace)?;
 
         // Try to create network interface for WireGuard.
+        // FIXME: check if the interface already exists, or somehow be more clever.
         if let Err(err) = wgapi.create_interface() {
             warn!("Couldn't create network interface: {err}. Proceeding anyway.");
         }
