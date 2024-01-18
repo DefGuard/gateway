@@ -352,18 +352,20 @@ impl Gateway {
 
         let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace)?;
 
-        // create WireGuard interface
-        wgapi.create_interface()?;
+        // Try to create network interface for WireGuard.
+        if let Err(err) = wgapi.create_interface() {
+            warn!("Couldn't create network interface: {err}. Proceeding anyway.");
+        }
 
         let mut updates_stream = self.connect(Arc::clone(&client)).await?;
         if let Some(post_up) = &self.config.post_up {
-            info!("Executing specified POST_UP command: {}", post_up);
+            info!("Executing specified POST_UP command: {post_up}");
             execute_command(post_up)?;
         }
         loop {
             match updates_stream.message().await {
                 Ok(Some(update)) => {
-                    debug!("Received update: {:?}", update);
+                    debug!("Received update: {update:?}");
                     match update.update {
                         Some(update::Update::Network(configuration)) => {
                             self.configure(configuration)?;
