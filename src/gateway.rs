@@ -257,7 +257,7 @@ impl Gateway {
         }
         loop {
             debug!(
-                "Connecting to Defguard GRPC endpoint: {}",
+                "Connecting to defguard GRPC endpoint: {}",
                 self.config.grpc_url
             );
             let (response, stream) = {
@@ -275,7 +275,7 @@ impl Gateway {
                     self.configure(response.into_inner())?;
                     self.spawn_stats_thread(client.clone());
                     info!(
-                        "Connected to Defguard GRPC endpoint: {}",
+                        "Connected to defguard GRPC endpoint: {}",
                         self.config.grpc_url
                     );
                     let mut state = self.state.lock().await;
@@ -339,12 +339,12 @@ impl Gateway {
     }
 
     /// Starts the gateway process.
-    /// * Retrieves configuration and configuration updates from Defguard GRPC server
+    /// * Retrieves configuration and configuration updates from defguard gRPC server
     /// * Manages the interface according to configuration and updates
-    /// * Sends interface statistics to Defguard server periodically
+    /// * Sends interface statistics to defguard server periodically
     pub async fn start(&mut self) -> Result<(), GatewayError> {
         info!(
-            "Starting Defguard gateway version {VERSION} with configuration: {:?}",
+            "Starting defguard gateway version {VERSION} with configuration: {:?}",
             mask!(self.config, token)
         );
 
@@ -352,18 +352,21 @@ impl Gateway {
 
         let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace)?;
 
-        // create WireGuard interface
-        wgapi.create_interface()?;
+        // Try to create network interface for WireGuard.
+        // FIXME: check if the interface already exists, or somehow be more clever.
+        if let Err(err) = wgapi.create_interface() {
+            warn!("Couldn't create network interface: {err}. Proceeding anyway.");
+        }
 
         let mut updates_stream = self.connect(Arc::clone(&client)).await?;
         if let Some(post_up) = &self.config.post_up {
-            info!("Executing specified POST_UP command: {}", post_up);
+            info!("Executing specified POST_UP command: {post_up}");
             execute_command(post_up)?;
         }
         loop {
             match updates_stream.message().await {
                 Ok(Some(update)) => {
-                    debug!("Received update: {:?}", update);
+                    debug!("Received update: {update:?}");
                     match update.update {
                         Some(update::Update::Network(configuration)) => {
                             self.configure(configuration)?;
@@ -429,10 +432,14 @@ mod tests {
             Peer {
                 pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
                 allowed_ips: vec!["10.6.1.2/24".to_string()],
+                preshared_key: None,
+                keepalive_interval: None,
             },
             Peer {
                 pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
                 allowed_ips: vec!["10.6.1.3/24".to_string()],
+                preshared_key: None,
+                keepalive_interval: None,
             },
         ];
         let old_peers_map = old_peers
@@ -477,6 +484,8 @@ mod tests {
         new_peers.push(Peer {
             pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
             allowed_ips: vec!["10.6.1.4/24".to_string()],
+            preshared_key: None,
+            keepalive_interval: None,
         });
 
         assert!(gateway.is_config_changed(&new_config, &new_peers));
@@ -487,10 +496,14 @@ mod tests {
             Peer {
                 pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
                 allowed_ips: vec!["10.6.1.2/24".to_string()],
+                preshared_key: None,
+                keepalive_interval: None,
             },
             Peer {
                 pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
                 allowed_ips: vec!["10.6.1.3/24".to_string()],
+                preshared_key: None,
+                keepalive_interval: None,
             },
         ];
 
@@ -502,10 +515,52 @@ mod tests {
             Peer {
                 pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
                 allowed_ips: vec!["10.6.1.2/24".to_string()],
+                preshared_key: None,
+                keepalive_interval: None,
             },
             Peer {
                 pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
                 allowed_ips: vec!["10.6.1.4/24".to_string()],
+                preshared_key: None,
+                keepalive_interval: None,
+            },
+        ];
+
+        assert!(gateway.is_config_changed(&new_config, &new_peers));
+
+        // peer preshared key changed
+        let new_config = old_config.clone();
+        let new_peers = vec![
+            Peer {
+                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
+                allowed_ips: vec!["10.6.1.2/24".to_string()],
+                preshared_key: Some("VGhpc2lzdGhlcGFzc3dvcmQzMWNoYXJhY3RlcnNsbwo=".into()),
+                keepalive_interval: None,
+            },
+            Peer {
+                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
+                allowed_ips: vec!["10.6.1.4/24".to_string()],
+                preshared_key: None,
+                keepalive_interval: None,
+            },
+        ];
+
+        assert!(gateway.is_config_changed(&new_config, &new_peers));
+
+        // peer keepalive interval changed
+        let new_config = old_config.clone();
+        let new_peers = vec![
+            Peer {
+                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
+                allowed_ips: vec!["10.6.1.2/24".to_string()],
+                preshared_key: Some("VGhpc2lzdGhlcGFzc3dvcmQzMWNoYXJhY3RlcnNsbwo=".into()),
+                keepalive_interval: Some(15),
+            },
+            Peer {
+                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
+                allowed_ips: vec!["10.6.1.4/24".to_string()],
+                preshared_key: None,
+                keepalive_interval: None,
             },
         ];
 

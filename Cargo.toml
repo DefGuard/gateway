@@ -1,20 +1,19 @@
 [package]
 name = "defguard-gateway"
-version = "0.5.6"
+version = "0.6.0"
 edition = "2021"
-
 
 [dependencies]
 async-stream = "0.3"
-axum = {version =  "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros"] }
 base64 = "0.21"
 chrono = { version = "0.4", default-features = false, features = [
     "clock",
     "std",
 ] }
 clap = { version = "4.4", features = ["derive", "env"] }
-defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", branch = "main" }
-env_logger = "0.10"
+defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", rev = "v0.4.0" }
+env_logger = "0.11"
 gethostname = "0.4"
 log = "0.4"
 prost = "0.12"
@@ -23,19 +22,16 @@ thiserror = "1.0"
 tonic = { version = "0.10", features = ["gzip", "tls", "tls-roots"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
-toml = "0.8"
+toml = { version = "0.8", default-features = false, features = ["parse"] }
 serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
-x25519-dalek = { version = "2.0", features = [
-    "getrandom",
-    "static_secrets",
-] }
+x25519-dalek = { version = "2.0", features = ["getrandom", "static_secrets"] }
 
 [build-dependencies]
-tonic-build = { version = "0.10" }
 prost-build = { version = "0.12" }
+tonic-build = { version = "0.10" }
 
 [profile.release]
 lto = "thin"
