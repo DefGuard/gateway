@@ -7,10 +7,10 @@ use toml;
 use crate::error::GatewayError;
 
 #[derive(Debug, Parser, Clone, Deserialize)]
-#[clap(about = "Defguard VPN gateway service")]
+#[clap(about = "defguard VPN gateway service")]
 #[command(version)]
 pub struct Config {
-    /// Token received from Defguard after completing the network wizard
+    /// Token received from defguard after completing the network wizard
     #[arg(
         long,
         short = 't',
@@ -23,7 +23,7 @@ pub struct Config {
     #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
     pub name: Option<String>,
 
-    /// Defguard server gRPC endpoint URL
+    /// defguard server gRPC endpoint URL
     #[arg(
         long,
         short = 'g',
@@ -40,7 +40,7 @@ pub struct Config {
     #[arg(long, env = "DEFGUARD_GRPC_CA")]
     pub grpc_ca: Option<String>,
 
-    /// Defines how often (in seconds) interface statistics are sent to Defguard server
+    /// Defines how often (in seconds) interface statistics are sent to defguard server
     #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "30")]
     pub stats_period: u64,
 

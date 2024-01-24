@@ -1,11 +1,11 @@
 # NOTE: must replace default with actual value
 token = "{{ OPNsense.defguardgateway.general.Token|default("") }}"
-# Required: Defguard server gRPC endpoint URL
+# Required: defguard server gRPC endpoint URL
 # NOTE: must replace default with actual value
 grpc_url = "{{ OPNsense.defguardgateway.general.GrpcUrl|default("") }}"
-# Optional: gateway name which will be displayed in Defguard web UI
+# Optional: gateway name which will be displayed in defguard web UI
 name = "{{ OPNsense.defguardgateway.general.Name|default("Gateway A") }}"
-# Required: use userspace Wireguard implementation (e.g. wireguard-go)
+# Required: use userspace WireGuard implementation (e.g. wireguard-go)
 {% if OPNsense.defguardgateway.general.Userspace == "1" %}
 userspace = true
 {% else %}
@@ -15,9 +15,9 @@ userspace = false
 {% if not helpers.empty('OPNsense.defguardgateway.general.GrpcCertPath') %}
 grpc_ca = "{{ OPNsense.defguardgateway.general.GrpcCertPath }}"
 {% endif %}
-# Required: how often should interface stat updates be sent to Defguard server (in seconds)
+# Required: how often should interface stat updates be sent to defguard server (in seconds)
 stats_period = {{ OPNsense.defguardgateway.general.StatsPeriod|default(60) }}
-# Required: name of Wireguard interface
+# Required: name of WireGuard interface
 ifname = "{{ OPNsense.defguardgateway.general.IfName|default("wg0") }}"
 # Optional: write PID to this file
 {% if not helpers.empty('OPNsense.defguardgateway.general.PidFile') %}

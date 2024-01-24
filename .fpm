@@ -1,6 +1,6 @@
 -s dir
 --name defguard-gateway
 --architecture x86_64
---description "Defguard VPN gateway service"
+--description "defguard VPN gateway service"
 --url "https://defguard.net/"
---maintainer "Teonite"
+--maintainer "teonite"

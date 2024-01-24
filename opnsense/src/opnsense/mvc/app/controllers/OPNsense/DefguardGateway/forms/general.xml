@@ -27,7 +27,7 @@
 	<id>defguardgateway.general.Name</id>
 	<label>Gateway name</label>
 	<type>text</type>
-	<help>Name that will be displayed in Defguard</help>
+	<help>Name that will be displayed in defguard</help>
 	<hint>Gateway OPNsense</hint>
     </field>
     <field>

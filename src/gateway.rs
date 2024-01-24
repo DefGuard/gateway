@@ -257,7 +257,7 @@ impl Gateway {
         }
         loop {
             debug!(
-                "Connecting to Defguard GRPC endpoint: {}",
+                "Connecting to defguard GRPC endpoint: {}",
                 self.config.grpc_url
             );
             let (response, stream) = {
@@ -275,7 +275,7 @@ impl Gateway {
                     self.configure(response.into_inner())?;
                     self.spawn_stats_thread(client.clone());
                     info!(
-                        "Connected to Defguard GRPC endpoint: {}",
+                        "Connected to defguard GRPC endpoint: {}",
                         self.config.grpc_url
                     );
                     let mut state = self.state.lock().await;
@@ -339,12 +339,12 @@ impl Gateway {
     }
 
     /// Starts the gateway process.
-    /// * Retrieves configuration and configuration updates from Defguard GRPC server
+    /// * Retrieves configuration and configuration updates from defguard gRPC server
     /// * Manages the interface according to configuration and updates
-    /// * Sends interface statistics to Defguard server periodically
+    /// * Sends interface statistics to defguard server periodically
     pub async fn start(&mut self) -> Result<(), GatewayError> {
         info!(
-            "Starting Defguard gateway version {VERSION} with configuration: {:?}",
+            "Starting defguard gateway version {VERSION} with configuration: {:?}",
             mask!(self.config, token)
         );
 
