@@ -175,7 +175,7 @@ impl Gateway {
                 match wgapi.read_interface_data() {
                     Ok(host) => {
                         let peers = host.peers;
-                        debug!("Found {} peers configured on WireGuard interface: {peers:?}", peers.len());
+                        debug!("Found {} peers configured on WireGuard interface", peers.len());
                         for peer in peers
                             .into_values()
                             .filter(|p| p.last_handshake.map_or(
@@ -190,7 +190,7 @@ impl Gateway {
                                     peer_map.insert(peer.public_key.clone(), peer.clone());
                                     yield (&peer).into();
                                 };
-                                debug!("Stats for peer {peer:?} have not changed. Skipping...");
+                                debug!("Stats for peer {} have not changed. Skipping...", peer.public_key);
                             }
                     },
                     Err(err) => error!("Failed to retrieve WireGuard interface stats {err}"),
