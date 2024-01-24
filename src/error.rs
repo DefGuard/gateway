@@ -30,7 +30,7 @@ pub enum GatewayError {
     #[error("Invalid config file. Error: {0}")]
     InvalidConfigFile(String),
 
-    #[error("Wireguard error")]
+    #[error("WireGuard error")]
     WireguardError(#[from] WireguardInterfaceError),
     #[error("HTTP error")]
     HttpServer(String),

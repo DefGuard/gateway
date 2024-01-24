@@ -2,7 +2,7 @@
     <img src="docs/header.png" alt="defguard">
  </p>
 
-**Defguard gateway** is a client service for [defguard](https://github.com/DefGuard/defguard) which can be used to create your own [Wireguard:tm:](https://www.wireguard.com/) VPN servers for secure and private networking.
+**defguard gateway** is a client service for [defguard](https://github.com/DefGuard/defguard) which can be used to create your own [WireGuard:tm:](https://www.wireguard.com/) VPN servers for secure and private networking.
 
 To learn more about the system see our [documentation](https://defguard.gitbook.io).
 

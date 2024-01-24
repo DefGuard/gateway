@@ -1,5 +1,5 @@
 [Unit]
-Description=Defguard VPN gateway service
+Description=defguard VPN gateway service
 Documentation=https://defguard.gitbook.io/defguard/
 Wants=network-online.target
 After=network-online.target
