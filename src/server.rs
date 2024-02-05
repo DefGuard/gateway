@@ -1,34 +1,30 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use axum::{extract::Extension, http::StatusCode, routing::get, serve, Router};
-use tokio::{net::TcpListener, sync::Mutex};
+use tokio::net::TcpListener;
 
-use crate::{error::GatewayError, gateway::GatewayState};
+use crate::error::GatewayError;
 
-async fn healthcheck(
-    Extension(gateway_state): Extension<Arc<Mutex<GatewayState>>>,
-) -> (StatusCode, String) {
-    let gateway = gateway_state.lock().await;
-    if gateway.connected {
-        (StatusCode::OK, "Alive".to_string())
+async fn healthcheck<'a>(
+    Extension(connected): Extension<Arc<AtomicBool>>,
+) -> (StatusCode, &'a str) {
+    if connected.load(Ordering::Relaxed) {
+        (StatusCode::OK, "Alive")
     } else {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Not connected to core".to_string(),
-        )
+        (StatusCode::SERVICE_UNAVAILABLE, "Not connected to core")
     }
 }
 
-pub async fn run_server(
-    http_port: u16,
-    gateway_state: Arc<Mutex<GatewayState>>,
-) -> Result<(), GatewayError> {
+pub async fn run_server(http_port: u16, connected: Arc<AtomicBool>) -> Result<(), GatewayError> {
     let app = Router::new()
         .route("/health", get(healthcheck))
-        .layer(Extension(gateway_state));
+        .layer(Extension(connected));
 
     // run server
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), http_port);
