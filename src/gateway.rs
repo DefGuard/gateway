@@ -360,9 +360,11 @@ impl Gateway {
                             if update.update_type == 2 {
                                 debug!("Deleting peer {peer_config:?}");
                                 self.peers.remove(&peer_config.pubkey);
-                                wgapi.remove_peer(
+                                if let Err(err) = wgapi.remove_peer(
                                     &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
-                                )
+                                ) {
+                                    error!("Failed to delete peer: {err}");
+                                }
                             }
                             // UpdateType::Create, UpdateType::Modify
                             else {
@@ -372,8 +374,10 @@ impl Gateway {
                                 );
                                 self.peers
                                     .insert(peer_config.pubkey.clone(), peer_config.clone());
-                                wgapi.configure_peer(&peer_config.into())
-                            }?;
+                                if let Err(err) = wgapi.configure_peer(&peer_config.into()) {
+                                    error!("Failed to update peer: {err}");
+                                }
+                            };
                         }
                         _ => warn!("Unsupported kind of update"),
                     }
