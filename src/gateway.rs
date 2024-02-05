@@ -350,7 +350,9 @@ impl Gateway {
                     debug!("Received update: {update:?}");
                     match update.update {
                         Some(update::Update::Network(configuration)) => {
-                            self.configure(configuration)?;
+                            if let Err(err) = self.configure(configuration) {
+                                error!("Failed to update network configuration: {err}");
+                            }
                         }
                         Some(update::Update::Peer(peer_config)) => {
                             info!("Applying peer configuration: {peer_config:?}");
