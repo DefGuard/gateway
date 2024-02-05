@@ -1,6 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, SystemTime},
 };
 
@@ -30,11 +33,11 @@ use defguard_wireguard_rs::{WGApi, WireguardInterfaceApi};
 
 // helper struct which stores just the interface config without peers
 #[derive(Clone, PartialEq)]
-pub struct InterfaceConfiguration {
-    pub name: String,
-    pub prvkey: String,
-    pub address: String,
-    pub port: u32,
+struct InterfaceConfiguration {
+    name: String,
+    prvkey: String,
+    address: String,
+    port: u32,
 }
 
 impl From<Configuration> for InterfaceConfiguration {
@@ -55,28 +58,7 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<Pubkey, Peer>,
     wgapi: WGApi,
-    pub state: Arc<Mutex<GatewayState>>,
-}
-
-pub struct GatewayState {
-    pub connected: bool,
-}
-
-impl GatewayState {
-    #[must_use]
-    pub fn new() -> Self {
-        Self { connected: false }
-    }
-
-    fn set_connected(&mut self, connected: bool) {
-        self.connected = connected;
-    }
-}
-
-impl Default for GatewayState {
-    fn default() -> Self {
-        Self::new()
-    }
+    pub connected: Arc<AtomicBool>,
 }
 
 impl Gateway {
@@ -87,7 +69,7 @@ impl Gateway {
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi,
-            state: Arc::new(Mutex::new(GatewayState::default())),
+            connected: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -251,10 +233,7 @@ impl Gateway {
         >,
     ) -> Result<Streaming<Update>, GatewayError> {
         // set diconnected if we are in this function and drop mutex
-        {
-            let mut state = self.state.lock().await;
-            state.set_connected(false);
-        }
+        self.connected.store(false, Ordering::Relaxed);
         loop {
             debug!(
                 "Connecting to defguard GRPC endpoint: {}",
@@ -272,14 +251,16 @@ impl Gateway {
             };
             match (response, stream) {
                 (Ok(response), Ok(stream)) => {
-                    self.configure(response.into_inner())?;
+                    if let Err(err) = self.configure(response.into_inner()) {
+                        error!("Interface configuration failed: {err}");
+                        continue;
+                    }
                     self.spawn_stats_thread(client.clone());
                     info!(
                         "Connected to defguard GRPC endpoint: {}",
                         self.config.grpc_url
                     );
-                    let mut state = self.state.lock().await;
-                    state.set_connected(true);
+                    self.connected.store(true, Ordering::Relaxed);
                     break Ok(stream.into_inner());
                 }
                 (Err(err), _) => {
@@ -369,7 +350,9 @@ impl Gateway {
                     debug!("Received update: {update:?}");
                     match update.update {
                         Some(update::Update::Network(configuration)) => {
-                            self.configure(configuration)?;
+                            if let Err(err) = self.configure(configuration) {
+                                error!("Failed to update network configuration: {err}");
+                            }
                         }
                         Some(update::Update::Peer(peer_config)) => {
                             info!("Applying peer configuration: {peer_config:?}");
@@ -377,9 +360,11 @@ impl Gateway {
                             if update.update_type == 2 {
                                 debug!("Deleting peer {peer_config:?}");
                                 self.peers.remove(&peer_config.pubkey);
-                                wgapi.remove_peer(
+                                if let Err(err) = wgapi.remove_peer(
                                     &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
-                                )
+                                ) {
+                                    error!("Failed to delete peer: {err}");
+                                }
                             }
                             // UpdateType::Create, UpdateType::Modify
                             else {
@@ -389,8 +374,10 @@ impl Gateway {
                                 );
                                 self.peers
                                     .insert(peer_config.pubkey.clone(), peer_config.clone());
-                                wgapi.configure_peer(&peer_config.into())
-                            }?;
+                                if let Err(err) = wgapi.configure_peer(&peer_config.into()) {
+                                    error!("Failed to update peer: {err}");
+                                }
+                            };
                         }
                         _ => warn!("Unsupported kind of update"),
                     }
@@ -412,12 +399,11 @@ impl Gateway {
 mod tests {
     use crate::{
         config::Config,
-        gateway::{Gateway, GatewayState, InterfaceConfiguration},
+        gateway::{Gateway, InterfaceConfiguration},
         proto::Peer,
     };
     use defguard_wireguard_rs::WGApi;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
+    use std::sync::{atomic::AtomicBool, Arc};
 
     #[test]
     fn test_configuration_comparison() {
@@ -453,7 +439,7 @@ mod tests {
             interface_configuration: Some(old_config.clone()),
             peers: old_peers_map,
             wgapi: WGApi::new("wg0".into(), false).unwrap(),
-            state: Arc::new(Mutex::new(GatewayState::default())),
+            connected: Arc::new(AtomicBool::new(false)),
         };
 
         // new config is the same
