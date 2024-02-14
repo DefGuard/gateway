@@ -313,7 +313,7 @@ impl Gateway {
         let endpoint = Endpoint::from_shared(self.config.grpc_url.clone())?;
         let endpoint = endpoint
             .http2_keep_alive_interval(TEN_SECS)
-            // .tcp_keepalive(Some(TEN_SECS))
+            .tcp_keepalive(Some(TEN_SECS))
             .keep_alive_while_idle(true);
         let endpoint = if let Some(ca) = &self.config.grpc_ca {
             let ca = std::fs::read_to_string(ca)?;
