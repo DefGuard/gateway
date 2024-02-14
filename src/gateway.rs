@@ -24,12 +24,14 @@ use crate::{
     error::GatewayError,
     execute_command, mask,
     proto::{
-        gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
-        Peer, Update,
+        gateway_service_client::GatewayServiceClient, stats_update::Payload, update, Configuration,
+        ConfigurationRequest, Peer, StatsUpdate, Update,
     },
     VERSION,
 };
 use defguard_wireguard_rs::{WGApi, WireguardInterfaceApi};
+
+const TEN_SECS: Duration = Duration::from_secs(10);
 
 // helper struct which stores just the interface config without peers
 #[derive(Clone, PartialEq)]
@@ -150,9 +152,12 @@ impl Gateway {
             // and avoid sending duplicate stats
             let mut peer_map = HashMap::new();
             let mut interval = interval(period);
+            let mut id = 1;
             loop {
                 // wait till next iteration
                 interval.tick().await;
+                let mut peer_stats_sent = false;
+
                 debug!("Sending active peer stats update");
                 match wgapi.read_interface_data() {
                     Ok(host) => {
@@ -170,13 +175,28 @@ impl Gateway {
                                 };
                                 if has_changed {
                                     peer_map.insert(peer.public_key.clone(), peer.clone());
-                                    yield (&peer).into();
+                                    id += 1;
+                                    yield StatsUpdate {
+                                        id,
+                                        payload: Some(Payload::PeerStats((&peer).into())),
+                                    };
+                                    peer_stats_sent = true;
                                 };
                                 debug!("Stats for peer {} have not changed. Skipping...", peer.public_key);
                             }
                     },
                     Err(err) => error!("Failed to retrieve WireGuard interface stats {err}"),
                 }
+
+                if !peer_stats_sent {
+                    id += 1;
+                    yield StatsUpdate {
+                        id,
+                        payload: Some(Payload::Empty(()))
+                    };
+                    debug!("Sent empty stats message.");
+                }
+
                 debug!("Finished sending active peer stats update");
             }
         };
@@ -291,8 +311,10 @@ impl Gateway {
     > {
         debug!("Setting up gRPC server connection");
         let endpoint = Endpoint::from_shared(self.config.grpc_url.clone())?;
-        let endpoint = endpoint.http2_keep_alive_interval(Duration::from_secs(10));
-        let endpoint = endpoint.tcp_keepalive(Some(Duration::from_secs(10)));
+        let endpoint = endpoint
+            .http2_keep_alive_interval(TEN_SECS)
+            // .tcp_keepalive(Some(TEN_SECS))
+            .keep_alive_while_idle(true);
         let endpoint = if let Some(ca) = &self.config.grpc_ca {
             let ca = std::fs::read_to_string(ca)?;
             let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(ca));

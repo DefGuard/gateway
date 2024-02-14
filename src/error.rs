@@ -6,7 +6,7 @@ pub enum GatewayError {
     #[error("Command execution failed")]
     CommandExecutionFailed(#[from] std::io::Error),
 
-    #[error("Command returned error status")]
+    #[error("Command returned error status `{stderr}`")]
     CommandExecutionError { stderr: String },
 
     #[error("WireGuard key error")]
@@ -30,8 +30,9 @@ pub enum GatewayError {
     #[error("Invalid config file. Error: {0}")]
     InvalidConfigFile(String),
 
-    #[error("WireGuard error")]
+    #[error("WireGuard error {0}")]
     WireguardError(#[from] WireguardInterfaceError),
+
     #[error("HTTP error")]
     HttpServer(String),
 }
