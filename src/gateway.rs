@@ -8,10 +8,7 @@ use std::{
 };
 
 use gethostname::gethostname;
-use tokio::{
-    sync::Mutex,
-    time::{interval, sleep},
-};
+use tokio::time::interval;
 use tonic::{
     codegen::InterceptedService,
     metadata::MetadataValue,
@@ -130,19 +127,14 @@ impl Gateway {
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
     fn spawn_stats_thread(
         &self,
-        client: Arc<
-            Mutex<
-                GatewayServiceClient<
-                    InterceptedService<
-                        Channel,
-                        impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + 'static,
-                    >,
-                >,
+        mut client: GatewayServiceClient<
+            InterceptedService<
+                Channel,
+                impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + Sync + 'static,
             >,
         >,
     ) {
-        // Create an async stream that periodically yields wireguard interface statistics.
-        info!("Spawning stats thread");
+        // Create an async stream that periodically yields WireGuard interface statistics.
         let period = Duration::from_secs(self.config.stats_period);
         let ifname = self.config.ifname.clone();
         let userspace = self.config.userspace;
@@ -196,14 +188,12 @@ impl Gateway {
                     };
                     debug!("Sent empty stats message.");
                 }
-
-                debug!("Finished sending active peer stats update");
             }
         };
+        info!("Spawning stats thread");
         // Spawn the thread
         tokio::spawn(async move {
-            let mut client = client.lock().await;
-            let _r = client.stats(Request::new(stats_stream)).await;
+            let _ = client.stats(Request::new(stats_stream)).await;
         });
     }
 
@@ -241,14 +231,10 @@ impl Gateway {
     /// configures the interface, starts the stats thread, connects and returns the updates stream
     async fn connect(
         &mut self,
-        client: Arc<
-            Mutex<
-                GatewayServiceClient<
-                    InterceptedService<
-                        Channel,
-                        impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + 'static,
-                    >,
-                >,
+        mut client: GatewayServiceClient<
+            InterceptedService<
+                Channel,
+                impl Fn(Request<()>) -> Result<Request<()>, Status> + Clone + Send + Sync + 'static,
             >,
         >,
     ) -> Result<Streaming<Update>, GatewayError> {
@@ -260,7 +246,6 @@ impl Gateway {
                 self.config.grpc_url
             );
             let (response, stream) = {
-                let mut client = client.lock().await;
                 let response = client
                     .config(ConfigurationRequest {
                         name: self.config.name.clone(),
@@ -275,7 +260,7 @@ impl Gateway {
                         error!("Interface configuration failed: {err}");
                         continue;
                     }
-                    self.spawn_stats_thread(client.clone());
+                    self.spawn_stats_thread(client);
                     info!(
                         "Connected to defguard GRPC endpoint: {}",
                         self.config.grpc_url
@@ -290,21 +275,16 @@ impl Gateway {
                     error!("Couldn't establish streaming connection, retrying: {err}");
                 }
             }
-            sleep(Duration::from_secs(1)).await;
         }
     }
 
     fn setup_client(
         &self,
     ) -> Result<
-        Arc<
-            Mutex<
-                GatewayServiceClient<
-                    InterceptedService<
-                        Channel,
-                        impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + 'static,
-                    >,
-                >,
+        GatewayServiceClient<
+            InterceptedService<
+                Channel,
+                impl Fn(Request<()>) -> Result<Request<()>, Status> + Clone + Send + Sync + 'static,
             >,
         >,
         GatewayError,
@@ -334,10 +314,7 @@ impl Gateway {
             req.metadata_mut().insert("hostname", hostname.clone());
             Ok(req)
         };
-        let client = Arc::new(Mutex::new(GatewayServiceClient::with_interceptor(
-            channel,
-            jwt_auth_interceptor,
-        )));
+        let client = GatewayServiceClient::with_interceptor(channel, jwt_auth_interceptor);
         Ok(client)
     }
 
@@ -361,7 +338,7 @@ impl Gateway {
             warn!("Couldn't create network interface: {err}. Proceeding anyway.");
         }
 
-        let mut updates_stream = self.connect(Arc::clone(&client)).await?;
+        let mut updates_stream = self.connect(client.clone()).await?;
         if let Some(post_up) = &self.config.post_up {
             info!("Executing specified POST_UP command: {post_up}");
             execute_command(post_up)?;
@@ -406,11 +383,11 @@ impl Gateway {
                 }
                 Ok(None) => {
                     warn!("Received empty message, reconnecting");
-                    updates_stream = self.connect(Arc::clone(&client)).await?;
+                    updates_stream = self.connect(client.clone()).await?;
                 }
                 Err(err) => {
                     error!("Server error {err}, reconnecting");
-                    updates_stream = self.connect(Arc::clone(&client)).await?;
+                    updates_stream = self.connect(client.clone()).await?;
                 }
             }
         }
