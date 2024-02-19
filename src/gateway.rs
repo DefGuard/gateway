@@ -8,10 +8,7 @@ use std::{
 };
 
 use gethostname::gethostname;
-use tokio::{
-    sync::Mutex,
-    time::{interval, sleep},
-};
+use tokio::time::interval;
 use tonic::{
     codegen::InterceptedService,
     metadata::MetadataValue,
@@ -24,12 +21,14 @@ use crate::{
     error::GatewayError,
     execute_command, mask,
     proto::{
-        gateway_service_client::GatewayServiceClient, update, Configuration, ConfigurationRequest,
-        Peer, Update,
+        gateway_service_client::GatewayServiceClient, stats_update::Payload, update, Configuration,
+        ConfigurationRequest, Peer, StatsUpdate, Update,
     },
     VERSION,
 };
 use defguard_wireguard_rs::{WGApi, WireguardInterfaceApi};
+
+const TEN_SECS: Duration = Duration::from_secs(10);
 
 // helper struct which stores just the interface config without peers
 #[derive(Clone, PartialEq)]
@@ -128,19 +127,14 @@ impl Gateway {
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
     fn spawn_stats_thread(
         &self,
-        client: Arc<
-            Mutex<
-                GatewayServiceClient<
-                    InterceptedService<
-                        Channel,
-                        impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + 'static,
-                    >,
-                >,
+        mut client: GatewayServiceClient<
+            InterceptedService<
+                Channel,
+                impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + Sync + 'static,
             >,
         >,
     ) {
-        // Create an async stream that periodically yields wireguard interface statistics.
-        info!("Spawning stats thread");
+        // Create an async stream that periodically yields WireGuard interface statistics.
         let period = Duration::from_secs(self.config.stats_period);
         let ifname = self.config.ifname.clone();
         let userspace = self.config.userspace;
@@ -150,9 +144,12 @@ impl Gateway {
             // and avoid sending duplicate stats
             let mut peer_map = HashMap::new();
             let mut interval = interval(period);
+            let mut id = 1;
             loop {
                 // wait till next iteration
                 interval.tick().await;
+                let mut peer_stats_sent = false;
+
                 debug!("Sending active peer stats update");
                 match wgapi.read_interface_data() {
                     Ok(host) => {
@@ -170,20 +167,33 @@ impl Gateway {
                                 };
                                 if has_changed {
                                     peer_map.insert(peer.public_key.clone(), peer.clone());
-                                    yield (&peer).into();
+                                    id += 1;
+                                    yield StatsUpdate {
+                                        id,
+                                        payload: Some(Payload::PeerStats((&peer).into())),
+                                    };
+                                    peer_stats_sent = true;
                                 };
                                 debug!("Stats for peer {} have not changed. Skipping...", peer.public_key);
                             }
                     },
                     Err(err) => error!("Failed to retrieve WireGuard interface stats {err}"),
                 }
-                debug!("Finished sending active peer stats update");
+
+                if !peer_stats_sent {
+                    id += 1;
+                    yield StatsUpdate {
+                        id,
+                        payload: Some(Payload::Empty(()))
+                    };
+                    debug!("Sent empty stats message.");
+                }
             }
         };
+        info!("Spawning stats thread");
         // Spawn the thread
         tokio::spawn(async move {
-            let mut client = client.lock().await;
-            let _r = client.stats(Request::new(stats_stream)).await;
+            let _ = client.stats(Request::new(stats_stream)).await;
         });
     }
 
@@ -221,14 +231,10 @@ impl Gateway {
     /// configures the interface, starts the stats thread, connects and returns the updates stream
     async fn connect(
         &mut self,
-        client: Arc<
-            Mutex<
-                GatewayServiceClient<
-                    InterceptedService<
-                        Channel,
-                        impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + 'static,
-                    >,
-                >,
+        mut client: GatewayServiceClient<
+            InterceptedService<
+                Channel,
+                impl Fn(Request<()>) -> Result<Request<()>, Status> + Clone + Send + Sync + 'static,
             >,
         >,
     ) -> Result<Streaming<Update>, GatewayError> {
@@ -240,7 +246,6 @@ impl Gateway {
                 self.config.grpc_url
             );
             let (response, stream) = {
-                let mut client = client.lock().await;
                 let response = client
                     .config(ConfigurationRequest {
                         name: self.config.name.clone(),
@@ -255,7 +260,7 @@ impl Gateway {
                         error!("Interface configuration failed: {err}");
                         continue;
                     }
-                    self.spawn_stats_thread(client.clone());
+                    self.spawn_stats_thread(client);
                     info!(
                         "Connected to defguard GRPC endpoint: {}",
                         self.config.grpc_url
@@ -270,29 +275,26 @@ impl Gateway {
                     error!("Couldn't establish streaming connection, retrying: {err}");
                 }
             }
-            sleep(Duration::from_secs(1)).await;
         }
     }
 
     fn setup_client(
         &self,
     ) -> Result<
-        Arc<
-            Mutex<
-                GatewayServiceClient<
-                    InterceptedService<
-                        Channel,
-                        impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + 'static,
-                    >,
-                >,
+        GatewayServiceClient<
+            InterceptedService<
+                Channel,
+                impl Fn(Request<()>) -> Result<Request<()>, Status> + Clone + Send + Sync + 'static,
             >,
         >,
         GatewayError,
     > {
         debug!("Setting up gRPC server connection");
         let endpoint = Endpoint::from_shared(self.config.grpc_url.clone())?;
-        let endpoint = endpoint.http2_keep_alive_interval(Duration::from_secs(10));
-        let endpoint = endpoint.tcp_keepalive(Some(Duration::from_secs(10)));
+        let endpoint = endpoint
+            .http2_keep_alive_interval(TEN_SECS)
+            .tcp_keepalive(Some(TEN_SECS))
+            .keep_alive_while_idle(true);
         let endpoint = if let Some(ca) = &self.config.grpc_ca {
             let ca = std::fs::read_to_string(ca)?;
             let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(ca));
@@ -312,10 +314,7 @@ impl Gateway {
             req.metadata_mut().insert("hostname", hostname.clone());
             Ok(req)
         };
-        let client = Arc::new(Mutex::new(GatewayServiceClient::with_interceptor(
-            channel,
-            jwt_auth_interceptor,
-        )));
+        let client = GatewayServiceClient::with_interceptor(channel, jwt_auth_interceptor);
         Ok(client)
     }
 
@@ -339,7 +338,7 @@ impl Gateway {
             warn!("Couldn't create network interface: {err}. Proceeding anyway.");
         }
 
-        let mut updates_stream = self.connect(Arc::clone(&client)).await?;
+        let mut updates_stream = self.connect(client.clone()).await?;
         if let Some(post_up) = &self.config.post_up {
             info!("Executing specified POST_UP command: {post_up}");
             execute_command(post_up)?;
@@ -384,11 +383,11 @@ impl Gateway {
                 }
                 Ok(None) => {
                     warn!("Received empty message, reconnecting");
-                    updates_stream = self.connect(Arc::clone(&client)).await?;
+                    updates_stream = self.connect(client.clone()).await?;
                 }
                 Err(err) => {
                     error!("Server error {err}, reconnecting");
-                    updates_stream = self.connect(Arc::clone(&client)).await?;
+                    updates_stream = self.connect(client.clone()).await?;
                 }
             }
         }

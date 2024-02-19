@@ -1,14 +1,15 @@
-use defguard_gateway::proto;
-use defguard_wireguard_rs::{
-    host::{Host, Peer},
-    key::Key,
-    net::IpAddrMask,
-};
 use std::{
     collections::HashMap,
     io::{stdout, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex},
+};
+
+use defguard_gateway::proto;
+use defguard_wireguard_rs::{
+    host::{Host, Peer},
+    key::Key,
+    net::IpAddrMask,
 };
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -94,7 +95,7 @@ impl proto::gateway_service_server::GatewayService for GatewayServer {
 
     async fn stats(
         &self,
-        request: Request<Streaming<proto::PeerStats>>,
+        request: Request<Streaming<proto::StatsUpdate>>,
     ) -> Result<Response<()>, Status> {
         let address = request.remote_addr().unwrap();
         eprintln!("STATS connected from: {address}");
@@ -108,7 +109,7 @@ impl proto::gateway_service_server::GatewayService for GatewayServer {
 
     async fn updates(&self, request: Request<()>) -> Result<Response<Self::UpdatesStream>, Status> {
         let address = request.remote_addr().unwrap();
-        eprintln!("UPDATES connected from: {}", address);
+        eprintln!("UPDATES connected from: {address}");
 
         let (tx, rx) = mpsc::unbounded_channel();
         self.clients.lock().unwrap().insert(address, tx);
