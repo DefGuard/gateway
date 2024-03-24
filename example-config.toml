@@ -28,20 +28,22 @@ syslog_socket = "/var/run/log"
 
 # Optional: Command which will be run before bringing interface up
 # Example: Allow all traffic through WireGuard interface:
-#pre_up = "iptables -A INPUT -i wg0 -j ACCEPT; iptables -A FORWARD -i wg0 -j ACCEPT; iptables -A OUTPUT -o wg0 -j ACCEPT"
+#pre_up = "/path/to/iptables -A INPUT -i wg0 -j ACCEPT
+# example with multiple commands - add them to a shell script
+#pre_up = "/path/to/shell /path/to/script"
 
 # Optional: Command which will be run after bringing interface up
 # Example: Add a default route after WireGuard interface is up:
-#post_up = "ip route add default via 192.168.1.1 dev wg0"
+#post_up = "/path/to/ip route add default via 192.168.1.1 dev wg0"
 
 
 # Optional: Command which will be run before bringing interface down
 # Example: Remove WireGuard-related firewall rules before interface is taken down:
-#pre_down = "iptables -D INPUT -i wg0 -j ACCEPT; iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D OUTPUT -o wg0 -j ACCEPT"
+#pre_down = "/path/to/iptables -D INPUT -i wg0 -j ACCEPT"
 
 # Optional: Command which will be run after bringing interface down
 # Example: Remove the default route after WireGuard interface is down:
-#post_down = "ip route del default via 192.168.1.1 dev wg0"
+#post_down = "/pat/to/ip route del default via 192.168.1.1 dev wg0"
 
 # A HTTP port that will expose the REST HTTP gateway health status
 # STATUS CODES:
