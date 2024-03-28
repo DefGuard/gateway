@@ -8,7 +8,7 @@ use std::{
 };
 
 use gethostname::gethostname;
-use tokio::time::interval;
+use tokio::time::{interval, sleep};
 use tonic::{
     codegen::InterceptedService,
     metadata::MetadataValue,
@@ -242,7 +242,7 @@ impl Gateway {
         self.connected.store(false, Ordering::Relaxed);
         loop {
             debug!(
-                "Connecting to defguard GRPC endpoint: {}",
+                "Connecting to defguard gRPC endpoint: {}",
                 self.config.grpc_url
             );
             let (response, stream) = {
@@ -262,19 +262,20 @@ impl Gateway {
                     }
                     self.spawn_stats_thread(client);
                     info!(
-                        "Connected to defguard GRPC endpoint: {}",
+                        "Connected to defguard gRPC endpoint: {}",
                         self.config.grpc_url
                     );
                     self.connected.store(true, Ordering::Relaxed);
                     break Ok(stream.into_inner());
                 }
                 (Err(err), _) => {
-                    error!("Couldn't retrieve gateway configuration, retrying: {err}");
+                    error!("Couldn't retrieve gateway configuration, retrying in 10s; {err}");
                 }
                 (_, Err(err)) => {
-                    error!("Couldn't establish streaming connection, retrying: {err}");
+                    error!("Couldn't establish streaming connection, retrying in 10s; {err}");
                 }
             }
+            sleep(TEN_SECS).await;
         }
     }
 
