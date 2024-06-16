@@ -139,7 +139,9 @@ impl Gateway {
         let ifname = self.config.ifname.clone();
         let userspace = self.config.userspace;
         let stats_stream = async_stream::stream! {
-            let wgapi = WGApi::new(ifname, userspace).expect("Failed to initialize WireGuard interface API");
+            let wgapi = WGApi::new(ifname, userspace).expect(
+                "Failed to initialize WireGuard interface API, interface name: {ifname}, userspace: {userspace}"
+            );
             // helper map to track if peer data is actually changing
             // and avoid sending duplicate stats
             let mut peer_map = HashMap::new();
@@ -190,11 +192,12 @@ impl Gateway {
                 }
             }
         };
-        info!("Spawning stats thread");
+        debug!("Spawning stats thread");
         // Spawn the thread
         tokio::spawn(async move {
             let _ = client.stats(Request::new(stats_stream)).await;
         });
+        info!("Stats thread spawned.");
     }
 
     /// Performs complete interface reconfiguration based on `configuration` object.
@@ -269,10 +272,12 @@ impl Gateway {
                     break Ok(stream.into_inner());
                 }
                 (Err(err), _) => {
-                    error!("Couldn't retrieve gateway configuration, retrying in 10s; {err}");
+                    error!("Couldn't retrieve gateway configuration from the core. Using gRPC url: {}. Retrying in 10s. Error: {err}",
+                    self.config.grpc_url);
                 }
                 (_, Err(err)) => {
-                    error!("Couldn't establish streaming connection, retrying in 10s; {err}");
+                    error!("Couldn't establish streaming connection to the core. Using gRPC url: {}. Retrying in 10s. Error: {err}",
+                    self.config.grpc_url);
                 }
             }
             sleep(TEN_SECS).await;
@@ -308,7 +313,8 @@ impl Gateway {
         let token = MetadataValue::try_from(&self.config.token)?;
         let hostname = gethostname()
             .into_string()
-            .expect("Unable to get current hostname");
+            .expect("Unable to get current hostname during gRPC connection setup.");
+        debug!("Using hostname: {hostname}");
         let hostname = MetadataValue::try_from(hostname).unwrap();
         let jwt_auth_interceptor = move |mut req: Request<()>| -> Result<Request<()>, Status> {
             req.metadata_mut().insert("authorization", token.clone());
@@ -316,6 +322,7 @@ impl Gateway {
             Ok(req)
         };
         let client = GatewayServiceClient::with_interceptor(channel, jwt_auth_interceptor);
+        info!("gRPC server connection setup done.",);
         Ok(client)
     }
 
@@ -336,12 +343,15 @@ impl Gateway {
         // Try to create network interface for WireGuard.
         // FIXME: check if the interface already exists, or somehow be more clever.
         if let Err(err) = wgapi.create_interface() {
-            warn!("Couldn't create network interface: {err}. Proceeding anyway.");
+            warn!(
+                "Couldn't create network interface {}: {err}. Proceeding anyway.",
+                self.config.ifname
+            );
         }
 
         let mut updates_stream = self.connect(client.clone()).await?;
         if let Some(post_up) = &self.config.post_up {
-            info!("Executing specified POST_UP command: {post_up}");
+            debug!("Executing specified POST_UP command: {post_up}");
             execute_command(post_up)?;
         }
         loop {
@@ -355,7 +365,7 @@ impl Gateway {
                             }
                         }
                         Some(update::Update::Peer(peer_config)) => {
-                            info!("Applying peer configuration: {peer_config:?}");
+                            debug!("Applying peer configuration: {peer_config:?}");
                             // UpdateType::Delete
                             if update.update_type == 2 {
                                 debug!("Deleting peer {peer_config:?}");
@@ -379,7 +389,7 @@ impl Gateway {
                                 }
                             };
                         }
-                        _ => warn!("Unsupported kind of update"),
+                        _ => warn!("Unsupported kind of update: {update:?}"),
                     }
                 }
                 Ok(None) => {
