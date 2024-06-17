@@ -58,7 +58,7 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
             let stderr = String::from_utf8_lossy(&output.stderr);
 
             info!(
-                "Postup command {} executed successfully. Stdout:\n{}",
+                "Postup command {} executed successfully. Stdout: {}",
                 command, stdout
             );
             if !stderr.is_empty() {
