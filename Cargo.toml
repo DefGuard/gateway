@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 async-stream = "0.3"
 axum = { version = "0.7", features = ["macros"] }
-base64 = "0.21"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = [
     "clock",
     "std",
