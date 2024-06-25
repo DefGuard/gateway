@@ -72,7 +72,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build: [linux, linux-arm, linux-arm64, freebsd]
+        # build: [linux, linux-arm, linux-arm64, freebsd]
+        build: [linux]
         include:
           - build: linux
             os: Linux
@@ -86,10 +87,10 @@ jobs:
             os: Linux
             asset_name: defguard-gateway-linux-arm64
             target: aarch64-unknown-linux-gnu
-          - build: freebsd
-            os: Linux
-            asset_name: defguard-gateway-freebsd-x86_64
-            target: x86_64-unknown-freebsd
+          # - build: freebsd
+          #   os: Linux
+          #   asset_name: defguard-gateway-freebsd-x86_64
+          #   target: x86_64-unknown-freebsd
     steps:
       # Store the version, stripping any v-prefix
       - name: Write release version
@@ -156,65 +157,65 @@ jobs:
           asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
           asset_content_type: application/octet-stream
 
-      - name: Build RPM package
-        if: matrix.build == 'linux'
-        uses: bpicode/github-action-fpm@master
-        with:
-          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts: "--debug --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm"
+      # - name: Build RPM package
+      #   if: matrix.build == 'linux'
+      #   uses: bpicode/github-action-fpm@master
+      #   with:
+      #     fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
+      #     fpm_opts: "--debug --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm"
 
-      - name: Upload RPM
-        if: matrix.build == 'linux'
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
-          asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
-          asset_content_type: application/octet-stream
+      # - name: Upload RPM
+      #   if: matrix.build == 'linux'
+      #   uses: actions/upload-release-asset@v1.0.2
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ needs.create-release.outputs.upload_url }}
+      #     asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
+      #     asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
+      #     asset_content_type: application/octet-stream
 
-      - name: Build FreeBSD package
-        if: matrix.build == 'freebsd'
-        uses: bpicode/github-action-fpm@master
-        with:
-          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard example-config.toml=/etc/defguard/gateway.toml defguard-rc.conf=/etc/rc.conf.d/defguard"
-          fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg"
+      # - name: Build FreeBSD package
+      #   if: matrix.build == 'freebsd'
+      #   uses: bpicode/github-action-fpm@master
+      #   with:
+      #     fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard example-config.toml=/etc/defguard/gateway.toml defguard-rc.conf=/etc/rc.conf.d/defguard"
+      #     fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg"
 
-      - name: Upload FreeBSD
-        if: matrix.build == 'freebsd'
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg
-          asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg
-          asset_content_type: application/octet-stream
+      # - name: Upload FreeBSD
+      #   if: matrix.build == 'freebsd'
+      #   uses: actions/upload-release-asset@v1.0.2
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ needs.create-release.outputs.upload_url }}
+      #     asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg
+      #     asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg
+      #     asset_content_type: application/octet-stream
 
-      - name: Build OPNsense package
-        if: matrix.build == 'freebsd'
-        uses: bpicode/github-action-fpm@master
-        with:
-          fpm_args:
-            "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway
-            defguard-gateway.service.freebsd=/etc/rc.d/defguard
-            example-config.toml=/etc/defguard/gateway.toml
-            defguard-rc.conf=/etc/rc.conf.d/defguard
-            opnsense/src/opnsense/mvc/app/controllers/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/controllers/OPNsense/DefguardGateway
-            opnsense/src/opnsense/mvc/app/models/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/models/OPNsense/DefguardGateway
-            opnsense/src/opnsense/mvc/app/views/OPNsense/DefguardGateway/=usr/local/opnsense/mvc/app/views/OPNsense/DefguardGateway
-            opnsense/src/opnsense/service/templates/OPNsense/DefguardGateway/=/usr/local/opnsense/service/templates/OPNsense/DefguardGateway
-            opnsense/src/opnsense/service/conf/actions.d/actions_defguardgateway.conf=/usr/local/opnsense/service/conf/actions.d/actions_defguardgateway.conf"
-          fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg"
+      # - name: Build OPNsense package
+      #   if: matrix.build == 'freebsd'
+      #   uses: bpicode/github-action-fpm@master
+      #   with:
+      #     fpm_args:
+      #       "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway
+      #       defguard-gateway.service.freebsd=/etc/rc.d/defguard
+      #       example-config.toml=/etc/defguard/gateway.toml
+      #       defguard-rc.conf=/etc/rc.conf.d/defguard
+      #       opnsense/src/opnsense/mvc/app/controllers/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/controllers/OPNsense/DefguardGateway
+      #       opnsense/src/opnsense/mvc/app/models/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/models/OPNsense/DefguardGateway
+      #       opnsense/src/opnsense/mvc/app/views/OPNsense/DefguardGateway/=usr/local/opnsense/mvc/app/views/OPNsense/DefguardGateway
+      #       opnsense/src/opnsense/service/templates/OPNsense/DefguardGateway/=/usr/local/opnsense/service/templates/OPNsense/DefguardGateway
+      #       opnsense/src/opnsense/service/conf/actions.d/actions_defguardgateway.conf=/usr/local/opnsense/service/conf/actions.d/actions_defguardgateway.conf"
+      #     fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg"
 
-      - name: Upload OPNsense package
-        if: matrix.build == 'freebsd'
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
-          asset_name: defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
-          asset_content_type: application/octet-stream
+      # - name: Upload OPNsense package
+      #   if: matrix.build == 'freebsd'
+      #   uses: actions/upload-release-asset@v1.0.2
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ needs.create-release.outputs.upload_url }}
+      #     asset_path: defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
+      #     asset_name: defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
+      #     asset_content_type: application/octet-stream
