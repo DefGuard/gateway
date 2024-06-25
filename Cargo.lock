@@ -269,6 +269,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -309,6 +315,12 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
+name = "cfg_aliases"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
 
 [[package]]
 name = "chrono"
@@ -431,11 +443,11 @@ dependencies = [
 
 [[package]]
 name = "defguard-gateway"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "async-stream",
  "axum 0.7.5",
- "base64",
+ "base64 0.21.7",
  "chrono",
  "clap",
  "defguard_wireguard_rs",
@@ -457,10 +469,10 @@ dependencies = [
 
 [[package]]
 name = "defguard_wireguard_rs"
-version = "0.4.2"
-source = "git+https://github.com/DefGuard/wireguard-rs.git?rev=v0.4.2#4a0429aeca8b2f850cf010ddaa5a42f60db4f548"
+version = "0.4.5"
+source = "git+https://github.com/DefGuard/wireguard-rs.git?rev=v0.4.5#35345d54e7426f2678ad120378d59cf642acce5d"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "libc",
  "log",
  "netlink-packet-core",
@@ -1080,12 +1092,13 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.27.1"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
+checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
 dependencies = [
  "bitflags 2.5.0",
  "cfg-if",
+ "cfg_aliases",
  "libc",
  "memoffset",
 ]
@@ -1434,7 +1447,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f48172685e6ff52a556baa527774f61fcaa884f59daf3375c62a3f1cd2549dab"
 dependencies = [
- "base64",
+ "base64 0.21.7",
  "rustls-pki-types",
 ]
 
@@ -1828,7 +1841,7 @@ dependencies = [
  "async-stream",
  "async-trait",
  "axum 0.6.20",
- "base64",
+ "base64 0.21.7",
  "bytes",
  "flate2",
  "h2",
