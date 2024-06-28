@@ -128,7 +128,7 @@ impl Gateway {
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
     fn spawn_stats_thread(
-        &mut self,
+        &self,
         mut client: GatewayServiceClient<
             InterceptedService<
                 Channel,
