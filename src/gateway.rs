@@ -58,7 +58,7 @@ pub struct Gateway {
     peers: HashMap<Pubkey, Peer>,
     wgapi: WGApi,
     pub connected: Arc<AtomicBool>,
-    stats_thread_running: Arc<AtomicBool>,
+    stats_thread_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Gateway {
@@ -70,7 +70,7 @@ impl Gateway {
             peers: HashMap::new(),
             wgapi,
             connected: Arc::new(AtomicBool::new(false)),
-            stats_thread_running: Arc::new(AtomicBool::new(false)),
+            stats_thread_handle: None,
         })
     }
 
@@ -128,7 +128,7 @@ impl Gateway {
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
     fn spawn_stats_thread(
-        &self,
+        &mut self,
         mut client: GatewayServiceClient<
             InterceptedService<
                 Channel,
@@ -197,16 +197,13 @@ impl Gateway {
         };
         debug!("Spawning stats thread");
         // Spawn the thread
-        let thread_running = Arc::clone(&self.stats_thread_running);
-        tokio::spawn(async move {
+        self.stats_thread_handle = Some(tokio::spawn(async move {
             let status = client.stats(Request::new(stats_stream)).await;
             match status {
                 Ok(_) => info!("Stats thread terminated successfully."),
                 Err(err) => error!("Stats thread terminated with error: {err}"),
             }
-            thread_running.store(false, Ordering::Relaxed);
-        });
-        self.stats_thread_running.store(true, Ordering::Relaxed);
+        }));
         info!("Stats thread spawned.");
     }
 
@@ -281,9 +278,12 @@ impl Gateway {
                         error!("Interface configuration failed: {err}");
                         continue;
                     }
-                    // start stats thread if not already running
-                    if !self.stats_thread_running.load(Ordering::Relaxed) {
+                    if self.stats_thread_handle.is_none()
+                        || self.stats_thread_handle.as_ref().unwrap().is_finished()
+                    {
                         self.spawn_stats_thread(client);
+                    } else {
+                        info!("Stats thread already running. Not starting a new one.");
                     }
                     info!(
                         "Connected to defguard gRPC endpoint: {}",
@@ -471,7 +471,7 @@ mod tests {
             peers: old_peers_map,
             wgapi: WGApi::new("wg0".into(), false).unwrap(),
             connected: Arc::new(AtomicBool::new(false)),
-            stats_thread_running: Arc::new(AtomicBool::new(false)),
+            stats_thread_handle: None,
         };
 
         // new config is the same
