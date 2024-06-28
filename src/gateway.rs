@@ -58,6 +58,7 @@ pub struct Gateway {
     peers: HashMap<Pubkey, Peer>,
     wgapi: WGApi,
     pub connected: Arc<AtomicBool>,
+    stats_thread_running: Arc<AtomicBool>,
 }
 
 impl Gateway {
@@ -69,6 +70,7 @@ impl Gateway {
             peers: HashMap::new(),
             wgapi,
             connected: Arc::new(AtomicBool::new(false)),
+            stats_thread_running: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -126,7 +128,7 @@ impl Gateway {
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
     fn spawn_stats_thread(
-        &self,
+        &mut self,
         mut client: GatewayServiceClient<
             InterceptedService<
                 Channel,
@@ -139,6 +141,7 @@ impl Gateway {
         let ifname = self.config.ifname.clone();
         let userspace = self.config.userspace;
         let stats_stream = async_stream::stream! {
+            let thread_start: String = chrono::Utc::now().to_rfc3339();
             let wgapi = WGApi::new(ifname, userspace).expect(
                 "Failed to initialize WireGuard interface API, interface name: {ifname}, userspace: {userspace}"
             );
@@ -152,7 +155,7 @@ impl Gateway {
                 interval.tick().await;
                 let mut peer_stats_sent = false;
 
-                debug!("Sending active peer stats update");
+                debug!("Sending active peer stats update. Stats thread started at {thread_start}");
                 match wgapi.read_interface_data() {
                     Ok(host) => {
                         let peers = host.peers;
@@ -194,9 +197,16 @@ impl Gateway {
         };
         debug!("Spawning stats thread");
         // Spawn the thread
+        let thread_running = Arc::clone(&self.stats_thread_running);
         tokio::spawn(async move {
-            let _ = client.stats(Request::new(stats_stream)).await;
+            let status = client.stats(Request::new(stats_stream)).await;
+            match status {
+                Ok(_) => info!("Stats thread terminated successfully."),
+                Err(err) => error!("Stats thread terminated with error: {err}"),
+            }
+            thread_running.store(false, Ordering::Relaxed);
         });
+        self.stats_thread_running.store(true, Ordering::Relaxed);
         info!("Stats thread spawned.");
     }
 
@@ -205,7 +215,11 @@ impl Gateway {
     /// network and peers data.
     fn configure(&mut self, new_configuration: Configuration) -> Result<(), GatewayError> {
         debug!(
-            "Received configuration, reconfiguring WireGuard interface: {:?}",
+            "Received configuration, reconfiguring WireGuard interface {} (address: {})",
+            new_configuration.name, new_configuration.address
+        );
+        trace!(
+            "Received configuration: {:?}",
             mask!(new_configuration, prvkey)
         );
 
@@ -219,7 +233,11 @@ impl Gateway {
         self.wgapi
             .configure_interface(&new_configuration.clone().into())?;
         info!(
-            "Reconfigured WireGuard interface: {:?}",
+            "Reconfigured WireGuard interface {} (address: {})",
+            new_configuration.name, new_configuration.address
+        );
+        trace!(
+            "Reconfigured WireGuard interface. Configuration: {:?}",
             mask!(new_configuration, prvkey)
         );
 
@@ -263,7 +281,10 @@ impl Gateway {
                         error!("Interface configuration failed: {err}");
                         continue;
                     }
-                    self.spawn_stats_thread(client);
+                    // start stats thread if not already running
+                    if !self.stats_thread_running.load(Ordering::Relaxed) {
+                        self.spawn_stats_thread(client);
+                    }
                     info!(
                         "Connected to defguard gRPC endpoint: {}",
                         self.config.grpc_url
@@ -450,6 +471,7 @@ mod tests {
             peers: old_peers_map,
             wgapi: WGApi::new("wg0".into(), false).unwrap(),
             connected: Arc::new(AtomicBool::new(false)),
+            stats_thread_running: Arc::new(AtomicBool::new(false)),
         };
 
         // new config is the same
