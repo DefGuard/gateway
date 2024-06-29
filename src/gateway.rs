@@ -8,7 +8,10 @@ use std::{
 };
 
 use gethostname::gethostname;
-use tokio::time::{interval, sleep};
+use tokio::{
+    task::{spawn, JoinHandle},
+    time::{interval, sleep},
+};
 use tonic::{
     codegen::InterceptedService,
     metadata::MetadataValue,
@@ -58,7 +61,7 @@ pub struct Gateway {
     peers: HashMap<Pubkey, Peer>,
     wgapi: WGApi,
     pub connected: Arc<AtomicBool>,
-    stats_thread_handle: Option<tokio::task::JoinHandle<()>>,
+    stats_thread_handle: Option<JoinHandle<()>>,
 }
 
 impl Gateway {
@@ -197,7 +200,7 @@ impl Gateway {
         };
         debug!("Spawning stats thread");
         // Spawn the thread
-        self.stats_thread_handle = Some(tokio::spawn(async move {
+        self.stats_thread_handle = Some(spawn(async move {
             let status = client.stats(Request::new(stats_stream)).await;
             match status {
                 Ok(_) => info!("Stats thread terminated successfully."),
@@ -278,12 +281,14 @@ impl Gateway {
                         error!("Interface configuration failed: {err}");
                         continue;
                     }
-                    if self.stats_thread_handle.is_none()
-                        || self.stats_thread_handle.as_ref().unwrap().is_finished()
+                    if self
+                        .stats_thread_handle
+                        .as_ref()
+                        .is_some_and(|handle| !handle.is_finished())
                     {
-                        self.spawn_stats_thread(client);
+                        debug!("Stats thread already running. Not starting a new one.");
                     } else {
-                        info!("Stats thread already running. Not starting a new one.");
+                        self.spawn_stats_thread(client);
                     }
                     info!(
                         "Connected to defguard gRPC endpoint: {}",
