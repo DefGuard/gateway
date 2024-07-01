@@ -8,7 +8,10 @@ use std::{
 };
 
 use gethostname::gethostname;
-use tokio::time::{interval, sleep};
+use tokio::{
+    task::{spawn, JoinHandle},
+    time::{interval, sleep},
+};
 use tonic::{
     codegen::InterceptedService,
     metadata::MetadataValue,
@@ -58,6 +61,7 @@ pub struct Gateway {
     peers: HashMap<Pubkey, Peer>,
     wgapi: WGApi,
     pub connected: Arc<AtomicBool>,
+    stats_thread_handle: Option<JoinHandle<()>>,
 }
 
 impl Gateway {
@@ -69,6 +73,7 @@ impl Gateway {
             peers: HashMap::new(),
             wgapi,
             connected: Arc::new(AtomicBool::new(false)),
+            stats_thread_handle: None,
         })
     }
 
@@ -126,7 +131,7 @@ impl Gateway {
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
     fn spawn_stats_thread(
-        &self,
+        &mut self,
         mut client: GatewayServiceClient<
             InterceptedService<
                 Channel,
@@ -152,7 +157,7 @@ impl Gateway {
                 interval.tick().await;
                 let mut peer_stats_sent = false;
 
-                debug!("Sending active peer stats update");
+                debug!("Sending active peer stats update.");
                 match wgapi.read_interface_data() {
                     Ok(host) => {
                         let peers = host.peers;
@@ -194,9 +199,13 @@ impl Gateway {
         };
         debug!("Spawning stats thread");
         // Spawn the thread
-        tokio::spawn(async move {
-            let _ = client.stats(Request::new(stats_stream)).await;
-        });
+        self.stats_thread_handle = Some(spawn(async move {
+            let status = client.stats(Request::new(stats_stream)).await;
+            match status {
+                Ok(_) => info!("Stats thread terminated successfully."),
+                Err(err) => error!("Stats thread terminated with error: {err}"),
+            }
+        }));
         info!("Stats thread spawned.");
     }
 
@@ -205,7 +214,11 @@ impl Gateway {
     /// network and peers data.
     fn configure(&mut self, new_configuration: Configuration) -> Result<(), GatewayError> {
         debug!(
-            "Received configuration, reconfiguring WireGuard interface: {:?}",
+            "Received configuration, reconfiguring WireGuard interface {} (address: {})",
+            new_configuration.name, new_configuration.address
+        );
+        trace!(
+            "Received configuration: {:?}",
             mask!(new_configuration, prvkey)
         );
 
@@ -219,7 +232,11 @@ impl Gateway {
         self.wgapi
             .configure_interface(&new_configuration.clone().into())?;
         info!(
-            "Reconfigured WireGuard interface: {:?}",
+            "Reconfigured WireGuard interface {} (address: {})",
+            new_configuration.name, new_configuration.address
+        );
+        trace!(
+            "Reconfigured WireGuard interface. Configuration: {:?}",
             mask!(new_configuration, prvkey)
         );
 
@@ -263,7 +280,15 @@ impl Gateway {
                         error!("Interface configuration failed: {err}");
                         continue;
                     }
-                    self.spawn_stats_thread(client);
+                    if self
+                        .stats_thread_handle
+                        .as_ref()
+                        .is_some_and(|handle| !handle.is_finished())
+                    {
+                        debug!("Stats thread already running. Not starting a new one.");
+                    } else {
+                        self.spawn_stats_thread(client);
+                    }
                     info!(
                         "Connected to defguard gRPC endpoint: {}",
                         self.config.grpc_url
@@ -450,6 +475,7 @@ mod tests {
             peers: old_peers_map,
             wgapi: WGApi::new("wg0".into(), false).unwrap(),
             connected: Arc::new(AtomicBool::new(false)),
+            stats_thread_handle: None,
         };
 
         // new config is the same
