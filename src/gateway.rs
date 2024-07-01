@@ -144,7 +144,6 @@ impl Gateway {
         let ifname = self.config.ifname.clone();
         let userspace = self.config.userspace;
         let stats_stream = async_stream::stream! {
-            let thread_start: String = chrono::Utc::now().to_rfc3339();
             let wgapi = WGApi::new(ifname, userspace).expect(
                 "Failed to initialize WireGuard interface API, interface name: {ifname}, userspace: {userspace}"
             );
@@ -158,7 +157,7 @@ impl Gateway {
                 interval.tick().await;
                 let mut peer_stats_sent = false;
 
-                debug!("Sending active peer stats update. Stats thread started at {thread_start}");
+                debug!("Sending active peer stats update.");
                 match wgapi.read_interface_data() {
                     Ok(host) => {
                         let peers = host.peers;
