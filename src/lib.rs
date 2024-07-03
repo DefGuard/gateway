@@ -81,6 +81,7 @@ impl From<proto::Configuration> for InterfaceConfiguration {
             address: config.address,
             port: config.port,
             peers,
+            mtu: None,
         }
     }
 }
