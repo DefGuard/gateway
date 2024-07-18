@@ -347,7 +347,10 @@ impl Gateway {
             Ok(req)
         };
         let client = GatewayServiceClient::with_interceptor(channel, jwt_auth_interceptor);
-        info!("gRPC server connection setup done.",);
+        info!(
+            "Trying to connect to {} and obtain the gateway configuration from defguard...",
+            self.config.grpc_url
+        );
         Ok(client)
     }
 
