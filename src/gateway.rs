@@ -426,6 +426,7 @@ impl Gateway {
                     updates_stream = self.connect(client.clone()).await?;
                 }
                 Err(err) => {
+                    info!("Disconnected from defguar gRPC endoint: {:?}", self.config.grpc_url);
                     error!("Server error {err}, reconnecting");
                     updates_stream = self.connect(client.clone()).await?;
                 }
