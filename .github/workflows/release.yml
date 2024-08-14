@@ -4,6 +4,10 @@ on:
     tags:
       - v*.*.*
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   publish-docker:
     runs-on: [self-hosted, Linux]
@@ -140,7 +144,7 @@ jobs:
 
       - name: Build DEB package
         if: matrix.build != 'freebsd'
-        uses: bpicode/github-action-fpm@master
+        uses: defGuard/fpm-action@main
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug --output-type deb --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb"
@@ -158,7 +162,7 @@ jobs:
 
       - name: Build RPM package
         if: matrix.build == 'linux'
-        uses: bpicode/github-action-fpm@master
+        uses: defGuard/fpm-action@main
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm"
@@ -176,10 +180,10 @@ jobs:
 
       - name: Build FreeBSD package
         if: matrix.build == 'freebsd'
-        uses: bpicode/github-action-fpm@master
+        uses: defGuard/fpm-action@main
         with:
-          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard example-config.toml=/etc/defguard/gateway.toml defguard-rc.conf=/etc/rc.conf.d/defguard"
-          fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg"
+          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard-gateway example-config.toml=/etc/defguard/gateway.toml defguard-rc.conf=/etc/rc.conf.d/defguard-gateway"
+          fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg --freebsd-osversion '*'"
 
       - name: Upload FreeBSD
         if: matrix.build == 'freebsd'
@@ -194,19 +198,19 @@ jobs:
 
       - name: Build OPNsense package
         if: matrix.build == 'freebsd'
-        uses: bpicode/github-action-fpm@master
+        uses: defGuard/fpm-action@main
         with:
           fpm_args:
             "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway
-            defguard-gateway.service.freebsd=/etc/rc.d/defguard
+            defguard-gateway.service.freebsd=/etc/rc.d/defguard-gateway
             example-config.toml=/etc/defguard/gateway.toml
-            defguard-rc.conf=/etc/rc.conf.d/defguard
+            defguard-rc.conf=/etc/rc.conf.d/defguard-gateway
             opnsense/src/opnsense/mvc/app/controllers/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/controllers/OPNsense/DefguardGateway
             opnsense/src/opnsense/mvc/app/models/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/models/OPNsense/DefguardGateway
             opnsense/src/opnsense/mvc/app/views/OPNsense/DefguardGateway/=usr/local/opnsense/mvc/app/views/OPNsense/DefguardGateway
             opnsense/src/opnsense/service/templates/OPNsense/DefguardGateway/=/usr/local/opnsense/service/templates/OPNsense/DefguardGateway
             opnsense/src/opnsense/service/conf/actions.d/actions_defguardgateway.conf=/usr/local/opnsense/service/conf/actions.d/actions_defguardgateway.conf"
-          fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg"
+          fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg --freebsd-osversion '*'"
 
       - name: Upload OPNsense package
         if: matrix.build == 'freebsd'

@@ -320,7 +320,7 @@ impl Gateway {
         >,
         GatewayError,
     > {
-        debug!("Setting up gRPC server connection");
+        debug!("Preparing gRPC client configuration");
         let endpoint = Endpoint::from_shared(self.config.grpc_url.clone())?;
         let endpoint = endpoint
             .http2_keep_alive_interval(TEN_SECS)
@@ -347,7 +347,7 @@ impl Gateway {
             Ok(req)
         };
         let client = GatewayServiceClient::with_interceptor(channel, jwt_auth_interceptor);
-        info!("gRPC server connection setup done.",);
+        debug!("gRPC client configuration done");
         Ok(client)
     }
 
@@ -374,6 +374,10 @@ impl Gateway {
             );
         }
 
+        info!(
+            "Trying to connect to {} and obtain the gateway configuration from defguard...",
+            self.config.grpc_url
+        );
         let mut updates_stream = self.connect(client.clone()).await?;
         if let Some(post_up) = &self.config.post_up {
             debug!("Executing specified POST_UP command: {post_up}");
@@ -422,6 +426,10 @@ impl Gateway {
                     updates_stream = self.connect(client.clone()).await?;
                 }
                 Err(err) => {
+                    error!(
+                        "Disconnected from defguard gRPC endoint: {:?}",
+                        self.config.grpc_url
+                    );
                     error!("Server error {err}, reconnecting");
                     updates_stream = self.connect(client.clone()).await?;
                 }
