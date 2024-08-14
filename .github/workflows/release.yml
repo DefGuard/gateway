@@ -1,8 +1,6 @@
 name: Publish
 on:
   push:
-    branches:
-      - custom_fpm_build
     tags:
       - v*.*.*
 
@@ -11,49 +9,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # publish-docker:
-  #   runs-on: [self-hosted, Linux]
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v3
-  #       with:
-  #         submodules: recursive
-  #     - name: Docker meta
-  #       id: meta
-  #       uses: docker/metadata-action@v5
-  #       with:
-  #         images: |
-  #           ghcr.io/DefGuard/gateway
-  #         tags: |
-  #           type=raw,value=latest
-  #           type=semver,pattern={{version}}
-  #           type=semver,pattern={{major}}.{{minor}}
-  #           type=sha
-  #     - name: Set up QEMU
-  #       uses: docker/setup-qemu-action@v3
-  #     - name: Set up Docker BuildX
-  #       uses: docker/setup-buildx-action@v3
-  #       with:
-  #         config-inline: |
-  #           [registry."docker.io"]
-  #             mirrors = ["dockerhub-proxy.teonite.net"]
-  #     - name: Login to GitHub Container Registry
-  #       if: github.event_name != 'pull_request'
-  #       uses: docker/login-action@v3
-  #       with:
-  #         registry: ghcr.io
-  #         username: ${{ github.actor }}
-  #         password: ${{ secrets.GITHUB_TOKEN }}
-  #     - name: Build container
-  #       uses: docker/build-push-action@v5
-  #       with:
-  #         context: .
-  #         platforms: linux/amd64,linux/arm64
-  #         push: ${{ github.event_name != 'pull_request' }}
-  #         tags: ${{ steps.meta.outputs.tags }}
-  #         labels: ${{ steps.meta.outputs.labels }}
-  #         cache-from: type=gha
-  #         cache-to: type=gha,mode=max
+  publish-docker:
+    runs-on: [self-hosted, Linux]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/DefGuard/gateway
+          tags: |
+            type=raw,value=latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker BuildX
+        uses: docker/setup-buildx-action@v3
+        with:
+          config-inline: |
+            [registry."docker.io"]
+              mirrors = ["dockerhub-proxy.teonite.net"]
+      - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   create-release:
     name: create-release
@@ -78,21 +76,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # build: [linux, linux-arm, linux-arm64, freebsd]
-        build: [freebsd]
+        build: [linux, linux-arm, linux-arm64, freebsd]
         include:
-          # - build: linux
-          #   os: Linux
-          #   asset_name: defguard-gateway-linux-x86_64
-          #   target: x86_64-unknown-linux-gnu
-          # - build: linux-arm
-          #   os: Linux
-          #   asset_name: defguard-gateway-linux-armv7
-          #   target: armv7-unknown-linux-gnueabihf
-          # - build: linux-arm64
-          #   os: Linux
-          #   asset_name: defguard-gateway-linux-arm64
-          #   target: aarch64-unknown-linux-gnu
+          - build: linux
+            os: Linux
+            asset_name: defguard-gateway-linux-x86_64
+            target: x86_64-unknown-linux-gnu
+          - build: linux-arm
+            os: Linux
+            asset_name: defguard-gateway-linux-armv7
+            target: armv7-unknown-linux-gnueabihf
+          - build: linux-arm64
+            os: Linux
+            asset_name: defguard-gateway-linux-arm64
+            target: aarch64-unknown-linux-gnu
           - build: freebsd
             os: Linux
             asset_name: defguard-gateway-freebsd-x86_64
