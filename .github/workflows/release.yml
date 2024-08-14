@@ -77,18 +77,18 @@ jobs:
         # build: [linux, linux-arm, linux-arm64, freebsd]
         build: [freebsd]
         include:
-          - build: linux
-            os: Linux
-            asset_name: defguard-gateway-linux-x86_64
-            target: x86_64-unknown-linux-gnu
-          - build: linux-arm
-            os: Linux
-            asset_name: defguard-gateway-linux-armv7
-            target: armv7-unknown-linux-gnueabihf
-          - build: linux-arm64
-            os: Linux
-            asset_name: defguard-gateway-linux-arm64
-            target: aarch64-unknown-linux-gnu
+          # - build: linux
+          #   os: Linux
+          #   asset_name: defguard-gateway-linux-x86_64
+          #   target: x86_64-unknown-linux-gnu
+          # - build: linux-arm
+          #   os: Linux
+          #   asset_name: defguard-gateway-linux-armv7
+          #   target: armv7-unknown-linux-gnueabihf
+          # - build: linux-arm64
+          #   os: Linux
+          #   asset_name: defguard-gateway-linux-arm64
+          #   target: aarch64-unknown-linux-gnu
           - build: freebsd
             os: Linux
             asset_name: defguard-gateway-freebsd-x86_64
