@@ -51,19 +51,19 @@ jobs:
   #         cache-from: type=gha
   #         cache-to: type=gha,mode=max
 
-  # create-release:
-  #   name: create-release
-  #   runs-on: self-hosted
-  #   outputs:
-  #     upload_url: ${{ steps.release.outputs.upload_url }}
-  #   steps:
-  #     - name: Create GitHub release
-  #       id: release
-  #       uses: softprops/action-gh-release@v1
-  #       if: startsWith(github.ref, 'refs/tags/')
-  #       with:
-  #         draft: true
-  #         generate_release_notes: true
+  create-release:
+    name: create-release
+    runs-on: self-hosted
+    outputs:
+      upload_url: ${{ steps.release.outputs.upload_url }}
+    steps:
+      - name: Create GitHub release
+        id: release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          generate_release_notes: true
 
   build-release:
     name: Release ${{ matrix.build }}
