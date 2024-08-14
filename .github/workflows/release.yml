@@ -182,7 +182,7 @@ jobs:
         if: matrix.build == 'freebsd'
         uses: defGuard/fpm-action@main
         with:
-          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard example-config.toml=/etc/defguard/gateway.toml defguard-rc.conf=/etc/rc.conf.d/defguard"
+          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard-gateway example-config.toml=/etc/defguard/gateway.toml defguard-rc.conf=/etc/rc.conf.d/defguard-gateway"
           fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg --freebsd-osversion '*'"
 
       - name: Upload FreeBSD
@@ -202,9 +202,9 @@ jobs:
         with:
           fpm_args:
             "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway
-            defguard-gateway.service.freebsd=/etc/rc.d/defguard
+            defguard-gateway.service.freebsd=/etc/rc.d/defguard-gateway
             example-config.toml=/etc/defguard/gateway.toml
-            defguard-rc.conf=/etc/rc.conf.d/defguard
+            defguard-rc.conf=/etc/rc.conf.d/defguard-gateway
             opnsense/src/opnsense/mvc/app/controllers/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/controllers/OPNsense/DefguardGateway
             opnsense/src/opnsense/mvc/app/models/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/models/OPNsense/DefguardGateway
             opnsense/src/opnsense/mvc/app/views/OPNsense/DefguardGateway/=usr/local/opnsense/mvc/app/views/OPNsense/DefguardGateway

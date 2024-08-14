@@ -1,13 +1,13 @@
 #!/bin/sh
 
-# PROVIDE: defguard
+# PROVIDE: defguard-gateway
 # REQUIRE: NETWORKING wireguard
 # KEYWORD: shutdown
 
 . /etc/rc.subr
 
-name="defguard"
-rcvar=defguard_enable
+name="defguard-gateway"
+rcvar=defguard_gateway_enable
 command="/usr/local/sbin/defguard-gateway"
 config="/etc/defguard/gateway.toml"
 start_cmd="${name}_start"
