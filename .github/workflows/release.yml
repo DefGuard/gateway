@@ -1,6 +1,8 @@
 name: Publish
 on:
   push:
+    paths:
+      - ".github/workflows/release.yml"
     tags:
       - v*.*.*
 
@@ -140,7 +142,7 @@ jobs:
 
       - name: Build DEB package
         if: matrix.build != 'freebsd'
-        uses: bpicode/github-action-fpm@master
+        uses: defGuard/fpm-action@main
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts: "--debug --output-type deb --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb"
