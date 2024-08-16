@@ -1,8 +1,8 @@
 name: rustdoc Github Pages
 on:
   push:
-   branches:
-   - main
+    branches:
+      - main
 
 env:
   CARGO_INCREMENTAL: 0
@@ -14,27 +14,27 @@ jobs:
   rustdoc:
     runs-on: [self-hosted, Linux]
     container:
-      image: rust:1.75
+      image: rust:1
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        submodules: recursive
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: Install Rust toolchain
-      run: rustup update --no-self-update stable
+      - name: Install Rust toolchain
+        run: rustup update --no-self-update stable
 
-    - name: Install protoc
-      run: apt-get update && apt-get -y install protobuf-compiler
+      - name: Install protoc
+        run: apt-get update && apt-get -y install protobuf-compiler
 
-    - name: Build Docs
-      run: cargo doc --all --no-deps
+      - name: Build Docs
+        run: cargo doc --all --no-deps
 
-    - name: Deploy Docs
-      uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_branch: gh-pages
-        publish_dir: ./target/doc
-        force_orphan: true
+      - name: Deploy Docs
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./target/doc
+          force_orphan: true

@@ -8,6 +8,10 @@ on:
       - "*.md"
       - "LICENSE"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-current:
     uses: ./.github/workflows/build-docker.yml

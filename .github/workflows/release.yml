@@ -41,21 +41,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build: [linux, linux-arm, linux-arm64, freebsd]
+        build: [linux, linux-arm64, freebsd]
         include:
           - build: linux
+            arch: amd64
             os: Linux
             asset_name: defguard-gateway-linux-x86_64
             target: x86_64-unknown-linux-gnu
-          - build: linux-arm
-            os: Linux
-            asset_name: defguard-gateway-linux-armv7
-            target: armv7-unknown-linux-gnueabihf
           - build: linux-arm64
+            arch: arm64
             os: Linux
             asset_name: defguard-gateway-linux-arm64
             target: aarch64-unknown-linux-gnu
           - build: freebsd
+            arch: amd64
             os: Linux
             asset_name: defguard-gateway-freebsd-x86_64
             target: x86_64-unknown-freebsd
@@ -112,7 +111,7 @@ jobs:
         uses: defGuard/fpm-action@main
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts: "--debug --output-type deb --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb"
+          fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type deb --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb"
 
       - name: Upload DEB
         if: matrix.build != 'freebsd'
@@ -130,7 +129,7 @@ jobs:
         uses: defGuard/fpm-action@main
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts: "--debug --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm"
+          fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm"
 
       - name: Upload RPM
         if: matrix.build == 'linux'
@@ -148,7 +147,7 @@ jobs:
         uses: defGuard/fpm-action@main
         with:
           fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard-gateway example-config.toml=/etc/defguard/gateway.toml defguard-rc.conf=/etc/rc.conf.d/defguard-gateway"
-          fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg --freebsd-osversion '*'"
+          fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg --freebsd-osversion '*'"
 
       - name: Upload FreeBSD
         if: matrix.build == 'freebsd'
@@ -175,7 +174,7 @@ jobs:
             opnsense/src/opnsense/mvc/app/views/OPNsense/DefguardGateway/=usr/local/opnsense/mvc/app/views/OPNsense/DefguardGateway
             opnsense/src/opnsense/service/templates/OPNsense/DefguardGateway/=/usr/local/opnsense/service/templates/OPNsense/DefguardGateway
             opnsense/src/opnsense/service/conf/actions.d/actions_defguardgateway.conf=/usr/local/opnsense/service/conf/actions.d/actions_defguardgateway.conf"
-          fpm_opts: "--debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg --freebsd-osversion '*'"
+          fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg --freebsd-osversion '*'"
 
       - name: Upload OPNsense package
         if: matrix.build == 'freebsd'
