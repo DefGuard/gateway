@@ -326,12 +326,14 @@ impl Gateway {
             .http2_keep_alive_interval(TEN_SECS)
             .tcp_keepalive(Some(TEN_SECS))
             .keep_alive_while_idle(true);
+        // if CA certificate is provided, use it (and only it)
+        // otherwise load certs from system
         let endpoint = if let Some(ca) = &self.config.grpc_ca {
             let ca = std::fs::read_to_string(ca)?;
             let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(ca));
             endpoint.tls_config(tls)?
         } else {
-            endpoint
+            endpoint.tls_config(ClientTlsConfig::new().with_native_roots())?
         };
         let channel = endpoint.connect_lazy();
 

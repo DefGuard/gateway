@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "defguard-gateway"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "async-stream",
  "axum",
@@ -421,8 +421,8 @@ dependencies = [
 
 [[package]]
 name = "defguard_wireguard_rs"
-version = "0.4.6"
-source = "git+https://github.com/DefGuard/wireguard-rs.git?rev=v0.4.6#6a325957fb6cc83f96dde730262a8b1b0efcedd6"
+version = "0.4.7"
+source = "git+https://github.com/DefGuard/wireguard-rs.git?rev=v0.4.7#ef1cf3714629bf5016fb38cbb7320451dc69fb09"
 dependencies = [
  "base64",
  "libc",
@@ -1713,9 +1713,9 @@ dependencies = [
 
 [[package]]
 name = "tonic"
-version = "0.12.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38659f4a91aba8598d27821589f5db7dddd94601e7a01b1e485a50e5484c7401"
+checksum = "c6f6ba989e4b2c58ae83d862d3a3e27690b6e3ae630d0deb59f3697f32aa88ad"
 dependencies = [
  "async-stream",
  "async-trait",

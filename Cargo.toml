@@ -1,6 +1,6 @@
 [package]
 name = "defguard-gateway"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2021"
 
 [dependencies]
@@ -12,7 +12,7 @@ chrono = { version = "0.4", default-features = false, features = [
     "std",
 ] }
 clap = { version = "4.5", features = ["derive", "env"] }
-defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", rev = "v0.4.6" }
+defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", rev = "v0.4.7" }
 env_logger = "0.11"
 gethostname = "0.5"
 log = "0.4"
@@ -20,7 +20,7 @@ prost = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 syslog = "7.0"
 thiserror = "1.0"
-tonic = { version = "0.12", features = ["gzip", "tls", "tls-roots"] }
+tonic = { version = "0.12", features = ["gzip", "tls", "tls-native-roots"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
