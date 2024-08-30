@@ -333,8 +333,7 @@ impl Gateway {
             let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(ca));
             endpoint.tls_config(tls)?
         } else {
-            let tls = ClientTlsConfig::new().with_native_roots();
-            endpoint.tls_config(tls)?
+            endpoint.tls_config(ClientTlsConfig::new().with_native_roots())?
         };
         let channel = endpoint.connect_lazy();
 
