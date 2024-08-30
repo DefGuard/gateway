@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - dev
+      - fix-tls
     paths-ignore:
       - "*.md"
       - "LICENSE"
@@ -17,6 +18,10 @@ jobs:
     uses: ./.github/workflows/build-docker.yml
     with:
       tags: |
-        type=raw,value=current
         type=ref,event=branch
         type=sha
+    # with:
+    #   tags: |
+    #     type=raw,value=current
+    #     type=ref,event=branch
+    #     type=sha
