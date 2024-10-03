@@ -134,5 +134,5 @@ pub fn get_config() -> Result<Config, GatewayError> {
 #[test]
 fn verify_cli() {
     use clap::CommandFactory;
-    Config::command().debug_assert()
+    Config::command().debug_assert();
 }
