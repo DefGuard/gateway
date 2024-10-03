@@ -131,8 +131,8 @@ impl Gateway {
         new_interface_configuration: &InterfaceConfiguration,
         new_peers: &[Peer],
     ) -> bool {
-        if let Some(current_configuration) = self.interface_configuration.clone() {
-            return current_configuration != *new_interface_configuration
+        if let Some(current_configuration) = &self.interface_configuration {
+            return current_configuration != new_interface_configuration
                 || self.is_peer_list_changed(new_peers);
         }
         true
@@ -203,13 +203,13 @@ impl Gateway {
                                 payload = Payload::PeerStats((&peer).into());
                             } else {
                                 debug!(
-                                    "Stats for peer {} have not changed. Skipping...",
+                                    "Stats for peer {} have not changed. Skipping.",
                                     peer.public_key
                                 );
                             }
                         }
                     }
-                    Err(err) => error!("Failed to retrieve WireGuard interface stats {err}"),
+                    Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
                 }
 
                 id += 1;
@@ -283,7 +283,7 @@ impl Gateway {
         self.connected.store(false, Ordering::Relaxed);
         loop {
             debug!(
-                "Connecting to defguard gRPC endpoint: {}",
+                "Connecting to Defguard gRPC endpoint: {}",
                 self.config.grpc_url
             );
             let (response, stream) = {
@@ -312,18 +312,18 @@ impl Gateway {
                         self.spawn_stats_thread();
                     }
                     info!(
-                        "Connected to defguard gRPC endpoint: {}",
+                        "Connected to Defguard gRPC endpoint: {}",
                         self.config.grpc_url
                     );
                     self.connected.store(true, Ordering::Relaxed);
                     break Ok(stream.into_inner());
                 }
                 (Err(err), _) => {
-                    error!("Couldn't retrieve gateway configuration from the core. Using gRPC url: {}. Retrying in 10s. Error: {err}",
+                    error!("Couldn't retrieve gateway configuration from the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
                     self.config.grpc_url);
                 }
                 (_, Err(err)) => {
-                    error!("Couldn't establish streaming connection to the core. Using gRPC url: {}. Retrying in 10s. Error: {err}",
+                    error!("Couldn't establish streaming connection to the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
                     self.config.grpc_url);
                 }
             }
@@ -358,9 +358,9 @@ impl Gateway {
     }
 
     /// Starts the gateway process.
-    /// * Retrieves configuration and configuration updates from defguard gRPC server
+    /// * Retrieves configuration and configuration updates from Defguard gRPC server
     /// * Manages the interface according to configuration and updates
-    /// * Sends interface statistics to defguard server periodically
+    /// * Sends interface statistics to Defguard server periodically
     pub async fn start(&mut self) -> Result<(), GatewayError> {
         info!(
             "Starting Defguard gateway version {VERSION} with configuration: {:?}",
