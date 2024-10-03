@@ -23,7 +23,7 @@ jobs:
       - ${{ matrix.runner }}
     strategy:
       matrix:
-        cpu: [arm64, amd64, arm]
+        cpu: [arm64, amd64, arm/v7]
         include:
           - cpu: arm64
             runner: ARM64
