@@ -7,7 +7,7 @@ use toml;
 use crate::error::GatewayError;
 
 #[derive(Debug, Parser, Clone, Deserialize)]
-#[clap(about = "defguard VPN gateway service")]
+#[clap(about = "Defguard VPN gateway service")]
 #[command(version)]
 pub struct Config {
     /// Token received from defguard after completing the network wizard

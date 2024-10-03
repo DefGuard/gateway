@@ -1,5 +1,8 @@
 use std::{fs::File, io::Write, process, sync::Arc};
 
+#[cfg(not(target_os = "macos"))]
+use defguard_wireguard_rs::Kernel;
+use defguard_wireguard_rs::{Userspace, WGApi};
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 use tokio::task::JoinSet;
 
@@ -36,8 +39,22 @@ async fn main() -> Result<(), GatewayError> {
         execute_command(pre_up)?;
     }
 
-    let mut gateway = Gateway::new(config.clone())?;
-
+    let ifname = config.ifname.clone();
+    let mut gateway = if config.userspace {
+        let wgapi = WGApi::<Userspace>::new(ifname)?;
+        Gateway::new(config.clone(), wgapi)?
+    } else {
+        #[cfg(not(target_os = "macos"))]
+        {
+            let wgapi = WGApi::<Kernel>::new(ifname)?;
+            Gateway::new(config.clone(), wgapi)?
+        }
+        #[cfg(target_os = "macos")]
+        {
+            eprintln!("Gateway only supports userspace WireGuard for macOS");
+            return Ok(());
+        }
+    };
     let mut tasks = JoinSet::new();
     if let Some(health_port) = config.health_port {
         tasks.spawn(run_server(health_port, Arc::clone(&gateway.connected)));
