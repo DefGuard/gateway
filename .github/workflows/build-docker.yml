@@ -19,12 +19,14 @@ jobs:
       - ${{ matrix.runner }}
     strategy:
       matrix:
-        cpu: [arm64, amd64]
+        cpu: [arm64, amd64, arm]
         include:
           - cpu: arm64
             runner: ARM64
           - cpu: amd64
             runner: X64
+          - cpu: arm/v7
+            runner: ARM
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,6 +78,6 @@ jobs:
           for tag in ${tags}
           do
             docker manifest rm ${tag} || true
-            docker manifest create ${tag} ${{ env.GHCR_REPO }}:${{ github.sha }}-amd64 ${{ env.GHCR_REPO }}:${{ github.sha }}-arm64
+            docker manifest create ${tag} ${{ env.GHCR_REPO }}:${{ github.sha }}-amd64 ${{ env.GHCR_REPO }}:${{ github.sha }}-arm64 ${{ env.GHCR_REPO }}:${{ github.sha }}-arm
             docker manifest push ${tag}
           done
