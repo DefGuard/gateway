@@ -1,4 +1,4 @@
-<h2> Configuration</h2>
+<h2>Configuration</h2>
 <script type="text/javascript">
     $( document ).ready(function() {
         var data_get_map = {'frm_GeneralSettings':"/api/defguardgateway/settings/get"};
@@ -44,16 +44,16 @@
 
 </div>
 
-<div  class="col-md-12">
+<div class="col-md-12">
     {{ partial("layout_partials/base_form",['fields':generalForm,'id':'frm_GeneralSettings'])}}
 </div>
 
 <div class="row">
 	<div class="col-md-1">
-			<button class="btn btn-primary"  id="saveAct" type="button"><b>{{ lang._('Save') }}</b></button>
+		<button class="btn btn-primary" id="saveAct" type="button"><b>{{ lang._('Save') }}</b></button>
 	</div>
 
 	<div class="col-md-1">
-			<button class="btn btn-primary"  id="startAct" type="button"><b>{{ lang._('Start/Restart') }}</b></button>
+		<button class="btn btn-primary" id="startAct" type="button"><b>{{ lang._('Start/Restart') }}</b></button>
 	</div>
 </div>
