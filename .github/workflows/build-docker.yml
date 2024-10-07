@@ -1,10 +1,6 @@
 name: Build Docker image
 
 on:
-  pull_request:
-    branches:
-      - main
-      - dev
   workflow_call:
     inputs:
       tags:
