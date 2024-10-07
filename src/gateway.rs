@@ -1,20 +1,24 @@
 use std::{
     collections::HashMap,
+    fs::read_to_string,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{Duration, SystemTime},
 };
 
 use gethostname::gethostname;
 use tokio::{
+    sync::mpsc,
     task::{spawn, JoinHandle},
     time::{interval, sleep},
 };
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     codegen::InterceptedService,
-    metadata::MetadataValue,
+    metadata::{Ascii, MetadataValue},
+    service::Interceptor,
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
@@ -29,7 +33,7 @@ use crate::{
     },
     VERSION,
 };
-use defguard_wireguard_rs::{WGApi, WireguardInterfaceApi};
+use defguard_wireguard_rs::WireguardInterfaceApi;
 
 const TEN_SECS: Duration = Duration::from_secs(10);
 
@@ -53,27 +57,61 @@ impl From<Configuration> for InterfaceConfiguration {
     }
 }
 
-type Pubkey = String;
+#[derive(Clone)]
+struct AuthInterceptor {
+    hostname: MetadataValue<Ascii>,
+    token: MetadataValue<Ascii>,
+}
+
+impl AuthInterceptor {
+    fn new(token: &str) -> Result<Self, GatewayError> {
+        let token = MetadataValue::try_from(token)?;
+        let hostname = MetadataValue::try_from(
+            gethostname()
+                .to_str()
+                .expect("Unable to get current hostname during gRPC connection setup."),
+        )?;
+
+        Ok(Self { hostname, token })
+    }
+}
+
+impl Interceptor for AuthInterceptor {
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        let metadata = request.metadata_mut();
+        metadata.insert("authorization", self.token.clone());
+        metadata.insert("hostname", self.hostname.clone());
+
+        Ok(request)
+    }
+}
+
+type PubKey = String;
 
 pub struct Gateway {
     config: Config,
     interface_configuration: Option<InterfaceConfiguration>,
-    peers: HashMap<Pubkey, Peer>,
-    wgapi: WGApi,
+    peers: HashMap<PubKey, Peer>,
+    wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
     pub connected: Arc<AtomicBool>,
     stats_thread_handle: Option<JoinHandle<()>>,
+    client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
 }
 
 impl Gateway {
-    pub fn new(config: Config) -> Result<Self, GatewayError> {
-        let wgapi = WGApi::new(config.ifname.clone(), config.userspace)?;
+    pub fn new(
+        config: Config,
+        wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
+    ) -> Result<Self, GatewayError> {
+        let client = Self::setup_client(&config)?;
         Ok(Self {
             config,
             interface_configuration: None,
             peers: HashMap::new(),
-            wgapi,
+            wgapi: Arc::new(Mutex::new(wgapi)),
             connected: Arc::new(AtomicBool::new(false)),
             stats_thread_handle: None,
+            client,
         })
     }
 
@@ -93,8 +131,8 @@ impl Gateway {
         new_interface_configuration: &InterfaceConfiguration,
         new_peers: &[Peer],
     ) -> bool {
-        if let Some(current_configuration) = self.interface_configuration.clone() {
-            return current_configuration != *new_interface_configuration
+        if let Some(current_configuration) = &self.interface_configuration {
+            return current_configuration != new_interface_configuration
                 || self.is_peer_list_changed(new_peers);
         }
         true
@@ -117,90 +155,79 @@ impl Gateway {
         }
 
         // check if all IPs are the same
-        if !new_peers
+        !new_peers
             .iter()
             .all(|peer| match self.peers.get(&peer.pubkey) {
                 Some(p) => peer.allowed_ips == p.allowed_ips,
                 None => false,
             })
-        {
-            return true;
-        }
-        false
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
-    fn spawn_stats_thread(
-        &mut self,
-        mut client: GatewayServiceClient<
-            InterceptedService<
-                Channel,
-                impl Fn(Request<()>) -> Result<Request<()>, Status> + Send + Sync + 'static,
-            >,
-        >,
-    ) {
+    fn spawn_stats_thread(&mut self) {
+        let mut client = self.client.clone();
         // Create an async stream that periodically yields WireGuard interface statistics.
         let period = Duration::from_secs(self.config.stats_period);
-        let ifname = self.config.ifname.clone();
-        let userspace = self.config.userspace;
-        let stats_stream = async_stream::stream! {
-            let wgapi = WGApi::new(ifname, userspace).expect(
-                "Failed to initialize WireGuard interface API, interface name: {ifname}, userspace: {userspace}"
-            );
+        let wgapi = Arc::clone(&self.wgapi);
+        let (tx, rx) = mpsc::unbounded_channel();
+        debug!("Spawning stats thread");
+        spawn(async move {
             // helper map to track if peer data is actually changing
             // and avoid sending duplicate stats
             let mut peer_map = HashMap::new();
             let mut interval = interval(period);
             let mut id = 1;
             loop {
-                // wait till next iteration
+                // wait until next iteration
                 interval.tick().await;
-                let mut peer_stats_sent = false;
+                let mut payload = Payload::Empty(());
 
                 debug!("Sending active peer stats update.");
-                match wgapi.read_interface_data() {
+                match wgapi.lock().unwrap().read_interface_data() {
                     Ok(host) => {
                         let peers = host.peers;
-                        debug!("Found {} peers configured on WireGuard interface", peers.len());
-                        for peer in peers
-                            .into_values()
-                            .filter(|p| p.last_handshake.map_or(
-                                false,
-                                |lhs| lhs != SystemTime::UNIX_EPOCH)
-                            ) {
-                                let has_changed = match peer_map.get(&peer.public_key) {
-                                    Some(last_peer) => *last_peer != peer,
-                                    None => true,
-                                };
-                                if has_changed {
-                                    peer_map.insert(peer.public_key.clone(), peer.clone());
-                                    id += 1;
-                                    yield StatsUpdate {
-                                        id,
-                                        payload: Some(Payload::PeerStats((&peer).into())),
-                                    };
-                                    peer_stats_sent = true;
-                                };
-                                debug!("Stats for peer {} have not changed. Skipping...", peer.public_key);
+                        debug!(
+                            "Found {} peers configured on WireGuard interface",
+                            peers.len()
+                        );
+                        for peer in peers.into_values().filter(|p| {
+                            p.last_handshake
+                                .map_or(false, |lhs| lhs != SystemTime::UNIX_EPOCH)
+                        }) {
+                            let has_changed = match peer_map.get(&peer.public_key) {
+                                Some(last_peer) => *last_peer != peer,
+                                None => true,
+                            };
+                            if has_changed {
+                                peer_map.insert(peer.public_key.clone(), peer.clone());
+                                payload = Payload::PeerStats((&peer).into());
+                            } else {
+                                debug!(
+                                    "Stats for peer {} have not changed. Skipping.",
+                                    peer.public_key
+                                );
                             }
-                    },
-                    Err(err) => error!("Failed to retrieve WireGuard interface stats {err}"),
+                        }
+                    }
+                    Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
                 }
 
-                if !peer_stats_sent {
-                    id += 1;
-                    yield StatsUpdate {
+                id += 1;
+                if tx
+                    .send(StatsUpdate {
                         id,
-                        payload: Some(Payload::Empty(()))
-                    };
-                    debug!("Sent empty stats message.");
+                        payload: Some(payload),
+                    })
+                    .is_err()
+                {
+                    debug!("Stats stream disappeared");
+                    break;
                 }
             }
-        };
-        debug!("Spawning stats thread");
-        // Spawn the thread
+        });
+
         self.stats_thread_handle = Some(spawn(async move {
-            let status = client.stats(Request::new(stats_stream)).await;
+            let status = client.stats(UnboundedReceiverStream::new(rx)).await;
             match status {
                 Ok(_) => info!("Stats thread terminated successfully."),
                 Err(err) => error!("Stats thread terminated with error: {err}"),
@@ -210,7 +237,7 @@ impl Gateway {
     }
 
     /// Performs complete interface reconfiguration based on `configuration` object.
-    /// Called when gateway (re)connects to GRPC endpoint and retrieves complete
+    /// Called when gateway (re)connects to gRPC endpoint and retrieves complete
     /// network and peers data.
     fn configure(&mut self, new_configuration: Configuration) -> Result<(), GatewayError> {
         debug!(
@@ -230,6 +257,8 @@ impl Gateway {
         };
 
         self.wgapi
+            .lock()
+            .unwrap()
             .configure_interface(&new_configuration.clone().into())?;
         info!(
             "Reconfigured WireGuard interface {} (address: {})",
@@ -247,31 +276,24 @@ impl Gateway {
         Ok(())
     }
 
-    /// Continuously tries to connect to GRPC endpoint. Once the connection is established
-    /// configures the interface, starts the stats thread, connects and returns the updates stream
-    async fn connect(
-        &mut self,
-        mut client: GatewayServiceClient<
-            InterceptedService<
-                Channel,
-                impl Fn(Request<()>) -> Result<Request<()>, Status> + Clone + Send + Sync + 'static,
-            >,
-        >,
-    ) -> Result<Streaming<Update>, GatewayError> {
+    /// Continuously tries to connect to gRPC endpoint. Once the connection is established
+    /// configures the interface, starts the stats thread, connects and returns the updates stream.
+    async fn connect(&mut self) -> Result<Streaming<Update>, GatewayError> {
         // set diconnected if we are in this function and drop mutex
         self.connected.store(false, Ordering::Relaxed);
         loop {
             debug!(
-                "Connecting to defguard gRPC endpoint: {}",
+                "Connecting to Defguard gRPC endpoint: {}",
                 self.config.grpc_url
             );
             let (response, stream) = {
-                let response = client
+                let response = self
+                    .client
                     .config(ConfigurationRequest {
                         name: self.config.name.clone(),
                     })
                     .await;
-                let stream = client.updates(()).await;
+                let stream = self.client.updates(()).await;
                 (response, stream)
             };
             match (response, stream) {
@@ -287,21 +309,21 @@ impl Gateway {
                     {
                         debug!("Stats thread already running. Not starting a new one.");
                     } else {
-                        self.spawn_stats_thread(client);
+                        self.spawn_stats_thread();
                     }
                     info!(
-                        "Connected to defguard gRPC endpoint: {}",
+                        "Connected to Defguard gRPC endpoint: {}",
                         self.config.grpc_url
                     );
                     self.connected.store(true, Ordering::Relaxed);
                     break Ok(stream.into_inner());
                 }
                 (Err(err), _) => {
-                    error!("Couldn't retrieve gateway configuration from the core. Using gRPC url: {}. Retrying in 10s. Error: {err}",
+                    error!("Couldn't retrieve gateway configuration from the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
                     self.config.grpc_url);
                 }
                 (_, Err(err)) => {
-                    error!("Couldn't establish streaming connection to the core. Using gRPC url: {}. Retrying in 10s. Error: {err}",
+                    error!("Couldn't establish streaming connection to the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
                     self.config.grpc_url);
                 }
             }
@@ -310,66 +332,44 @@ impl Gateway {
     }
 
     fn setup_client(
-        &self,
-    ) -> Result<
-        GatewayServiceClient<
-            InterceptedService<
-                Channel,
-                impl Fn(Request<()>) -> Result<Request<()>, Status> + Clone + Send + Sync + 'static,
-            >,
-        >,
-        GatewayError,
-    > {
+        config: &Config,
+    ) -> Result<GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>, GatewayError>
+    {
         debug!("Preparing gRPC client configuration");
-        let endpoint = Endpoint::from_shared(self.config.grpc_url.clone())?;
-        let endpoint = endpoint
+        // Use CA if provided, otherwise load certificates from system.
+        let tls = if let Some(ca) = &config.grpc_ca {
+            let ca = read_to_string(ca)?;
+            ClientTlsConfig::new().ca_certificate(Certificate::from_pem(ca))
+        } else {
+            ClientTlsConfig::new().with_native_roots()
+        };
+        let endpoint = Endpoint::from_shared(config.grpc_url.clone())?
             .http2_keep_alive_interval(TEN_SECS)
             .tcp_keepalive(Some(TEN_SECS))
-            .keep_alive_while_idle(true);
-        // if CA certificate is provided, use it (and only it)
-        // otherwise load certs from system
-        let endpoint = if let Some(ca) = &self.config.grpc_ca {
-            let ca = std::fs::read_to_string(ca)?;
-            let tls = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(ca));
-            endpoint.tls_config(tls)?
-        } else {
-            endpoint.tls_config(ClientTlsConfig::new().with_native_roots())?
-        };
+            .keep_alive_while_idle(true)
+            .tls_config(tls)?;
         let channel = endpoint.connect_lazy();
 
-        let token = MetadataValue::try_from(&self.config.token)?;
-        let hostname = gethostname()
-            .into_string()
-            .expect("Unable to get current hostname during gRPC connection setup.");
-        debug!("Using hostname: {hostname}");
-        let hostname = MetadataValue::try_from(hostname).unwrap();
-        let jwt_auth_interceptor = move |mut req: Request<()>| -> Result<Request<()>, Status> {
-            req.metadata_mut().insert("authorization", token.clone());
-            req.metadata_mut().insert("hostname", hostname.clone());
-            Ok(req)
-        };
-        let client = GatewayServiceClient::with_interceptor(channel, jwt_auth_interceptor);
+        let auth_interceptor = AuthInterceptor::new(&config.token)?;
+        let client = GatewayServiceClient::with_interceptor(channel, auth_interceptor);
+
         debug!("gRPC client configuration done");
         Ok(client)
     }
 
     /// Starts the gateway process.
-    /// * Retrieves configuration and configuration updates from defguard gRPC server
+    /// * Retrieves configuration and configuration updates from Defguard gRPC server
     /// * Manages the interface according to configuration and updates
-    /// * Sends interface statistics to defguard server periodically
+    /// * Sends interface statistics to Defguard server periodically
     pub async fn start(&mut self) -> Result<(), GatewayError> {
         info!(
-            "Starting defguard gateway version {VERSION} with configuration: {:?}",
+            "Starting Defguard gateway version {VERSION} with configuration: {:?}",
             mask!(self.config, token)
         );
 
-        let client = self.setup_client()?;
-
-        let wgapi = WGApi::new(self.config.ifname.clone(), self.config.userspace)?;
-
         // Try to create network interface for WireGuard.
         // FIXME: check if the interface already exists, or somehow be more clever.
-        if let Err(err) = wgapi.create_interface() {
+        if let Err(err) = self.wgapi.lock().unwrap().create_interface() {
             warn!(
                 "Couldn't create network interface {}: {err}. Proceeding anyway.",
                 self.config.ifname
@@ -377,10 +377,10 @@ impl Gateway {
         }
 
         info!(
-            "Trying to connect to {} and obtain the gateway configuration from defguard...",
+            "Trying to connect to {} and obtain the gateway configuration from Defguard...",
             self.config.grpc_url
         );
-        let mut updates_stream = self.connect(client.clone()).await?;
+        let mut updates_stream = self.connect().await?;
         if let Some(post_up) = &self.config.post_up {
             debug!("Executing specified POST_UP command: {post_up}");
             execute_command(post_up)?;
@@ -401,7 +401,7 @@ impl Gateway {
                             if update.update_type == 2 {
                                 debug!("Deleting peer {peer_config:?}");
                                 self.peers.remove(&peer_config.pubkey);
-                                if let Err(err) = wgapi.remove_peer(
+                                if let Err(err) = self.wgapi.lock().unwrap().remove_peer(
                                     &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
                                 ) {
                                     error!("Failed to delete peer: {err}");
@@ -415,7 +415,12 @@ impl Gateway {
                                 );
                                 self.peers
                                     .insert(peer_config.pubkey.clone(), peer_config.clone());
-                                if let Err(err) = wgapi.configure_peer(&peer_config.into()) {
+                                if let Err(err) = self
+                                    .wgapi
+                                    .lock()
+                                    .unwrap()
+                                    .configure_peer(&peer_config.into())
+                                {
                                     error!("Failed to update peer: {err}");
                                 }
                             };
@@ -424,16 +429,16 @@ impl Gateway {
                     }
                 }
                 Ok(None) => {
-                    warn!("Received empty message, reconnecting");
-                    updates_stream = self.connect(client.clone()).await?;
+                    warn!("Stream has been closed, reconnecting");
+                    updates_stream = self.connect().await?;
                 }
                 Err(err) => {
                     error!(
-                        "Disconnected from defguard gRPC endoint: {:?}",
+                        "Disconnected from Defguard gRPC endoint: {:?}",
                         self.config.grpc_url
                     );
                     error!("Server error {err}, reconnecting");
-                    updates_stream = self.connect(client.clone()).await?;
+                    updates_stream = self.connect().await?;
                 }
             }
         }
@@ -442,16 +447,16 @@ impl Gateway {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        config::Config,
-        gateway::{Gateway, InterfaceConfiguration},
-        proto::Peer,
-    };
+    #[cfg(not(target_os = "macos"))]
+    use defguard_wireguard_rs::Kernel;
+    #[cfg(target_os = "macos")]
+    use defguard_wireguard_rs::Userspace;
     use defguard_wireguard_rs::WGApi;
-    use std::sync::{atomic::AtomicBool, Arc};
 
-    #[test]
-    fn test_configuration_comparison() {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_configuration_comparison() {
         let old_config = InterfaceConfiguration {
             name: "gateway".to_string(),
             prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
@@ -479,13 +484,20 @@ mod tests {
             .map(|peer| (peer.pubkey.clone(), peer))
             .collect();
 
+        #[cfg(target_os = "macos")]
+        let wgapi = WGApi::<Userspace>::new("wg0".into()).unwrap();
+        #[cfg(not(target_os = "macos"))]
+        let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
+        let config = Config::default();
+        let client = Gateway::setup_client(&config).unwrap();
         let gateway = Gateway {
-            config: Config::default(),
+            config,
             interface_configuration: Some(old_config.clone()),
             peers: old_peers_map,
-            wgapi: WGApi::new("wg0".into(), false).unwrap(),
+            wgapi: Arc::new(Mutex::new(wgapi)),
             connected: Arc::new(AtomicBool::new(false)),
             stats_thread_handle: None,
+            client,
         };
 
         // new config is the same

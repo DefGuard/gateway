@@ -19,17 +19,19 @@ class ServiceController extends ApiControllerBase
         $status = "failed";
         if ($this->request->isPost()) {
             $backend = new Backend();
-            $bckresult = trim($backend->configdRun('template reload OPNsense/DefguardGateway'));
+            $bckresult = trim(
+                $backend->configdRun("template reload OPNsense/DefguardGateway")
+            );
             if ($bckresult == "OK") {
-		$status = "Configuration saved to /etc/defguard/gateway.toml ";
+                $status = "Configuration saved to /etc/defguard/gateway.toml";
             }
         }
-        return array("status" => $status);
+        return ["status" => $status];
     }
     public function resetAction()
     {
-    	$backend = new Backend();
-    	$result = trim($backend->configdRun('defguardgateway restart'));
-        return array("status" => $result);
+        $backend = new Backend();
+        $result = trim($backend->configdRun("defguardgateway restart"));
+        return ["status" => $result];
     }
 }
