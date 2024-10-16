@@ -1,11 +1,11 @@
 pub mod config;
 pub mod error;
 pub mod gateway;
-pub mod server;
-
+pub mod grpc;
 pub mod proto {
     tonic::include_proto!("gateway");
 }
+pub mod server;
 
 #[macro_use]
 extern crate log;

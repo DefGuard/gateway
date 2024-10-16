@@ -7,8 +7,8 @@ use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 use tokio::task::JoinSet;
 
 use defguard_gateway::{
-    config::get_config, error::GatewayError, execute_command, gateway::Gateway, init_syslog,
-    server::run_server,
+    config::get_config, error::GatewayError, execute_command, gateway::Gateway, grpc::run_grpc,
+    init_syslog, server::run_server,
 };
 
 #[tokio::main]
@@ -60,6 +60,7 @@ async fn main() -> Result<(), GatewayError> {
         tasks.spawn(run_server(health_port, Arc::clone(&gateway.connected)));
     }
     tasks.spawn(async move { gateway.start().await });
+    tasks.spawn(run_grpc(config.clone()));
     while let Some(Ok(result)) = tasks.join_next().await {
         result?;
     }

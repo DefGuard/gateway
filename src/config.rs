@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -18,31 +18,28 @@ pub struct Config {
         env = "DEFGUARD_TOKEN",
         default_value = ""
     )]
-    pub token: String,
+    pub(crate) token: String,
 
     #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
-    pub name: Option<String>,
+    pub(crate) name: Option<String>,
 
     /// defguard server gRPC endpoint URL
-    #[arg(
-        long,
-        short = 'g',
-        required_unless_present = "config_path",
-        env = "DEFGUARD_GRPC_URL",
-        default_value = ""
-    )]
-    pub grpc_url: String,
+    #[arg(long, env = "DEFGUARD_GRPC_PORT", default_value = "50066")]
+    pub(crate) grpc_port: u16,
+
+    #[arg(long, env = "DEFGUARD_GATEWAY_GRPC_CERT")]
+    pub(crate) grpc_cert: Option<String>,
+
+    #[arg(long, env = "DEFGUARD_GATEWAY_GRPC_KEY")]
+    pub(crate) grpc_key: Option<String>,
 
     /// Use userspace WireGuard implementation e.g. wireguard-go
     #[arg(long, short = 'u', env = "DEFGUARD_USERSPACE")]
     pub userspace: bool,
 
-    #[arg(long, env = "DEFGUARD_GRPC_CA")]
-    pub grpc_ca: Option<String>,
-
     /// Defines how often (in seconds) interface statistics are sent to Defguard server
     #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "30")]
-    pub stats_period: u64,
+    pub(crate) stats_period: u64,
 
     /// Network interface name (e.g. wg0)
     #[arg(long, short = 'i', env = "DEFGUARD_IFNAME", default_value = "wg0")]
@@ -91,14 +88,16 @@ pub struct Config {
     pub health_port: Option<u16>,
 }
 
+#[cfg(test)]
 impl Default for Config {
     fn default() -> Self {
         Self {
             token: "TOKEN".into(),
             name: None,
-            grpc_url: "http://localhost:50051".into(),
+            grpc_port: 50066,
             userspace: false,
-            grpc_ca: None,
+            grpc_cert: None,
+            grpc_key: None,
             stats_period: 15,
             ifname: "wg0".into(),
             pidfile: None,
