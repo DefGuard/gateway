@@ -6,6 +6,7 @@ pub mod proto {
     tonic::include_proto!("gateway");
 }
 pub mod server;
+mod state;
 
 #[macro_use]
 extern crate log;
@@ -17,7 +18,7 @@ use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration}
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
 
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("VERGEN_GIT_SHA"));
+const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("VERGEN_GIT_SHA"));
 
 /// Masks object's field with "***" string.
 /// Used to log sensitive/secret objects.
@@ -53,19 +54,18 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
             .args(command_parts)
             .output()?;
 
+        let stderr = String::from_utf8_lossy(&output.stderr);
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
 
             info!(
-                "Postup command {} executed successfully. Stdout: {}",
+                "Post-up command {} executed successfully. Stdout: {}",
                 command, stdout
             );
             if !stderr.is_empty() {
                 error!("Stderr:\n{stderr}");
             }
         } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
             error!("Error executing command. Stderr:\n{stderr}");
         }
     }

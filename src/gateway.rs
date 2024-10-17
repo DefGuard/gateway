@@ -11,8 +11,8 @@ use std::{
 
 use gethostname::gethostname;
 use tokio::{
-    sync::mpsc,
-    task::{spawn, JoinHandle, JoinSet},
+    sync::mpsc::{self, UnboundedSender},
+    task::{spawn, JoinHandle},
     time::{interval, sleep},
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -29,36 +29,19 @@ use tonic::{
 use crate::{
     config::Config,
     error::GatewayError,
-    execute_command, mask,
+    execute_command,
+    grpc::ClientMap,
+    mask,
     proto::{
-        core_request, core_response, gateway_server, Configuration, CoreRequest, CoreResponse,
-        Peer, Update,
+        self, core_request, core_response, gateway_server, Configuration, ConfigurationRequest,
+        CoreRequest, CoreResponse, Peer, Update,
     },
+    state::InterfaceConfiguration,
     VERSION,
 };
 use defguard_wireguard_rs::WireguardInterfaceApi;
 
 const TEN_SECS: Duration = Duration::from_secs(10);
-
-// helper struct which stores just the interface config without peers
-#[derive(Clone, PartialEq)]
-struct InterfaceConfiguration {
-    name: String,
-    prvkey: String,
-    address: String,
-    port: u32,
-}
-
-impl From<Configuration> for InterfaceConfiguration {
-    fn from(config: Configuration) -> Self {
-        Self {
-            name: config.name,
-            prvkey: config.prvkey,
-            address: config.address,
-            port: config.port,
-        }
-    }
-}
 
 #[derive(Clone)]
 struct AuthInterceptor {
@@ -89,78 +72,30 @@ impl Interceptor for AuthInterceptor {
     }
 }
 
-type PubKey = String;
-
 pub struct Gateway {
     config: Config,
     interface_configuration: Option<InterfaceConfiguration>,
-    peers: HashMap<PubKey, Peer>,
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
     pub connected: Arc<AtomicBool>,
     stats_thread_handle: Option<JoinHandle<()>>,
+    // TODO: allow only one client.
+    clients: Arc<Mutex<ClientMap>>,
 }
 
 impl Gateway {
     pub fn new(
         config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
+        clients: Arc<Mutex<ClientMap>>,
     ) -> Result<Self, GatewayError> {
         Ok(Self {
             config,
             interface_configuration: None,
-            peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
             connected: Arc::new(AtomicBool::new(false)),
             stats_thread_handle: None,
+            clients,
         })
-    }
-
-    // replace current peer map with a new list of peers
-    fn replace_peers(&mut self, new_peers: Vec<Peer>) {
-        debug!("Replacing stored peers with {} new peers", new_peers.len());
-        let peers = new_peers
-            .into_iter()
-            .map(|peer| (peer.pubkey.clone(), peer))
-            .collect();
-        self.peers = peers;
-    }
-
-    // check if new received configuration is different than current one
-    fn is_config_changed(
-        &self,
-        new_interface_configuration: &InterfaceConfiguration,
-        new_peers: &[Peer],
-    ) -> bool {
-        if let Some(current_configuration) = &self.interface_configuration {
-            return current_configuration != new_interface_configuration
-                || self.is_peer_list_changed(new_peers);
-        }
-        true
-    }
-
-    // check if new peers are the same as the stored ones
-    fn is_peer_list_changed(&self, new_peers: &[Peer]) -> bool {
-        // check if number of peers is different
-        if self.peers.len() != new_peers.len() {
-            return true;
-        }
-
-        // check if all pubkeys are the same
-        if !new_peers
-            .iter()
-            .map(|peer| &peer.pubkey)
-            .all(|k| self.peers.contains_key(k))
-        {
-            return true;
-        }
-
-        // check if all IPs are the same
-        !new_peers
-            .iter()
-            .all(|peer| match self.peers.get(&peer.pubkey) {
-                Some(p) => peer.allowed_ips == p.allowed_ips,
-                None => false,
-            })
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
@@ -250,11 +185,12 @@ impl Gateway {
         );
 
         // check if new configuration is different than current one
-        let new_interface_configuration = new_configuration.clone().into();
-        if !self.is_config_changed(&new_interface_configuration, &new_configuration.peers) {
-            debug!("Received configuration is identical to current one. Skipping interface reconfiguration");
-            return Ok(());
-        };
+        if let Some(if_config) = &self.interface_configuration {
+            if if_config.same_as(&new_configuration) {
+                debug!("Received configuration is identical to current one. Skipping interface reconfiguration.");
+                return Ok(());
+            }
+        }
 
         self.wgapi
             .lock()
@@ -269,9 +205,7 @@ impl Gateway {
             mask!(new_configuration, prvkey)
         );
 
-        // store new configuration and peers
-        self.interface_configuration = Some(new_interface_configuration);
-        self.replace_peers(new_configuration.peers);
+        self.interface_configuration = Some(new_configuration.into());
 
         Ok(())
     }
@@ -331,6 +265,23 @@ impl Gateway {
     //     }
     // }
 
+    // TODO: this should be sent when a client connects.
+    fn get_config(&self) {
+        self.clients.lock().unwrap().retain(
+            move |addr, tx: &mut UnboundedSender<Result<proto::CoreRequest, Status>>| {
+                eprintln!("Sending peer update to {addr}");
+                let payload = ConfigurationRequest {
+                    name: self.config.name.clone(),
+                };
+                let req = CoreRequest {
+                    id: 1, // FIXME: count IDs
+                    payload: Some(core_request::Payload::ConfigRequest(payload)),
+                };
+                tx.send(Ok(req)).is_ok()
+            },
+        );
+    }
+
     // fn setup_client(
     //     config: &Config,
     // ) -> Result<GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>, GatewayError>
@@ -376,15 +327,14 @@ impl Gateway {
             );
         }
 
-        // info!(
-        //     "Trying to connect to {} and obtain the gateway configuration from Defguard...",
-        //     self.config.grpc_url
-        // );
+        info!("Trying to obtain gateway configuration from core...");
         // let mut updates_stream = self.connect().await?;
-        // if let Some(post_up) = &self.config.post_up {
-        //     debug!("Executing specified POST_UP command: {post_up}");
-        //     execute_command(post_up)?;
-        // }
+        self.get_config();
+        info!("Finished get_config()");
+        if let Some(post_up) = &self.config.post_up {
+            debug!("Executing specified post-up command: {post_up}");
+            execute_command(post_up)?;
+        }
         // loop {
         //     match updates_stream.message().await {
         //         Ok(Some(update)) => {
@@ -444,170 +394,5 @@ impl Gateway {
         // }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[cfg(not(target_os = "macos"))]
-    use defguard_wireguard_rs::Kernel;
-    #[cfg(target_os = "macos")]
-    use defguard_wireguard_rs::Userspace;
-    use defguard_wireguard_rs::WGApi;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn test_configuration_comparison() {
-        let old_config = InterfaceConfiguration {
-            name: "gateway".to_string(),
-            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            address: "10.6.1.1/24".to_string(),
-            port: 50051,
-        };
-
-        let old_peers = vec![
-            Peer {
-                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.3/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-        let old_peers_map = old_peers
-            .clone()
-            .into_iter()
-            .map(|peer| (peer.pubkey.clone(), peer))
-            .collect();
-
-        #[cfg(target_os = "macos")]
-        let wgapi = WGApi::<Userspace>::new("wg0".into()).unwrap();
-        #[cfg(not(target_os = "macos"))]
-        let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
-        let config = Config::default();
-        let gateway = Gateway {
-            config,
-            interface_configuration: Some(old_config.clone()),
-            peers: old_peers_map,
-            wgapi: Arc::new(Mutex::new(wgapi)),
-            connected: Arc::new(AtomicBool::new(false)),
-            stats_thread_handle: None,
-        };
-
-        // new config is the same
-        let new_config = old_config.clone();
-        let new_peers = old_peers.clone();
-        assert!(!gateway.is_config_changed(&new_config, &new_peers));
-
-        // only interface config is different
-        let new_config = InterfaceConfiguration {
-            name: "gateway".to_string(),
-            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            address: "10.6.1.2/24".to_string(),
-            port: 50051,
-        };
-        let new_peers = old_peers.clone();
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
-
-        // peer was removed
-        let new_config = old_config.clone();
-        let mut new_peers = old_peers.clone();
-        new_peers.pop();
-
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
-
-        // peer was added
-        let new_config = old_config.clone();
-        let mut new_peers = old_peers.clone();
-        new_peers.push(Peer {
-            pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
-            allowed_ips: vec!["10.6.1.4/24".to_string()],
-            preshared_key: None,
-            keepalive_interval: None,
-        });
-
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
-
-        // peer pubkey changed
-        let new_config = old_config.clone();
-        let new_peers = vec![
-            Peer {
-                pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.3/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
-
-        // peer IP changed
-        let new_config = old_config.clone();
-        let new_peers = vec![
-            Peer {
-                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.4/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
-
-        // peer preshared key changed
-        let new_config = old_config.clone();
-        let new_peers = vec![
-            Peer {
-                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: Some("VGhpc2lzdGhlcGFzc3dvcmQzMWNoYXJhY3RlcnNsbwo=".into()),
-                keepalive_interval: None,
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.4/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
-
-        // peer keepalive interval changed
-        let new_config = old_config.clone();
-        let new_peers = vec![
-            Peer {
-                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: Some("VGhpc2lzdGhlcGFzc3dvcmQzMWNoYXJhY3RlcnNsbwo=".into()),
-                keepalive_interval: Some(15),
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.4/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
     }
 }

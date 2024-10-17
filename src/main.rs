@@ -1,4 +1,9 @@
-use std::{fs::File, io::Write, process, sync::Arc};
+use std::{
+    fs::File,
+    io::Write,
+    process,
+    sync::{Arc, Mutex},
+};
 
 #[cfg(not(target_os = "macos"))]
 use defguard_wireguard_rs::Kernel;
@@ -7,8 +12,13 @@ use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 use tokio::task::JoinSet;
 
 use defguard_gateway::{
-    config::get_config, error::GatewayError, execute_command, gateway::Gateway, grpc::run_grpc,
-    init_syslog, server::run_server,
+    config::get_config,
+    error::GatewayError,
+    execute_command,
+    gateway::Gateway,
+    grpc::{run_grpc, ClientMap},
+    init_syslog,
+    server::run_server,
 };
 
 #[tokio::main]
@@ -35,14 +45,15 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     if let Some(pre_up) = &config.pre_up {
-        log::info!("Executing specified PRE_UP command: {pre_up}");
+        log::info!("Executing specified pre-up command: {pre_up}");
         execute_command(pre_up)?;
     }
 
     let ifname = config.ifname.clone();
+    let clients = Arc::new(Mutex::new(ClientMap::new()));
     let mut gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
-        Gateway::new(config.clone(), wgapi)?
+        Gateway::new(config.clone(), wgapi, clients.clone())?
     } else {
         #[cfg(not(target_os = "macos"))]
         {
@@ -51,7 +62,7 @@ async fn main() -> Result<(), GatewayError> {
         }
         #[cfg(target_os = "macos")]
         {
-            eprintln!("Gateway only supports userspace WireGuard for macOS");
+            eprintln!("On macOS, gateway only supports userspace WireGuard");
             return Ok(());
         }
     };
@@ -60,13 +71,14 @@ async fn main() -> Result<(), GatewayError> {
         tasks.spawn(run_server(health_port, Arc::clone(&gateway.connected)));
     }
     tasks.spawn(async move { gateway.start().await });
-    tasks.spawn(run_grpc(config.clone()));
+    tasks.spawn(run_grpc(config.clone(), clients));
     while let Some(Ok(result)) = tasks.join_next().await {
         result?;
+        log::debug!("Task ended");
     }
 
     if let Some(post_down) = &config.post_down {
-        log::info!("Executing specified POST_DOWN command: {post_down}");
+        log::info!("Executing specified post-down command: {post_down}");
         execute_command(post_down)?;
     }
 

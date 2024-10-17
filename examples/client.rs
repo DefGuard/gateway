@@ -1,9 +1,5 @@
 use std::{
-    borrow::Borrow,
-    collections::HashMap,
     io::{stdout, Write},
-    net::SocketAddr,
-    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -22,7 +18,7 @@ use tokio::{
     time::sleep,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tonic::{transport::Endpoint, Request, Response, Status, Streaming};
+use tonic::transport::Endpoint;
 
 struct HostConfig {
     name: String,
@@ -241,6 +237,13 @@ async fn grpc_client(config_rx: Receiver<HostConfig>) -> Result<(), tonic::trans
         };
         eprintln!("Connected to proxy at {uri}");
         let mut resp_stream = response.into_inner();
+
+        eprintln!("Sending configuration");
+        let config = (&*config_rx.borrow()).into();
+        let payload = Some(proto::core_response::Payload::Config(config));
+        let req = proto::CoreResponse { id: 0, payload };
+        tx.send(req).unwrap();
+
         'message: loop {
             match resp_stream.message().await {
                 Ok(None) => {

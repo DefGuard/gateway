@@ -34,22 +34,21 @@ use crate::{
     VERSION,
 };
 
-// connected clients
-type ClientMap = HashMap<SocketAddr, mpsc::UnboundedSender<Result<CoreRequest, Status>>>;
+// Map of all connected clients.
+pub type ClientMap = HashMap<SocketAddr, mpsc::UnboundedSender<Result<CoreRequest, Status>>>;
 
 pub struct GatewayServer {
     clients: Arc<Mutex<ClientMap>>,
 }
 
 impl GatewayServer {
-    fn new() -> Self {
-        Self {
-            clients: Arc::new(Mutex::new(ClientMap::new())),
-        }
+    fn new(clients: Arc<Mutex<ClientMap>>) -> Self {
+        Self { clients }
     }
 }
 
-pub async fn run_grpc(config: Config) -> Result<(), GatewayError> {
+/// Run gRPC server.
+pub async fn run_grpc(config: Config, clients: Arc<Mutex<ClientMap>>) -> Result<(), GatewayError> {
     // read gRPC TLS cert and key
     debug!("Configuring certificates for gRPC");
     let grpc_cert = config
@@ -62,10 +61,9 @@ pub async fn run_grpc(config: Config) -> Result<(), GatewayError> {
         .and_then(|path| read_to_string(path).ok());
     debug!("Configured certificates for gRPC, cert: {grpc_cert:?}");
 
-    let grpc_server = GatewayServer::new();
+    let grpc_server = GatewayServer::new(clients);
 
-    // Start gRPC server.
-    debug!("Spawning gRPC server");
+    // Build gRPC server.
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
     info!("gRPC server is listening on {addr}");
     let mut builder = if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
@@ -74,6 +72,8 @@ pub async fn run_grpc(config: Config) -> Result<(), GatewayError> {
     } else {
         Server::builder()
     };
+    // Start gRPC server. This should run indefinitely.
+    debug!("Serving gRPC.");
     builder
         .add_service(gateway_server::GatewayServer::new(grpc_server))
         .serve(addr)
