@@ -1,9 +1,4 @@
-use std::{
-    fs::File,
-    io::Write,
-    process,
-    sync::{Arc, Mutex},
-};
+use std::{fs::File, io::Write, process, sync::Arc};
 
 #[cfg(not(target_os = "macos"))]
 use defguard_wireguard_rs::Kernel;
@@ -15,8 +10,7 @@ use defguard_gateway::{
     config::get_config,
     error::GatewayError,
     execute_command,
-    gateway::Gateway,
-    grpc::{run_grpc, ClientMap},
+    gateway::{Gateway, GatewayServer},
     init_syslog,
     server::run_server,
 };
@@ -50,10 +44,9 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     let ifname = config.ifname.clone();
-    let clients = Arc::new(Mutex::new(ClientMap::new()));
-    let mut gateway = if config.userspace {
+    let gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
-        Gateway::new(config.clone(), wgapi, clients.clone())?
+        Gateway::new(config.clone(), wgapi)?
     } else {
         #[cfg(not(target_os = "macos"))]
         {
@@ -70,8 +63,8 @@ async fn main() -> Result<(), GatewayError> {
     if let Some(health_port) = config.health_port {
         tasks.spawn(run_server(health_port, Arc::clone(&gateway.connected)));
     }
-    tasks.spawn(async move { gateway.start().await });
-    tasks.spawn(run_grpc(config.clone(), clients));
+    let gateway_server = GatewayServer::new(gateway);
+    tasks.spawn(gateway_server.start(config.clone()));
     while let Some(Ok(result)) = tasks.join_next().await {
         result?;
         log::debug!("Task ended");

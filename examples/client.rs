@@ -1,5 +1,6 @@
 use std::{
     io::{stdout, Write},
+    sync::Mutex,
     time::Duration,
 };
 
@@ -26,10 +27,7 @@ struct HostConfig {
     host: Host,
 }
 
-// struct GatewayServer {
-//     config_rx: Receiver<HostConfig>,
-//     clients: Arc<Mutex<ClientMap>>,
-// }
+static STREAM_TX: Mutex<Option<UnboundedSender<proto::CoreResponse>>> = Mutex::new(None);
 
 // impl GatewayServer {
 //     pub fn new(config_rx: Receiver<HostConfig>, clients: Arc<Mutex<ClientMap>>) -> Self {
@@ -63,16 +61,11 @@ impl From<&HostConfig> for proto::Configuration {
                 .host
                 .private_key
                 .as_ref()
-                .map(|key| key.to_string())
+                .map(ToString::to_string)
                 .unwrap_or_default(),
             address: host_config.address.to_string(),
             port: u32::from(host_config.host.listen_port),
-            peers: host_config
-                .host
-                .peers
-                .values()
-                .map(|peer| peer.into())
-                .collect(),
+            peers: host_config.host.peers.values().map(Into::into).collect(),
         }
     }
 }
@@ -115,10 +108,10 @@ impl From<&HostConfig> for proto::Configuration {
 //     }
 // }
 
-async fn cli(tx: Sender<HostConfig>) {
-    let mut stdin = BufReader::new(tokio::io::stdin());
+fn print_help() {
     println!(
-        "a|addr address - set host address\n\
+        "?|help - print this help\n\
+        a|addr address - set host address\n\
         c|peer key - create peer with public key\n\
         d|del key - delete peer with public key\n\
         k|key key - set private key\n\
@@ -126,6 +119,11 @@ async fn cli(tx: Sender<HostConfig>) {
         q|quit - quit\n\
         "
     );
+}
+
+async fn cli(config_tx: Sender<HostConfig>) {
+    let mut stdin = BufReader::new(tokio::io::stdin());
+    print_help();
     loop {
         print!("> ");
         stdout().flush().unwrap();
@@ -134,10 +132,11 @@ async fn cli(tx: Sender<HostConfig>) {
         let mut token_iter = line.split_whitespace();
         if let Some(keyword) = token_iter.next() {
             match keyword {
+                "?" | "help" => print_help(),
                 "a" | "addr" => {
                     if let Some(address) = token_iter.next() {
                         if let Ok(ipaddr) = address.parse() {
-                            tx.send_modify(|config| config.address = ipaddr);
+                            config_tx.send_modify(|config| config.address = ipaddr);
                         } else {
                             eprintln!("Parse error");
                         }
@@ -147,20 +146,18 @@ async fn cli(tx: Sender<HostConfig>) {
                     if let Some(key) = token_iter.next() {
                         if let Ok(key) = Key::try_from(key) {
                             let peer = Peer::new(key.clone());
-
-                            let update = proto::Update {
-                                update_type: proto::UpdateType::Create as i32,
-                                update: Some(proto::update::Update::Peer((&peer).into())),
-                            };
-                            // clients.lock().unwrap().retain(
-                            //     move |addr, tx: &mut UnboundedSender<Result<proto::Update, Status>>| {
-                            //         eprintln!("Sending peer update to {addr}");
-                            //         tx.send(Ok(update.clone())).is_ok()
-                            //     },
-                            // );
-
+                            // Try to send
+                            if let Some(tx) = &*STREAM_TX.lock().unwrap() {
+                                let update = proto::Update {
+                                    update_type: proto::UpdateType::Create as i32,
+                                    update: Some(proto::update::Update::Peer((&peer).into())),
+                                };
+                                let payload = Some(proto::core_response::Payload::Update(update));
+                                let req = proto::CoreResponse { id: 0, payload };
+                                tx.send(req).unwrap();
+                            }
                             // modify HostConfig, but do not notify the receiver
-                            tx.send_if_modified(|config| {
+                            config_tx.send_if_modified(|config| {
                                 config.host.peers.insert(key, peer);
                                 false
                             });
@@ -173,23 +170,24 @@ async fn cli(tx: Sender<HostConfig>) {
                     if let Some(key) = token_iter.next() {
                         if let Ok(key) = Key::try_from(key) {
                             let peer = Peer::new(key);
-
-                            let update = proto::Update {
-                                update_type: proto::UpdateType::Delete as i32,
-                                update: Some(proto::update::Update::Peer((&peer).into())),
-                            };
-                            // clients.lock().unwrap().retain(
-                            //     move |addr, tx: &mut UnboundedSender<Result<proto::Update, Status>>| {
-                            //         eprintln!("Sending peer update to {addr}");
-                            //         tx.send(Ok(update.clone())).is_ok()
-                            //     },
-                            // );
-
+                            // Try to send
+                            if let Some(tx) = &*STREAM_TX.lock().unwrap() {
+                                let update = proto::Update {
+                                    update_type: proto::UpdateType::Delete as i32,
+                                    update: Some(proto::update::Update::Peer((&peer).into())),
+                                };
+                                let payload = Some(proto::core_response::Payload::Update(update));
+                                let req = proto::CoreResponse { id: 0, payload };
+                                tx.send(req).unwrap();
+                            }
                             // modify HostConfig, but do not notify the receiver
-                            // tx.send_if_modified(|config| {
-                            //     config.host.peers.retain(|entry| entry.public_key != peer.public_key);
-                            //     false
-                            // });
+                            config_tx.send_if_modified(|config| {
+                                config
+                                    .host
+                                    .peers
+                                    .retain(|public_key, _| public_key != &peer.public_key);
+                                false
+                            });
                         } else {
                             eprintln!("Parse error");
                         }
@@ -198,7 +196,7 @@ async fn cli(tx: Sender<HostConfig>) {
                 "k" | "key" => {
                     if let Some(key) = token_iter.next() {
                         if let Ok(key) = Key::try_from(key) {
-                            tx.send_modify(|config| config.host.private_key = Some(key));
+                            config_tx.send_modify(|config| config.host.private_key = Some(key));
                         } else {
                             eprintln!("Parse error");
                         }
@@ -207,7 +205,7 @@ async fn cli(tx: Sender<HostConfig>) {
                 "p" | "port" => {
                     if let Some(port) = token_iter.next() {
                         if let Ok(port) = port.parse() {
-                            tx.send_modify(|config| config.host.listen_port = port);
+                            config_tx.send_modify(|config| config.host.listen_port = port);
                         } else {
                             eprintln!("Parse error");
                         }
@@ -220,6 +218,8 @@ async fn cli(tx: Sender<HostConfig>) {
     }
 }
 
+const TEN_SECS: Duration = Duration::from_secs(10);
+
 async fn grpc_client(config_rx: Receiver<HostConfig>) -> Result<(), tonic::transport::Error> {
     let endpoint = Endpoint::from_static("http://localhost:50066");
     let endpoint = endpoint
@@ -228,14 +228,17 @@ async fn grpc_client(config_rx: Receiver<HostConfig>) -> Result<(), tonic::trans
         .keep_alive_while_idle(true);
     let uri = endpoint.uri();
     loop {
+        *STREAM_TX.lock().unwrap() = None;
         let mut client = proto::gateway_client::GatewayClient::new(endpoint.connect_lazy());
         let (tx, rx) = mpsc::unbounded_channel();
+        *STREAM_TX.lock().unwrap() = Some(tx.clone());
+
         let Ok(response) = client.bidi(UnboundedReceiverStream::new(rx)).await else {
             eprintln!("Failed to connect to gateway, retrying in 10s",);
             sleep(TEN_SECS).await;
             continue;
         };
-        eprintln!("Connected to proxy at {uri}");
+        eprintln!("Connected to gateway at {uri}");
         let mut resp_stream = response.into_inner();
 
         eprintln!("Sending configuration");
@@ -251,7 +254,7 @@ async fn grpc_client(config_rx: Receiver<HostConfig>) -> Result<(), tonic::trans
                     break 'message;
                 }
                 Ok(Some(received)) => {
-                    eprintln!("Received the following message from gateway: {received:?}");
+                    eprintln!("Received message from gateway: {received:?}");
                     let payload = match received.payload {
                         Some(proto::core_request::Payload::ConfigRequest(config_request)) => {
                             eprintln!("*** ConfigurationRequest {config_request:?}");
@@ -283,8 +286,6 @@ async fn grpc_client(config_rx: Receiver<HostConfig>) -> Result<(), tonic::trans
     }
 }
 
-const TEN_SECS: Duration = Duration::from_secs(10);
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let configuration = HostConfig {
@@ -298,7 +299,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (config_tx, config_rx) = watch::channel(configuration);
     tokio::select! {
         _ = grpc_client(config_rx) => eprintln!("gRPC client completed"),
-        _ = cli(config_tx) => eprintln!("CLI completed")
+        () = cli(config_tx) => eprintln!("CLI completed")
     };
 
     Ok(())

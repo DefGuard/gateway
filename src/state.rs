@@ -5,13 +5,13 @@ use crate::proto::{Configuration, Peer};
 type PubKey = String;
 
 /// Helper struct which stores interface configuration.
-#[derive(Clone)]
+#[cfg_attr(test, derive(Clone))]
 pub(crate) struct InterfaceConfiguration {
     name: String,
     prvkey: String,
     address: String,
     port: u32,
-    peers: HashMap<PubKey, Peer>,
+    pub(crate) peers: HashMap<PubKey, Peer>,
 }
 
 impl InterfaceConfiguration {

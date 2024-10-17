@@ -1,7 +1,6 @@
 pub mod config;
 pub mod error;
 pub mod gateway;
-pub mod grpc;
 pub mod proto {
     tonic::include_proto!("gateway");
 }
