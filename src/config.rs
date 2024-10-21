@@ -1,4 +1,4 @@
-use std::{fs::read_to_string, time::Duration};
+use std::{fs::read_to_string, path::PathBuf, time::Duration};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -64,7 +64,7 @@ pub struct Config {
     /// Configuration file path
     #[arg(long = "config", short)]
     #[serde(skip)]
-    config_path: Option<std::path::PathBuf>,
+    config_path: Option<PathBuf>,
 
     /// Command to run before bringing up the interface.
     #[arg(long, env = "PRE_UP")]
@@ -81,9 +81,11 @@ pub struct Config {
     /// Command to run after bringing down the interface.
     #[arg(long, env = "POST_DOWN")]
     pub post_down: Option<String>,
-    /// A HTTP port that will expose the REST HTTP gateway health status
-    /// 200 Gateway is working and is connected to CORE
-    /// 503 - gateway works but is not connected to CORE
+
+    /// HTTP port that will expose the REST HTTP gateway health status
+    /// Return codes:
+    /// * 200: gateway is working and is connected to core
+    /// * 503: gateway is working, but is not connected to core
     #[arg(long, env = "HEALTH_PORT")]
     pub health_port: Option<u16>,
 }

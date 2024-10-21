@@ -13,7 +13,6 @@ use gethostname::gethostname;
 use tokio::{sync::mpsc, time::interval};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
-    codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
     service::Interceptor,
     transport::{Identity, Server, ServerTlsConfig},
@@ -65,7 +64,6 @@ impl Interceptor for AuthInterceptor {
 type ClientMap = HashMap<SocketAddr, mpsc::UnboundedSender<Result<CoreRequest, Status>>>;
 
 pub struct Gateway {
-    // config: Config,
     interface_configuration: Option<InterfaceConfiguration>,
     wgapi: Box<dyn WireguardInterfaceApi + Send + Sync + 'static>,
     pub connected: Arc<AtomicBool>,
@@ -75,7 +73,6 @@ pub struct Gateway {
 
 impl Gateway {
     pub fn new(
-        // config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
     ) -> Result<Self, GatewayError> {
         Ok(Self {
@@ -129,7 +126,7 @@ impl Gateway {
     }
 
     /// Send message to all connected clients.
-    pub fn broadcast_to_clients(&self, message: CoreRequest) {
+    pub fn broadcast_to_clients(&self, message: &CoreRequest) {
         for (addr, tx) in &self.clients {
             if tx.send(Ok(message.clone())).is_err() {
                 debug!("Failed to send message to {addr}");
@@ -153,15 +150,6 @@ impl Gateway {
     //         },
     //     );
     //     debug!("Finished get_config()");
-    // }
-
-    // fn setup_client(
-    //     config: &Config,
-    // ) -> Result<GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>, GatewayError>
-    // {
-    // ...
-    //     let auth_interceptor = AuthInterceptor::new(&config.token)?;
-    //     let client = GatewayServiceClient::with_interceptor(channel, auth_interceptor);
     // }
 
     fn handle_update(&mut self, update: Update) {
@@ -235,10 +223,10 @@ impl GatewayServer {
         }
 
         // self.get_config();
-        // if let Some(post_up) = &self.config.post_up {
-        //     debug!("Executing specified post-up command: {post_up}");
-        //     execute_command(post_up)?;
-        // }
+        if let Some(post_up) = &config.post_up {
+            debug!("Executing specified post-up command: {post_up}");
+            execute_command(post_up)?;
+        }
 
         // Optionally, read gRPC TLS certificate and key.
         debug!("Configuring certificates for gRPC");
@@ -264,9 +252,12 @@ impl GatewayServer {
 
         // Start gRPC server. This should run indefinitely.
         debug!("Serving gRPC");
+        let auth_interceptor = AuthInterceptor::new(&config.token)?;
         builder
-            .add_service(gateway_server::GatewayServer::new(self))
-            // TODO: .layer(interceptor(auth_interceptor))
+            .add_service(gateway_server::GatewayServer::with_interceptor(
+                self,
+                auth_interceptor,
+            ))
             .serve(addr)
             .await?;
 
@@ -346,14 +337,12 @@ impl gateway_server::Gateway for GatewayServer {
 
 /// Gather WireGuard statistics and send them to core via gRPC.
 pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result<(), GatewayError> {
-    // let period = Duration::from_secs(gateway.lock().unwrap().config.stats_period);
-    // helper map to track if peer data is actually changing
-    // and avoid sending duplicate stats
+    // Helper map to track if peer data is actually changing to avoid sending duplicate stats.
     let mut peer_map = HashMap::new();
     let mut interval = interval(period);
     let mut id = 1;
     loop {
-        // wait until next iteration
+        // Wait until next iteration.
         interval.tick().await;
 
         debug!("Sending active peer statistics update.");
@@ -380,7 +369,7 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
                             payload: Some(payload),
                         };
                         id += 1;
-                        gateway.lock().unwrap().broadcast_to_clients(message);
+                        gateway.lock().unwrap().broadcast_to_clients(&message);
                     } else {
                         debug!(
                             "Stats for peer {} have not changed. Skipping.",

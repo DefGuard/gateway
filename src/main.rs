@@ -22,10 +22,10 @@ use defguard_gateway::{
 
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
-    // parse config
+    // Parse configuration.
     let config = get_config()?;
 
-    // setup pidfile
+    // Get process ID.
     let pid = process::id();
 
     if let Some(pidfile) = &config.pidfile {
@@ -33,7 +33,7 @@ async fn main() -> Result<(), GatewayError> {
         file.write_all(pid.to_string().as_bytes())?;
     }
 
-    // setup logging
+    // Setup logging.
     if config.use_syslog {
         if let Err(error) = init_syslog(&config, pid) {
             log::error!("Unable to initialize syslog. Is the syslog daemon running?");
@@ -64,14 +64,20 @@ async fn main() -> Result<(), GatewayError> {
             return Ok(());
         }
     };
+
+    // Keep track of spawned tasks.
     let mut tasks = JoinSet::new();
+
+    // Optionally, launch HTTP server to report gateway's health.
     if let Some(health_port) = config.health_port {
         tasks.spawn(run_server(health_port, Arc::clone(&gateway.connected)));
     }
 
+    // Launch statistics gathering task.
     let gateway = Arc::new(Mutex::new(gateway));
     tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
 
+    // Launch gRPC server.
     let gateway_server = GatewayServer::new(gateway);
     tasks.spawn(gateway_server.start(config.clone()));
 

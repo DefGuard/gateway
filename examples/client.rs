@@ -100,7 +100,7 @@ async fn cli(config_tx: Sender<HostConfig>) {
                 "?" | "help" => print_help(),
                 "a" | "addr" => {
                     let Some(arg) = token_iter.next() else {
-                        eprint!("missing argument");
+                        eprintln!("missing argument");
                         continue;
                     };
                     if let Ok(ipaddr) = arg.parse() {
@@ -111,7 +111,7 @@ async fn cli(config_tx: Sender<HostConfig>) {
                 }
                 "c" | "peer" => {
                     let Some(arg) = token_iter.next() else {
-                        eprint!("missing argument");
+                        eprintln!("missing argument");
                         continue;
                     };
                     if let Ok(key) = Key::try_from(arg) {
@@ -138,7 +138,7 @@ async fn cli(config_tx: Sender<HostConfig>) {
                 }
                 "d" | "del" => {
                     let Some(arg) = token_iter.next() else {
-                        eprint!("missing argument");
+                        eprintln!("missing argument");
                         continue;
                     };
                     if let Ok(key) = Key::try_from(arg) {
@@ -168,7 +168,7 @@ async fn cli(config_tx: Sender<HostConfig>) {
                 }
                 "k" | "key" => {
                     let Some(arg) = token_iter.next() else {
-                        eprint!("missing argument");
+                        eprintln!("missing argument");
                         continue;
                     };
                     if let Ok(key) = Key::try_from(arg) {
@@ -179,7 +179,7 @@ async fn cli(config_tx: Sender<HostConfig>) {
                 }
                 "p" | "port" => {
                     let Some(arg) = token_iter.next() else {
-                        eprint!("missing argument");
+                        eprintln!("missing argument");
                         continue;
                     };
                     if let Ok(port) = arg.parse() {
