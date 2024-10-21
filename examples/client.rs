@@ -1,6 +1,9 @@
 use std::{
     io::{stdout, Write},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
     time::Duration,
 };
 
@@ -27,31 +30,30 @@ struct HostConfig {
     host: Host,
 }
 
+/// Shared trasmission channel for both CLI and gRPC client to communicate with gateway.
 static STREAM_TX: Mutex<Option<UnboundedSender<proto::CoreResponse>>> = Mutex::new(None);
+static MESSAGE_ID: AtomicU64 = AtomicU64::new(0);
 
-// impl GatewayServer {
-//     pub fn new(config_rx: Receiver<HostConfig>, clients: Arc<Mutex<ClientMap>>) -> Self {
-//         // watch for changes in host configuration
-//         let task_clients = clients.clone();
-//         let mut task_config_rx = config_rx.clone();
-//         tokio::spawn(async move {
-//             while task_config_rx.changed().await.is_ok() {
-//                 let config = (&*task_config_rx.borrow()).into();
-//                 let update = proto::Update {
-//                     update_type: proto::UpdateType::Modify as i32,
-//                     update: Some(proto::update::Update::Network(config)),
-//                 };
-//                 task_clients.lock().unwrap().retain(
-//                     move |_addr, tx: &mut UnboundedSender<Result<proto::Update, Status>>| {
-//                         tx.send(Ok(update.clone())).is_ok()
-//                     },
-//                 );
-//             }
-//         });
+/// Watcher for config changes, which sends changes over gRPC.
+async fn handle_changes(mut config_rx: Receiver<HostConfig>) {
+    while config_rx.changed().await.is_ok() {
+        eprintln!("Sending changes");
+        if let Some(tx) = &*STREAM_TX.lock().unwrap() {
+            let config = (&*config_rx.borrow()).into();
+            let update = proto::Update {
+                update_type: proto::UpdateType::Modify as i32,
+                update: Some(proto::update::Update::Network(config)),
+            };
 
-//         Self { config_rx, clients }
-//     }
-// }
+            let payload = Some(proto::core_response::Payload::Update(update));
+            let id = MESSAGE_ID.fetch_add(1, Ordering::Relaxed);
+            let req = proto::CoreResponse { id, payload };
+            tx.send(req).unwrap();
+        } else {
+            eprintln!("Failed to obtain a lock for mutex/sender");
+        }
+    }
+}
 
 impl From<&HostConfig> for proto::Configuration {
     fn from(host_config: &HostConfig) -> Self {
@@ -70,44 +72,6 @@ impl From<&HostConfig> for proto::Configuration {
     }
 }
 
-// #[tonic::async_trait]
-// impl proto::gateway_service_server::GatewayService for GatewayServer {
-//     type UpdatesStream = UnboundedReceiverStream<Result<proto::Update, Status>>;
-
-//     async fn config(
-//         &self,
-//         request: Request<proto::ConfigurationRequest>,
-//     ) -> Result<Response<proto::Configuration>, Status> {
-//         let address = request.remote_addr().unwrap();
-//         eprintln!("CONFIG connected from: {address}");
-//         Ok(Response::new((&*self.config_rx.borrow()).into()))
-//     }
-
-//     async fn stats(
-//         &self,
-//         request: Request<Streaming<proto::StatsUpdate>>,
-//     ) -> Result<Response<()>, Status> {
-//         let address = request.remote_addr().unwrap();
-//         eprintln!("STATS connected from: {address}");
-
-//         let mut stream = request.into_inner();
-//         while let Some(peer_stats) = stream.message().await? {
-//             eprintln!("STATS {:?}", peer_stats);
-//         }
-//         Ok(Response::new(()))
-//     }
-
-//     async fn updates(&self, request: Request<()>) -> Result<Response<Self::UpdatesStream>, Status> {
-//         let address = request.remote_addr().unwrap();
-//         eprintln!("UPDATES connected from: {address}");
-
-//         let (tx, rx) = mpsc::unbounded_channel();
-//         self.clients.lock().unwrap().insert(address, tx);
-
-//         Ok(Response::new(UnboundedReceiverStream::new(rx)))
-//     }
-// }
-
 fn print_help() {
     println!(
         "?|help - print this help\n\
@@ -121,6 +85,7 @@ fn print_help() {
     );
 }
 
+/// Command line command handler.
 async fn cli(config_tx: Sender<HostConfig>) {
     let mut stdin = BufReader::new(tokio::io::stdin());
     print_help();
@@ -134,81 +99,93 @@ async fn cli(config_tx: Sender<HostConfig>) {
             match keyword {
                 "?" | "help" => print_help(),
                 "a" | "addr" => {
-                    if let Some(address) = token_iter.next() {
-                        if let Ok(ipaddr) = address.parse() {
-                            config_tx.send_modify(|config| config.address = ipaddr);
-                        } else {
-                            eprintln!("Parse error");
-                        }
+                    let Some(arg) = token_iter.next() else {
+                        eprint!("missing argument");
+                        continue;
+                    };
+                    if let Ok(ipaddr) = arg.parse() {
+                        config_tx.send_modify(|config| config.address = ipaddr);
+                    } else {
+                        eprintln!("Parse error");
                     }
                 }
                 "c" | "peer" => {
-                    if let Some(key) = token_iter.next() {
-                        if let Ok(key) = Key::try_from(key) {
-                            let peer = Peer::new(key.clone());
-                            // Try to send
-                            if let Some(tx) = &*STREAM_TX.lock().unwrap() {
-                                let update = proto::Update {
-                                    update_type: proto::UpdateType::Create as i32,
-                                    update: Some(proto::update::Update::Peer((&peer).into())),
-                                };
-                                let payload = Some(proto::core_response::Payload::Update(update));
-                                let req = proto::CoreResponse { id: 0, payload };
-                                tx.send(req).unwrap();
-                            }
-                            // modify HostConfig, but do not notify the receiver
-                            config_tx.send_if_modified(|config| {
-                                config.host.peers.insert(key, peer);
-                                false
-                            });
-                        } else {
-                            eprintln!("Parse error");
+                    let Some(arg) = token_iter.next() else {
+                        eprint!("missing argument");
+                        continue;
+                    };
+                    if let Ok(key) = Key::try_from(arg) {
+                        let peer = Peer::new(key.clone());
+                        // Try to send
+                        if let Some(tx) = &*STREAM_TX.lock().unwrap() {
+                            let update = proto::Update {
+                                update_type: proto::UpdateType::Create as i32,
+                                update: Some(proto::update::Update::Peer((&peer).into())),
+                            };
+                            let payload = Some(proto::core_response::Payload::Update(update));
+                            let id = MESSAGE_ID.fetch_add(1, Ordering::Relaxed);
+                            let req = proto::CoreResponse { id, payload };
+                            tx.send(req).unwrap();
                         }
+                        // modify HostConfig, but do not notify the receiver
+                        config_tx.send_if_modified(|config| {
+                            config.host.peers.insert(key, peer);
+                            false
+                        });
+                    } else {
+                        eprintln!("Parse error");
                     }
                 }
                 "d" | "del" => {
-                    if let Some(key) = token_iter.next() {
-                        if let Ok(key) = Key::try_from(key) {
-                            let peer = Peer::new(key);
-                            // Try to send
-                            if let Some(tx) = &*STREAM_TX.lock().unwrap() {
-                                let update = proto::Update {
-                                    update_type: proto::UpdateType::Delete as i32,
-                                    update: Some(proto::update::Update::Peer((&peer).into())),
-                                };
-                                let payload = Some(proto::core_response::Payload::Update(update));
-                                let req = proto::CoreResponse { id: 0, payload };
-                                tx.send(req).unwrap();
-                            }
-                            // modify HostConfig, but do not notify the receiver
-                            config_tx.send_if_modified(|config| {
-                                config
-                                    .host
-                                    .peers
-                                    .retain(|public_key, _| public_key != &peer.public_key);
-                                false
-                            });
-                        } else {
-                            eprintln!("Parse error");
+                    let Some(arg) = token_iter.next() else {
+                        eprint!("missing argument");
+                        continue;
+                    };
+                    if let Ok(key) = Key::try_from(arg) {
+                        let peer = Peer::new(key);
+                        // Try to send
+                        if let Some(tx) = &*STREAM_TX.lock().unwrap() {
+                            let update = proto::Update {
+                                update_type: proto::UpdateType::Delete as i32,
+                                update: Some(proto::update::Update::Peer((&peer).into())),
+                            };
+                            let payload = Some(proto::core_response::Payload::Update(update));
+                            let id = MESSAGE_ID.fetch_add(1, Ordering::Relaxed);
+                            let req = proto::CoreResponse { id, payload };
+                            tx.send(req).unwrap();
                         }
+                        // modify HostConfig, but do not notify the receiver
+                        config_tx.send_if_modified(|config| {
+                            config
+                                .host
+                                .peers
+                                .retain(|public_key, _| public_key != &peer.public_key);
+                            false
+                        });
+                    } else {
+                        eprintln!("Parse error");
                     }
                 }
                 "k" | "key" => {
-                    if let Some(key) = token_iter.next() {
-                        if let Ok(key) = Key::try_from(key) {
-                            config_tx.send_modify(|config| config.host.private_key = Some(key));
-                        } else {
-                            eprintln!("Parse error");
-                        }
+                    let Some(arg) = token_iter.next() else {
+                        eprint!("missing argument");
+                        continue;
+                    };
+                    if let Ok(key) = Key::try_from(arg) {
+                        config_tx.send_modify(|config| config.host.private_key = Some(key));
+                    } else {
+                        eprintln!("Parse error");
                     }
                 }
                 "p" | "port" => {
-                    if let Some(port) = token_iter.next() {
-                        if let Ok(port) = port.parse() {
-                            config_tx.send_modify(|config| config.host.listen_port = port);
-                        } else {
-                            eprintln!("Parse error");
-                        }
+                    let Some(arg) = token_iter.next() else {
+                        eprint!("missing argument");
+                        continue;
+                    };
+                    if let Ok(port) = arg.parse() {
+                        config_tx.send_modify(|config| config.host.listen_port = port);
+                    } else {
+                        eprintln!("Parse error");
                     }
                 }
                 "q" | "quit" => break,
@@ -220,6 +197,7 @@ async fn cli(config_tx: Sender<HostConfig>) {
 
 const TEN_SECS: Duration = Duration::from_secs(10);
 
+/// Client side for gRPC communication.
 async fn grpc_client(config_rx: Receiver<HostConfig>) -> Result<(), tonic::transport::Error> {
     let endpoint = Endpoint::from_static("http://localhost:50066");
     let endpoint = endpoint
@@ -244,7 +222,8 @@ async fn grpc_client(config_rx: Receiver<HostConfig>) -> Result<(), tonic::trans
         eprintln!("Sending configuration");
         let config = (&*config_rx.borrow()).into();
         let payload = Some(proto::core_response::Payload::Config(config));
-        let req = proto::CoreResponse { id: 0, payload };
+        let id = MESSAGE_ID.fetch_add(1, Ordering::Relaxed);
+        let req = proto::CoreResponse { id, payload };
         tx.send(req).unwrap();
 
         'message: loop {
@@ -298,8 +277,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let (config_tx, config_rx) = watch::channel(configuration);
     tokio::select! {
-        _ = grpc_client(config_rx) => eprintln!("gRPC client completed"),
-        () = cli(config_tx) => eprintln!("CLI completed")
+        _ = grpc_client(config_rx.clone()) => eprintln!("gRPC client completed"),
+        () = cli(config_tx) => eprintln!("CLI completed"),
+        () = handle_changes(config_rx) => eprintln!("Changes handler completed"),
     };
 
     Ok(())

@@ -6,10 +6,11 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
+    time::{Duration, SystemTime},
 };
 
 use gethostname::gethostname;
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{sync::mpsc, time::interval};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     codegen::InterceptedService,
@@ -64,102 +65,27 @@ impl Interceptor for AuthInterceptor {
 type ClientMap = HashMap<SocketAddr, mpsc::UnboundedSender<Result<CoreRequest, Status>>>;
 
 pub struct Gateway {
-    config: Config,
+    // config: Config,
     interface_configuration: Option<InterfaceConfiguration>,
-    wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
+    wgapi: Box<dyn WireguardInterfaceApi + Send + Sync + 'static>,
     pub connected: Arc<AtomicBool>,
-    stats_thread_handle: Option<JoinHandle<()>>,
     // TODO: allow only one client.
-    // clients: Arc<Mutex<ClientMap>>,
+    pub(super) clients: ClientMap,
 }
 
 impl Gateway {
     pub fn new(
-        config: Config,
+        // config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
     ) -> Result<Self, GatewayError> {
         Ok(Self {
-            config,
+            // config,
             interface_configuration: None,
-            wgapi: Arc::new(Mutex::new(wgapi)),
+            wgapi: Box::new(wgapi),
             connected: Arc::new(AtomicBool::new(false)),
-            stats_thread_handle: None,
-            // clients: Arc::new(Mutex::new(ClientMap::new())),
+            clients: ClientMap::new(),
         })
     }
-
-    /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
-    // fn spawn_stats_thread(&mut self) {
-    //     let mut client = self.client.clone();
-    //     // Create an async stream that periodically yields WireGuard interface statistics.
-    //     let period = Duration::from_secs(self.config.stats_period);
-    //     let wgapi = Arc::clone(&self.wgapi);
-    //     let (tx, rx) = mpsc::unbounded_channel();
-    //     debug!("Spawning stats thread");
-    //     spawn(async move {
-    //         // helper map to track if peer data is actually changing
-    //         // and avoid sending duplicate stats
-    //         let mut peer_map = HashMap::new();
-    //         let mut interval = interval(period);
-    //         let mut id = 1;
-    //         loop {
-    //             // wait until next iteration
-    //             interval.tick().await;
-    //             let mut payload = Payload::Empty(());
-
-    //             debug!("Sending active peer stats update.");
-    //             match wgapi.lock().unwrap().read_interface_data() {
-    //                 Ok(host) => {
-    //                     let peers = host.peers;
-    //                     debug!(
-    //                         "Found {} peers configured on WireGuard interface",
-    //                         peers.len()
-    //                     );
-    //                     for peer in peers.into_values().filter(|p| {
-    //                         p.last_handshake
-    //                             .map_or(false, |lhs| lhs != SystemTime::UNIX_EPOCH)
-    //                     }) {
-    //                         let has_changed = match peer_map.get(&peer.public_key) {
-    //                             Some(last_peer) => *last_peer != peer,
-    //                             None => true,
-    //                         };
-    //                         if has_changed {
-    //                             peer_map.insert(peer.public_key.clone(), peer.clone());
-    //                             payload = Payload::PeerStats((&peer).into());
-    //                         } else {
-    //                             debug!(
-    //                                 "Stats for peer {} have not changed. Skipping.",
-    //                                 peer.public_key
-    //                             );
-    //                         }
-    //                     }
-    //                 }
-    //                 Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
-    //             }
-
-    //             id += 1;
-    //             if tx
-    //                 .send(StatsUpdate {
-    //                     id,
-    //                     payload: Some(payload),
-    //                 })
-    //                 .is_err()
-    //             {
-    //                 debug!("Stats stream disappeared");
-    //                 break;
-    //             }
-    //         }
-    //     });
-
-    //     self.stats_thread_handle = Some(spawn(async move {
-    //         let status = client.stats(UnboundedReceiverStream::new(rx)).await;
-    //         match status {
-    //             Ok(_) => info!("Stats thread terminated successfully."),
-    //             Err(err) => error!("Stats thread terminated with error: {err}"),
-    //         }
-    //     }));
-    //     info!("Stats thread spawned.");
-    // }
 
     /// Performs complete interface reconfiguration based on `Configuration` object.
     /// Called when gateway (re)connects to gRPC endpoint and retrieves complete
@@ -184,8 +110,6 @@ impl Gateway {
 
         match self
             .wgapi
-            .lock()
-            .unwrap()
             .configure_interface(&new_configuration.clone().into())
         {
             Ok(()) => {
@@ -204,60 +128,14 @@ impl Gateway {
         self.interface_configuration = Some(new_configuration.into());
     }
 
-    // Continuously tries to connect to gRPC endpoint. Once the connection is established
-    // configures the interface, starts the stats thread, connects and returns the updates stream.
-    // async fn connect(&mut self) -> Result<Streaming<Update>, GatewayError> {
-    //     // set diconnected if we are in this function and drop mutex
-    //     self.connected.store(false, Ordering::Relaxed);
-    //     loop {
-    //         debug!(
-    //             "Connecting to Defguard gRPC endpoint: {}",
-    //             self.config.grpc_url
-    //         );
-    //         let (response, stream) = {
-    //             let response = self
-    //                 .client
-    //                 .config(ConfigurationRequest {
-    //                     name: self.config.name.clone(),
-    //                 })
-    //                 .await;
-    //             let stream = self.client.updates(()).await;
-    //             (response, stream)
-    //         };
-    //         match (response, stream) {
-    //             (Ok(response), Ok(stream)) => {
-    //                 if let Err(err) = self.configure(response.into_inner()) {
-    //                     error!("Interface configuration failed: {err}");
-    //                     continue;
-    //                 }
-    //                 if self
-    //                     .stats_thread_handle
-    //                     .as_ref()
-    //                     .is_some_and(|handle| !handle.is_finished())
-    //                 {
-    //                     debug!("Stats thread already running. Not starting a new one.");
-    //                 } else {
-    //                     self.spawn_stats_thread();
-    //                 }
-    //                 info!(
-    //                     "Connected to Defguard gRPC endpoint: {}",
-    //                     self.config.grpc_url
-    //                 );
-    //                 self.connected.store(true, Ordering::Relaxed);
-    //                 break Ok(stream.into_inner());
-    //             }
-    //             (Err(err), _) => {
-    //                 error!("Couldn't retrieve gateway configuration from the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
-    //                 self.config.grpc_url);
-    //             }
-    //             (_, Err(err)) => {
-    //                 error!("Couldn't establish streaming connection to the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
-    //                 self.config.grpc_url);
-    //             }
-    //         }
-    //         sleep(TEN_SECS).await;
-    //     }
-    // }
+    /// Send message to all connected clients.
+    pub fn broadcast_to_clients(&self, message: CoreRequest) {
+        for (addr, tx) in &self.clients {
+            if tx.send(Ok(message.clone())).is_err() {
+                debug!("Failed to send message to {addr}");
+            }
+        }
+    }
 
     // fn get_config(&self) {
     //     info!("Trying to obtain gateway configuration from core.");
@@ -299,7 +177,7 @@ impl Gateway {
                     if update.update_type == UpdateType::Delete as i32 {
                         debug!("Deleting peer {peer_config:?}");
                         if_config.peers.remove(&peer_config.pubkey);
-                        if let Err(err) = self.wgapi.lock().unwrap().remove_peer(
+                        if let Err(err) = self.wgapi.remove_peer(
                             &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
                         ) {
                             error!("Failed to delete peer: {err}");
@@ -314,12 +192,7 @@ impl Gateway {
                         if_config
                             .peers
                             .insert(peer_config.pubkey.clone(), peer_config.clone());
-                        if let Err(err) = self
-                            .wgapi
-                            .lock()
-                            .unwrap()
-                            .configure_peer(&peer_config.into())
-                        {
+                        if let Err(err) = self.wgapi.configure_peer(&peer_config.into()) {
                             error!("Failed to update peer: {err}");
                         }
                     }
@@ -334,17 +207,12 @@ impl Gateway {
 
 pub struct GatewayServer {
     gateway: Arc<Mutex<Gateway>>,
-    // TODO: allow only one client.
-    clients: Arc<Mutex<ClientMap>>,
 }
 
 impl GatewayServer {
     #[must_use]
-    pub fn new(gateway: Gateway) -> Self {
-        Self {
-            gateway: Arc::new(Mutex::new(gateway)),
-            clients: Arc::new(Mutex::new(ClientMap::new())),
-        }
+    pub fn new(gateway: Arc<Mutex<Gateway>>) -> Self {
+        Self { gateway }
     }
 
     /// Starts the gateway process.
@@ -359,21 +227,20 @@ impl GatewayServer {
 
         // Try to create network interface for WireGuard.
         // FIXME: check if the interface already exists, or somehow be more clever.
-        // if let Err(err) = self.wgapi.lock().unwrap().create_interface() {
-        //     warn!(
-        //         "Couldn't create network interface {}: {err}. Proceeding anyway.",
-        //         self.config.ifname
-        //     );
-        // }
+        if let Err(err) = self.gateway.lock().unwrap().wgapi.create_interface() {
+            warn!(
+                "Couldn't create network interface {}: {err}. Proceeding anyway.",
+                config.ifname
+            );
+        }
 
-        // let mut updates_stream = self.connect().await?;
         // self.get_config();
         // if let Some(post_up) = &self.config.post_up {
         //     debug!("Executing specified post-up command: {post_up}");
         //     execute_command(post_up)?;
         // }
 
-        // read gRPC TLS cert and key
+        // Optionally, read gRPC TLS certificate and key.
         debug!("Configuring certificates for gRPC");
         let grpc_cert = config
             .grpc_cert
@@ -423,10 +290,9 @@ impl gateway_server::Gateway for GatewayServer {
         info!("Defguard core RPC client connected from: {address}");
 
         let (tx, rx) = mpsc::unbounded_channel();
-        self.clients.lock().unwrap().insert(address, tx);
+        self.gateway.lock().unwrap().clients.insert(address, tx);
 
         let gateway = Arc::clone(&self.gateway);
-        let clients = Arc::clone(&self.clients);
         let mut stream = request.into_inner();
         tokio::spawn(async move {
             loop {
@@ -456,24 +322,74 @@ impl gateway_server::Gateway for GatewayServer {
                         }
                     }
                     Ok(None) => {
-                        info!("gRPC stream has been closed");
+                        info!("gRPC stream from Defguard core has been closed");
                         break;
                     }
                     Err(err) => {
-                        error!("gRPC client error: {err}");
+                        error!("gRPC stream from Defguard core failed with error: {err}");
                         break;
                     }
                 }
             }
-            info!("Defguard core client disconnected: {address}");
+            info!("Defguard core gRPC stream has been disconnected: {address}");
             gateway
                 .lock()
                 .unwrap()
                 .connected
                 .store(false, Ordering::Relaxed);
-            clients.lock().unwrap().remove(&address);
+            gateway.lock().unwrap().clients.remove(&address);
         });
 
         Ok(Response::new(UnboundedReceiverStream::new(rx)))
+    }
+}
+
+/// Gather WireGuard statistics and send them to core via gRPC.
+pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result<(), GatewayError> {
+    // let period = Duration::from_secs(gateway.lock().unwrap().config.stats_period);
+    // helper map to track if peer data is actually changing
+    // and avoid sending duplicate stats
+    let mut peer_map = HashMap::new();
+    let mut interval = interval(period);
+    let mut id = 1;
+    loop {
+        // wait until next iteration
+        interval.tick().await;
+
+        debug!("Sending active peer statistics update.");
+        match gateway.lock().unwrap().wgapi.read_interface_data() {
+            Ok(host) => {
+                let peers = host.peers;
+                debug!(
+                    "Found {} peers configured on WireGuard interface",
+                    peers.len()
+                );
+                for peer in peers.into_values().filter(|p| {
+                    p.last_handshake
+                        .map_or(false, |last_hs| last_hs != SystemTime::UNIX_EPOCH)
+                }) {
+                    let has_changed = match peer_map.get(&peer.public_key) {
+                        Some(last_peer) => *last_peer != peer,
+                        None => true,
+                    };
+                    if has_changed {
+                        peer_map.insert(peer.public_key.clone(), peer.clone());
+                        let payload = core_request::Payload::PeerStats((&peer).into());
+                        let message = CoreRequest {
+                            id,
+                            payload: Some(payload),
+                        };
+                        id += 1;
+                        gateway.lock().unwrap().broadcast_to_clients(message);
+                    } else {
+                        debug!(
+                            "Stats for peer {} have not changed. Skipping.",
+                            peer.public_key
+                        );
+                    }
+                }
+            }
+            Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
+        }
     }
 }

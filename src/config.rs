@@ -1,4 +1,4 @@
-use std::fs::read_to_string;
+use std::{fs::read_to_string, time::Duration};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -86,6 +86,13 @@ pub struct Config {
     /// 503 - gateway works but is not connected to CORE
     #[arg(long, env = "HEALTH_PORT")]
     pub health_port: Option<u16>,
+}
+
+impl Config {
+    #[must_use]
+    pub fn stats_period(&self) -> Duration {
+        Duration::from_secs(self.stats_period)
+    }
 }
 
 #[cfg(test)]
