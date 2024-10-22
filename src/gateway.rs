@@ -345,14 +345,16 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
         // Wait until next iteration.
         interval.tick().await;
 
-        debug!("Sending active peer statistics update.");
-        match gateway.lock().unwrap().wgapi.read_interface_data() {
+        debug!("Obtaining peer statistics from WireGuard");
+        let result = gateway.lock().unwrap().wgapi.read_interface_data();
+        match result {
             Ok(host) => {
                 let peers = host.peers;
                 debug!(
                     "Found {} peers configured on WireGuard interface",
                     peers.len()
                 );
+                // Filter out never connected peers.
                 for peer in peers.into_values().filter(|p| {
                     p.last_handshake
                         .map_or(false, |last_hs| last_hs != SystemTime::UNIX_EPOCH)
@@ -370,15 +372,16 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
                         };
                         id += 1;
                         gateway.lock().unwrap().broadcast_to_clients(&message);
+                        debug!("Sent statistics for peer {}", peer.public_key);
                     } else {
                         debug!(
-                            "Stats for peer {} have not changed. Skipping.",
+                            "Statistics for peer {} have not changed. Skipping.",
                             peer.public_key
                         );
                     }
                 }
             }
-            Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
+            Err(err) => error!("Failed to retrieve WireGuard interface statistics: {err}"),
         }
     }
 }
