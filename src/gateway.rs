@@ -3,7 +3,7 @@ use std::{
     fs::read_to_string,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
     time::{Duration, SystemTime},
@@ -13,8 +13,6 @@ use gethostname::gethostname;
 use tokio::{sync::mpsc, time::interval};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
-    metadata::{Ascii, MetadataValue},
-    service::Interceptor,
     transport::{Identity, Server, ServerTlsConfig},
     Request, Response, Status, Streaming,
 };
@@ -24,42 +22,13 @@ use crate::{
     error::GatewayError,
     execute_command, mask,
     proto::{
-        core_request, core_response, gateway_server, update, Configuration, CoreRequest,
-        CoreResponse, Update, UpdateType,
+        core_request, core_response, gateway_server, update, Configuration, ConfigurationRequest,
+        CoreRequest, CoreResponse, Update, UpdateType,
     },
     state::InterfaceConfiguration,
     VERSION,
 };
 use defguard_wireguard_rs::WireguardInterfaceApi;
-
-#[derive(Clone)]
-struct AuthInterceptor {
-    hostname: MetadataValue<Ascii>,
-    token: MetadataValue<Ascii>,
-}
-
-impl AuthInterceptor {
-    fn new(token: &str) -> Result<Self, GatewayError> {
-        let token = MetadataValue::try_from(token)?;
-        let hostname = MetadataValue::try_from(
-            gethostname()
-                .to_str()
-                .expect("Unable to get current hostname during gRPC connection setup."),
-        )?;
-
-        Ok(Self { hostname, token })
-    }
-}
-
-impl Interceptor for AuthInterceptor {
-    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
-        let metadata = request.metadata_mut();
-        metadata.insert("authorization", self.token.clone());
-        metadata.insert("hostname", self.hostname.clone());
-
-        Ok(request)
-    }
-}
 
 type ClientMap = HashMap<SocketAddr, mpsc::UnboundedSender<Result<CoreRequest, Status>>>;
 
@@ -76,7 +45,6 @@ impl Gateway {
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
     ) -> Result<Self, GatewayError> {
         Ok(Self {
-            // config,
             interface_configuration: None,
             wgapi: Box::new(wgapi),
             connected: Arc::new(AtomicBool::new(false)),
@@ -134,24 +102,6 @@ impl Gateway {
         }
     }
 
-    // fn get_config(&self) {
-    //     info!("Trying to obtain gateway configuration from core.");
-    //     self.clients.lock().unwrap().retain(
-    //         move |addr, tx: &mut UnboundedSender<Result<proto::CoreRequest, Status>>| {
-    //             eprintln!("Sending peer update to {addr}");
-    //             let payload = ConfigurationRequest {
-    //                 name: self.config.name.clone(),
-    //             };
-    //             let req = CoreRequest {
-    //                 id: 1, // FIXME: count IDs
-    //                 payload: Some(core_request::Payload::ConfigRequest(payload)),
-    //             };
-    //             tx.send(Ok(req)).is_ok()
-    //         },
-    //     );
-    //     debug!("Finished get_config()");
-    // }
-
     fn handle_update(&mut self, update: Update) {
         debug!("Received update: {update:?}");
         match update.update {
@@ -194,13 +144,19 @@ impl Gateway {
 }
 
 pub struct GatewayServer {
+    auth_token: String,
+    message_id: AtomicU64,
     gateway: Arc<Mutex<Gateway>>,
 }
 
 impl GatewayServer {
     #[must_use]
-    pub fn new(gateway: Arc<Mutex<Gateway>>) -> Self {
-        Self { gateway }
+    pub fn new(auth_token: String, gateway: Arc<Mutex<Gateway>>) -> Self {
+        Self {
+            auth_token,
+            message_id: AtomicU64::new(0),
+            gateway,
+        }
     }
 
     /// Starts the gateway process.
@@ -252,12 +208,8 @@ impl GatewayServer {
 
         // Start gRPC server. This should run indefinitely.
         debug!("Serving gRPC");
-        let auth_interceptor = AuthInterceptor::new(&config.token)?;
         builder
-            .add_service(gateway_server::GatewayServer::with_interceptor(
-                self,
-                auth_interceptor,
-            ))
+            .add_service(gateway_server::GatewayServer::new(self))
             .serve(addr)
             .await?;
 
@@ -278,9 +230,32 @@ impl gateway_server::Gateway for GatewayServer {
             error!("Failed to determine client address for request: {request:?}");
             return Err(Status::internal("Failed to determine client address"));
         };
-        info!("Defguard core RPC client connected from: {address}");
+        info!("Defguard core gRPC client connected from {address}");
 
         let (tx, rx) = mpsc::unbounded_channel();
+        // First, send configuration request
+        if let Ok(hostname) = gethostname().into_string() {
+            let payload = ConfigurationRequest {
+                auth_token: self.auth_token.clone(),
+                hostname,
+            };
+            let req = CoreRequest {
+                id: self.message_id.fetch_add(1, Ordering::Relaxed),
+                payload: Some(core_request::Payload::ConfigRequest(payload)),
+            };
+
+            match tx.send(Ok(req)) {
+                Ok(()) => info!("Requesting network configuration from {address}"),
+                Err(err) => {
+                    error!("Unable to send network configuration request to {address}: {err}");
+                    return Err(Status::internal("failed to send configuration request"));
+                }
+            }
+        } else {
+            error!("Unable to get hostname");
+            return Err(Status::internal("failed to get hostname"));
+        }
+
         self.gateway.lock().unwrap().clients.insert(address, tx);
 
         let gateway = Arc::clone(&self.gateway);

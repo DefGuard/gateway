@@ -18,7 +18,7 @@ pub struct Config {
         env = "DEFGUARD_TOKEN",
         default_value = ""
     )]
-    pub(crate) token: String,
+    pub token: String,
 
     #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
     pub(crate) name: Option<String>,

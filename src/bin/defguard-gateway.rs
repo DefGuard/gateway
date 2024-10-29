@@ -78,7 +78,7 @@ async fn main() -> Result<(), GatewayError> {
     tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
 
     // Launch gRPC server.
-    let gateway_server = GatewayServer::new(gateway);
+    let gateway_server = GatewayServer::new(config.token.clone(), gateway);
     tasks.spawn(gateway_server.start(config.clone()));
 
     // Await the tasks.
