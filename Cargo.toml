@@ -1,10 +1,9 @@
 [package]
 name = "defguard-gateway"
-version = "0.7.2"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
-async-stream = "0.3"
 axum = { version = "0.7", features = ["macros"] }
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = [
@@ -12,7 +11,7 @@ chrono = { version = "0.4", default-features = false, features = [
     "std",
 ] }
 clap = { version = "4.5", features = ["derive", "env"] }
-defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", rev = "v0.4.7" }
+defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", rev = "v0.5.0" }
 env_logger = "0.11"
 gethostname = "0.5"
 log = "0.4"
@@ -32,6 +31,7 @@ x25519-dalek = { version = "2.0", features = ["getrandom", "static_secrets"] }
 [build-dependencies]
 prost-build = { version = "0.13" }
 tonic-build = { version = "0.12" }
+vergen-git2 = { version = "1.0", features = ["build"] }
 
 [profile.release]
 lto = "thin"

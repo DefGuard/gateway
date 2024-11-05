@@ -17,7 +17,7 @@ use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration}
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
 
-pub static VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("VERGEN_GIT_SHA"));
 
 /// Masks object's field with "***" string.
 /// Used to log sensitive/secret objects.

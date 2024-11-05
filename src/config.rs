@@ -7,10 +7,10 @@ use toml;
 use crate::error::GatewayError;
 
 #[derive(Debug, Parser, Clone, Deserialize)]
-#[clap(about = "defguard VPN gateway service")]
+#[clap(about = "Defguard VPN gateway service")]
 #[command(version)]
 pub struct Config {
-    /// Token received from defguard after completing the network wizard
+    /// Token received from Defguard after completing the network wizard
     #[arg(
         long,
         short = 't',
@@ -40,7 +40,7 @@ pub struct Config {
     #[arg(long, env = "DEFGUARD_GRPC_CA")]
     pub grpc_ca: Option<String>,
 
-    /// Defines how often (in seconds) interface statistics are sent to defguard server
+    /// Defines how often (in seconds) interface statistics are sent to Defguard server
     #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "30")]
     pub stats_period: u64,
 
@@ -134,5 +134,5 @@ pub fn get_config() -> Result<Config, GatewayError> {
 #[test]
 fn verify_cli() {
     use clap::CommandFactory;
-    Config::command().debug_assert()
+    Config::command().debug_assert();
 }
