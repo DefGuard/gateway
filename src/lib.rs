@@ -46,29 +46,27 @@ pub fn init_syslog(config: &Config, pid: u32) -> Result<(), GatewayError> {
 
 /// Execute command passed as argument.
 pub fn execute_command(command: &str) -> Result<(), GatewayError> {
-    let mut command_parts = command.split_whitespace();
 
-    if let Some(command) = command_parts.next() {
-        let output = process::Command::new(command)
-            .args(command_parts)
-            .output()?;
+    let output = process::Command::new("sh")
+        .args(["-c", command].iter())
+        .output()?;
 
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
 
-            info!(
-                "Postup command {} executed successfully. Stdout: {}",
-                command, stdout
-            );
-            if !stderr.is_empty() {
-                error!("Stderr:\n{stderr}");
-            }
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("Error executing command. Stderr:\n{stderr}");
+        info!(
+            "Postup command {} executed successfully. Stdout: {}",
+            command, stdout
+        );
+        if !stderr.is_empty() {
+            error!("Stderr:\n{stderr}");
         }
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        error!("Error executing command. Stderr:\n{stderr}");
     }
+
     Ok(())
 }
 
