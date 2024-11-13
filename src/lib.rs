@@ -51,7 +51,14 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
     if let Some(command) = command_parts.next() {
         let output = process::Command::new(command)
             .args(command_parts)
-            .output()?;
+            .output()
+            .map_err(|err| {
+                error!("Failed to execute command {command}. Error: {err}");
+                GatewayError::CommandExecutionFailed {
+                    command: command.to_string(),
+                    error: err.to_string(),
+                }
+            })?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
