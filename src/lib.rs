@@ -65,7 +65,7 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
             let stderr = String::from_utf8_lossy(&output.stderr);
 
             info!(
-                "Postup command {} executed successfully. Stdout: {}",
+                "Command {} executed successfully. Stdout: {}",
                 command, stdout
             );
             if !stderr.is_empty() {
@@ -73,7 +73,7 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
             }
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("Error executing command. Stderr:\n{stderr}");
+            error!("Error executing command {command}. Stderr:\n{stderr}");
         }
     }
     Ok(())
