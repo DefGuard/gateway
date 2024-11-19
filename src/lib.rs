@@ -51,14 +51,21 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
     if let Some(command) = command_parts.next() {
         let output = process::Command::new(command)
             .args(command_parts)
-            .output()?;
+            .output()
+            .map_err(|err| {
+                error!("Failed to execute command {command}. Error: {err}");
+                GatewayError::CommandExecutionFailed {
+                    command: command.to_string(),
+                    error: err.to_string(),
+                }
+            })?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
 
             info!(
-                "Postup command {} executed successfully. Stdout: {}",
+                "Command {} executed successfully. Stdout: {}",
                 command, stdout
             );
             if !stderr.is_empty() {
@@ -66,7 +73,7 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
             }
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("Error executing command. Stderr:\n{stderr}");
+            error!("Error executing command {command}. Stderr:\n{stderr}");
         }
     }
     Ok(())

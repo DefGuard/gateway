@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -37,8 +37,9 @@ pub struct Config {
     #[arg(long, short = 'u', env = "DEFGUARD_USERSPACE")]
     pub userspace: bool,
 
+    /// Path to CA file
     #[arg(long, env = "DEFGUARD_GRPC_CA")]
-    pub grpc_ca: Option<String>,
+    pub grpc_ca: Option<PathBuf>,
 
     /// Defines how often (in seconds) interface statistics are sent to Defguard server
     #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "30")]
@@ -50,7 +51,7 @@ pub struct Config {
 
     /// Write process ID (PID) to this file
     #[arg(long)]
-    pub pidfile: Option<String>,
+    pub pidfile: Option<PathBuf>,
 
     /// Log to syslog
     #[arg(long, short = 's')]
@@ -62,12 +63,12 @@ pub struct Config {
 
     /// Syslog socket path
     #[arg(long, default_value = "/var/run/log")]
-    pub syslog_socket: String,
+    pub syslog_socket: PathBuf,
 
     /// Configuration file path
     #[arg(long = "config", short)]
     #[serde(skip)]
-    config_path: Option<std::path::PathBuf>,
+    config_path: Option<PathBuf>,
 
     /// Command to run before bringing up the interface.
     #[arg(long, env = "PRE_UP")]
@@ -104,7 +105,7 @@ impl Default for Config {
             pidfile: None,
             use_syslog: false,
             syslog_facility: String::new(),
-            syslog_socket: String::new(),
+            syslog_socket: PathBuf::new(),
             config_path: None,
             pre_up: None,
             post_up: None,

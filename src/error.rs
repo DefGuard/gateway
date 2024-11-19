@@ -3,11 +3,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GatewayError {
-    #[error("Command execution failed")]
-    CommandExecutionFailed(#[from] std::io::Error),
-
-    #[error("Command returned error status `{stderr}`")]
-    CommandExecutionError { stderr: String },
+    #[error("Command {command} execution failed. Error: {error}")]
+    CommandExecutionFailed { command: String, error: String },
 
     #[error("WireGuard key error")]
     KeyDecode(#[from] base64::DecodeError),
@@ -35,4 +32,10 @@ pub enum GatewayError {
 
     #[error("HTTP error")]
     HttpServer(String),
+
+    #[error("Invalid CA file. Error")]
+    InvalidCaFile,
+
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
 }
