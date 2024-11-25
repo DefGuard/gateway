@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fs::read_to_string,
+    str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -33,7 +34,7 @@ use crate::{
     },
     VERSION,
 };
-use defguard_wireguard_rs::WireguardInterfaceApi;
+use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 
 const TEN_SECS: Duration = Duration::from_secs(10);
 
@@ -42,16 +43,22 @@ const TEN_SECS: Duration = Duration::from_secs(10);
 struct InterfaceConfiguration {
     name: String,
     prvkey: String,
-    address: String,
+    addresses: Vec<IpAddrMask>,
     port: u32,
 }
 
 impl From<Configuration> for InterfaceConfiguration {
     fn from(config: Configuration) -> Self {
+        // Try to convert an array of `String`s to `IpAddrMask`, leaving out the failed ones.
+        let addresses = config
+            .addresses
+            .into_iter()
+            .filter_map(|s| IpAddrMask::from_str(&s).ok())
+            .collect();
         Self {
             name: config.name,
             prvkey: config.prvkey,
-            address: config.address,
+            addresses,
             port: config.port,
         }
     }
@@ -241,8 +248,8 @@ impl Gateway {
     /// network and peers data.
     fn configure(&mut self, new_configuration: Configuration) -> Result<(), GatewayError> {
         debug!(
-            "Received configuration, reconfiguring WireGuard interface {} (address: {})",
-            new_configuration.name, new_configuration.address
+            "Received configuration, reconfiguring WireGuard interface {} (addresses: {:?})",
+            new_configuration.name, new_configuration.addresses
         );
         trace!(
             "Received configuration: {:?}",
@@ -261,8 +268,8 @@ impl Gateway {
             .unwrap()
             .configure_interface(&new_configuration.clone().into())?;
         info!(
-            "Reconfigured WireGuard interface {} (address: {})",
-            new_configuration.name, new_configuration.address
+            "Reconfigured WireGuard interface {} (addresses: {:?})",
+            new_configuration.name, new_configuration.addresses
         );
         trace!(
             "Reconfigured WireGuard interface. Configuration: {:?}",
@@ -463,7 +470,7 @@ mod tests {
         let old_config = InterfaceConfiguration {
             name: "gateway".to_string(),
             prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            address: "10.6.1.1/24".to_string(),
+            addresses: vec!["10.6.1.1/24".parse().unwrap()],
             port: 50051,
         };
 
@@ -512,7 +519,7 @@ mod tests {
         let new_config = InterfaceConfiguration {
             name: "gateway".to_string(),
             prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            address: "10.6.1.2/24".to_string(),
+            addresses: vec!["10.6.1.2/24".parse().unwrap()],
             port: 50051,
         };
         let new_peers = old_peers.clone();

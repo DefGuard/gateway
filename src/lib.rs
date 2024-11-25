@@ -82,10 +82,16 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
 impl From<proto::Configuration> for InterfaceConfiguration {
     fn from(config: proto::Configuration) -> Self {
         let peers = config.peers.into_iter().map(Peer::from).collect();
+        // Try to convert an array of `String`s to `IpAddrMask`, leaving out the failed ones.
+        let addresses = config
+            .addresses
+            .into_iter()
+            .filter_map(|s| IpAddrMask::from_str(&s).ok())
+            .collect();
         InterfaceConfiguration {
             name: config.name,
             prvkey: config.prvkey,
-            address: config.address,
+            addresses,
             port: config.port,
             peers,
             mtu: None,
