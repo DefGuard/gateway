@@ -279,7 +279,7 @@ impl Gateway {
 
     /// Continuously tries to connect to gRPC endpoint. Once the connection is established
     /// configures the interface, starts the stats thread, connects and returns the updates stream.
-    async fn connect(&mut self) -> Result<Streaming<Update>, GatewayError> {
+    async fn connect(&mut self) -> Streaming<Update> {
         // set diconnected if we are in this function and drop mutex
         self.connected.store(false, Ordering::Relaxed);
         loop {
@@ -308,7 +308,7 @@ impl Gateway {
                         self.config.grpc_url
                     );
                     self.connected.store(true, Ordering::Relaxed);
-                    break Ok(stream.into_inner());
+                    break stream.into_inner();
                 }
                 (Err(err), _) => {
                     error!("Couldn't retrieve gateway configuration from the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
@@ -434,7 +434,7 @@ impl Gateway {
             self.config.grpc_url
         );
         loop {
-            let mut updates_stream = self.connect().await?;
+            let mut updates_stream = self.connect().await;
             if let Some(post_up) = &self.config.post_up {
                 debug!("Executing specified POST_UP command: {post_up}");
                 execute_command(post_up)?;
