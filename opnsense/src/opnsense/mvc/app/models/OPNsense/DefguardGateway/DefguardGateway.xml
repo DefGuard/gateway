@@ -17,8 +17,7 @@
       </Token>
       <GrpcUrl type="TextField">
         <Required>Y</Required>
-        <ValidationMessage>please specify Defguard Core gRPC
-        URL</ValidationMessage>
+        <ValidationMessage>please specify Defguard Core gRPC URL</ValidationMessage>
       </GrpcUrl>
       <GrpcCertPath type="TextField">
         <Required>N</Required>

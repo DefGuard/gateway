@@ -22,7 +22,7 @@ $( document ).ready(function() {
     $("#startAct").click(function () {
         stdDialogConfirm(
             '{{ lang._("Confirm gateway restart") }}',
-            '{{ lang._("Do you want to restart the Defguard Gateway?") }}',
+            '{{ lang._("Do you want to restart Defguard Gateway?") }}',
             '{{ lang._("Yes") }}', '{{ lang._("Cancel") }}', function () {
                 $("#startAct").addClass("fa fa-spinner");
 				$("#responseMsg").removeClass("hidden");
