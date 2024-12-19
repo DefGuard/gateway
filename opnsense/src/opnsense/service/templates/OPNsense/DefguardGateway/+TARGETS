@@ -1,2 +1,2 @@
 config.toml:/etc/defguard/gateway.toml
-rc.conf.d:/etc/rc.conf.d/defguard
+rc.conf.d:/etc/rc.conf.d/defguard_gateway
