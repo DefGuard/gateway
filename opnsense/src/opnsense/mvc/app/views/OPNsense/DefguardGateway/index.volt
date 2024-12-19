@@ -21,12 +21,12 @@ $( document ).ready(function() {
 
     $("#startAct").click(function () {
         stdDialogConfirm(
-            '{{ lang._("Confirm gateway restart") }}',
-            '{{ lang._("Do you want to restart Defguard Gateway?") }}',
+            '{{ lang._("Confirm gateway (re)start") }}',
+            '{{ lang._("Do you want to (re)start Defguard Gateway?") }}',
             '{{ lang._("Yes") }}', '{{ lang._("Cancel") }}', function () {
                 $("#startAct").addClass("fa fa-spinner");
 				$("#responseMsg").removeClass("hidden");
-                ajaxCall(url="/api/defguardgateway/service/restart", sendData={}, callback=function(data,status) {
+                ajaxCall(url="/api/defguardgateway/service/restart", sendData={}, callback=function(data, status) {
                     $("#startAct").removeClass("fa fa-spinner fa-pulse");
     				$("#responseMsg").html(data['status']);
     				updateServiceControlUI("defguardgateway");
