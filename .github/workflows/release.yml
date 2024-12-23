@@ -192,11 +192,8 @@ jobs:
             defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard_gateway
             example-config.toml=/etc/defguard/gateway.toml.sample
             defguard-rc.conf=/etc/rc.conf.d/defguard_gateway
-            opnsense/src/opnsense/mvc/app/controllers/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/controllers/OPNsense/DefguardGateway
-            opnsense/src/opnsense/mvc/app/models/OPNsense/DefguardGateway/=/usr/local/opnsense/mvc/app/models/OPNsense/DefguardGateway
-            opnsense/src/opnsense/mvc/app/views/OPNsense/DefguardGateway/=usr/local/opnsense/mvc/app/views/OPNsense/DefguardGateway
-            opnsense/src/opnsense/service/templates/OPNsense/DefguardGateway/=/usr/local/opnsense/service/templates/OPNsense/DefguardGateway
-            opnsense/src/opnsense/service/conf/actions.d/actions_defguardgateway.conf=/usr/local/opnsense/service/conf/actions.d/actions_defguardgateway.conf"
+            opnsense/src/etc/=/usr/local/etc/
+            opnsense/src/opnsense/=/usr/local/opnsense/"
           fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg --freebsd-osversion '*'"
 
       - name: Upload OPNsense package
