@@ -41,7 +41,6 @@ function defguardgateway_devices()
         ->IfName;
 
     $devices[] = [
-        "function" => "defguard_prepare",
         "configurable" => false,
         "pattern" => "^wg",
         "type" => "wireguard",
