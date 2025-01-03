@@ -1,6 +1,6 @@
 [package]
 name = "defguard-gateway"
-version = "1.1.0"
+version = "1.1.4"
 edition = "2021"
 
 [dependencies]
@@ -11,7 +11,7 @@ chrono = { version = "0.4", default-features = false, features = [
     "std",
 ] }
 clap = { version = "4.5", features = ["derive", "env"] }
-# defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", rev = "v0.5.0" }
+# defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", rev = "v0.6.1" }
 defguard_wireguard_rs = { path = "../wireguard-rs" }
 env_logger = "0.11"
 gethostname = "0.5"
@@ -35,5 +35,7 @@ tonic-build = { version = "0.12" }
 vergen-git2 = { version = "1.0", features = ["build"] }
 
 [profile.release]
+codegen-units = 1
+panic = "abort"
 lto = "thin"
 strip = "symbols"

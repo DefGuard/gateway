@@ -6,13 +6,13 @@
 
 . /etc/rc.subr
 
-name="defguard-gateway"
+name="defguard_gateway"
 rcvar=defguard_gateway_enable
 command="/usr/local/sbin/defguard-gateway"
 config="/etc/defguard/gateway.toml"
 start_cmd="${name}_start"
 
-defguard_start()
+defguard_gateway_start()
 {
   ${command} --config ${config} &
 }

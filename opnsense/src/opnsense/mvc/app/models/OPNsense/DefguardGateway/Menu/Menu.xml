@@ -1,5 +1,5 @@
 <menu>
     <VPN>
-      <DefguardGateway VisibleName="Defguard Gateway" url="/ui/defguardgateway/" cssClass="fa fa-lock fa-fw"/>
+        <DefguardGateway VisibleName="Defguard Gateway" cssClass="fa fa-lock fa-fw" url="/ui/defguardgateway/" />
     </VPN>
 </menu>

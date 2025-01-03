@@ -10,7 +10,7 @@ pub mod proto {
 #[macro_use]
 extern crate log;
 
-use std::{process, str::FromStr, time::SystemTime};
+use std::{process::Command, str::FromStr, time::SystemTime};
 
 use config::Config;
 use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration};
@@ -49,7 +49,7 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
     let mut command_parts = command.split_whitespace();
 
     if let Some(command) = command_parts.next() {
-        let output = process::Command::new(command)
+        let output = Command::new(command)
             .args(command_parts)
             .output()
             .map_err(|err| {

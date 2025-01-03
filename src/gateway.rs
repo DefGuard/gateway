@@ -11,8 +11,9 @@ use std::{
 
 use gethostname::gethostname;
 use tokio::{
+    select,
     sync::mpsc,
-    task::{spawn, JoinHandle},
+    task::spawn,
     time::{interval, sleep},
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -101,7 +102,6 @@ pub struct Gateway {
     peers: HashMap<PubKey, Peer>,
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
     pub connected: Arc<AtomicBool>,
-    stats_thread_handle: Option<JoinHandle<()>>,
     client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
 }
 
@@ -117,7 +117,6 @@ impl Gateway {
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
             connected: Arc::new(AtomicBool::new(false)),
-            stats_thread_handle: None,
             client,
         })
     }
@@ -171,8 +170,7 @@ impl Gateway {
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
-    fn spawn_stats_thread(&mut self) {
-        let mut client = self.client.clone();
+    fn spawn_stats_thread(&self) -> UnboundedReceiverStream<StatsUpdate> {
         // Create an async stream that periodically yields WireGuard interface statistics.
         let period = Duration::from_secs(self.config.stats_period);
         let wgapi = Arc::clone(&self.wgapi);
@@ -232,15 +230,18 @@ impl Gateway {
                 }
             }
         });
+        UnboundedReceiverStream::new(rx)
+    }
 
-        self.stats_thread_handle = Some(spawn(async move {
-            let status = client.stats(UnboundedReceiverStream::new(rx)).await;
-            match status {
-                Ok(_) => info!("Stats thread terminated successfully."),
-                Err(err) => error!("Stats thread terminated with error: {err}"),
-            }
-        }));
-        info!("Stats thread spawned.");
+    async fn handle_stats_thread(
+        mut client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
+        rx: UnboundedReceiverStream<StatsUpdate>,
+    ) {
+        let status = client.stats(rx).await;
+        match status {
+            Ok(_) => info!("Stats thread terminated successfully."),
+            Err(err) => error!("Stats thread terminated with error: {err}"),
+        }
     }
 
     /// Performs complete interface reconfiguration based on `configuration` object.
@@ -285,7 +286,7 @@ impl Gateway {
 
     /// Continuously tries to connect to gRPC endpoint. Once the connection is established
     /// configures the interface, starts the stats thread, connects and returns the updates stream.
-    async fn connect(&mut self) -> Result<Streaming<Update>, GatewayError> {
+    async fn connect(&mut self) -> Streaming<Update> {
         // set diconnected if we are in this function and drop mutex
         self.connected.store(false, Ordering::Relaxed);
         loop {
@@ -309,21 +310,12 @@ impl Gateway {
                         error!("Interface configuration failed: {err}");
                         continue;
                     }
-                    if self
-                        .stats_thread_handle
-                        .as_ref()
-                        .is_some_and(|handle| !handle.is_finished())
-                    {
-                        debug!("Stats thread already running. Not starting a new one.");
-                    } else {
-                        self.spawn_stats_thread();
-                    }
                     info!(
                         "Connected to Defguard gRPC endpoint: {}",
                         self.config.grpc_url
                     );
                     self.connected.store(true, Ordering::Relaxed);
-                    break Ok(stream.into_inner());
+                    break stream.into_inner();
                 }
                 (Err(err), _) => {
                     error!("Couldn't retrieve gateway configuration from the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
@@ -367,34 +359,7 @@ impl Gateway {
         Ok(client)
     }
 
-    /// Starts the gateway process.
-    /// * Retrieves configuration and configuration updates from Defguard gRPC server
-    /// * Manages the interface according to configuration and updates
-    /// * Sends interface statistics to Defguard server periodically
-    pub async fn start(&mut self) -> Result<(), GatewayError> {
-        info!(
-            "Starting Defguard gateway version {VERSION} with configuration: {:?}",
-            mask!(self.config, token)
-        );
-
-        // Try to create network interface for WireGuard.
-        // FIXME: check if the interface already exists, or somehow be more clever.
-        if let Err(err) = self.wgapi.lock().unwrap().create_interface() {
-            warn!(
-                "Couldn't create network interface {}: {err}. Proceeding anyway.",
-                self.config.ifname
-            );
-        }
-
-        info!(
-            "Trying to connect to {} and obtain the gateway configuration from Defguard...",
-            self.config.grpc_url
-        );
-        let mut updates_stream = self.connect().await?;
-        if let Some(post_up) = &self.config.post_up {
-            debug!("Executing specified POST_UP command: {post_up}");
-            execute_command(post_up)?;
-        }
+    async fn handle_updates(&mut self, updates_stream: &mut Streaming<Update>) {
         loop {
             match updates_stream.message().await {
                 Ok(Some(update)) => {
@@ -439,16 +404,57 @@ impl Gateway {
                     }
                 }
                 Ok(None) => {
-                    warn!("Stream has been closed, reconnecting");
-                    updates_stream = self.connect().await?;
+                    break;
                 }
                 Err(err) => {
                     error!(
-                        "Disconnected from Defguard gRPC endoint: {:?}",
+                        "Disconnected from Defguard gRPC endoint: {}: {err}",
                         self.config.grpc_url
                     );
-                    error!("Server error {err}, reconnecting");
-                    updates_stream = self.connect().await?;
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Starts the gateway process.
+    /// * Retrieves configuration and configuration updates from Defguard gRPC server
+    /// * Manages the interface according to configuration and updates
+    /// * Sends interface statistics to Defguard server periodically
+    pub async fn start(&mut self) -> Result<(), GatewayError> {
+        info!(
+            "Starting Defguard gateway version {VERSION} with configuration: {:?}",
+            mask!(self.config, token)
+        );
+
+        // Try to create network interface for WireGuard.
+        // FIXME: check if the interface already exists, or somehow be more clever.
+        if let Err(err) = self.wgapi.lock().unwrap().create_interface() {
+            warn!(
+                "Couldn't create network interface {}: {err}. Proceeding anyway.",
+                self.config.ifname
+            );
+        }
+
+        info!(
+            "Trying to connect to {} and obtain the gateway configuration from Defguard...",
+            self.config.grpc_url
+        );
+        loop {
+            let mut updates_stream = self.connect().await;
+            if let Some(post_up) = &self.config.post_up {
+                debug!("Executing specified POST_UP command: {post_up}");
+                execute_command(post_up)?;
+            }
+            let stats_stream = self.spawn_stats_thread();
+            let client = self.client.clone();
+            select! {
+                biased;
+                () = Self::handle_stats_thread(client, stats_stream) => {
+                    error!("Stats stream aborted; reconnecting");
+                }
+                () = self.handle_updates(&mut updates_stream) => {
+                    error!("Updates stream aborted; reconnecting");
                 }
             }
         }
@@ -506,7 +512,6 @@ mod tests {
             peers: old_peers_map,
             wgapi: Arc::new(Mutex::new(wgapi)),
             connected: Arc::new(AtomicBool::new(false)),
-            stats_thread_handle: None,
             client,
         };
 
