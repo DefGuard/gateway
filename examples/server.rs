@@ -23,7 +23,7 @@ use tonic::{transport::Server, Request, Response, Status, Streaming};
 
 pub struct HostConfig {
     name: String,
-    address: IpAddrMask,
+    addresses: Vec<IpAddrMask>,
     host: Host,
 }
 
@@ -68,7 +68,11 @@ impl From<&HostConfig> for proto::Configuration {
                 .as_ref()
                 .map(|key| key.to_string())
                 .unwrap_or_default(),
-            address: host_config.address.to_string(),
+            addresses: host_config
+                .addresses
+                .iter()
+                .map(|addr| addr.to_string())
+                .collect(),
             port: host_config.host.listen_port as u32,
             peers: host_config
                 .host
@@ -138,12 +142,15 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
         if let Some(keyword) = token_iter.next() {
             match keyword {
                 "a" | "addr" => {
-                    if let Some(address) = token_iter.next() {
-                        if let Ok(ipaddr) = address.parse() {
-                            tx.send_modify(|config| config.address = ipaddr);
-                        } else {
-                            eprintln!("Parse error");
+                    let mut addresses = Vec::new();
+                    while let Some(address) = token_iter.next() {
+                        match address.parse() {
+                            Ok(ipaddr) => addresses.push(ipaddr),
+                            Err(err) => eprintln!("Skipping {address}: {err}"),
                         }
+                    }
+                    if !addresses.is_empty() {
+                        tx.send_modify(|config| config.addresses = addresses);
                     }
                 }
                 "c" | "peer" => {
@@ -245,13 +252,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             50505,
             Key::try_from("JPcD7xOfOAULx+cTdgzB3dIv6nvqqbmlACYzxrfJ4Dw=").unwrap(),
         ),
-        address: "192.168.68.68".parse().unwrap(),
+        addresses: vec!["192.168.68.68".parse().unwrap()],
     };
     let (config_tx, config_rx) = watch::channel(configuration);
     let clients = Arc::new(Mutex::new(HashMap::new()));
     tokio::select! {
-        _ = grpc(config_rx, clients.clone()) => eprintln!("grpc completed"),
-        _ = cli(config_tx, clients) => eprintln!("cli completed")
+        _ = grpc(config_rx, clients.clone()) => eprintln!("gRPC completed"),
+        _ = cli(config_tx, clients) => eprintln!("CLI completed")
     };
 
     Ok(())

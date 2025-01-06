@@ -10,7 +10,7 @@ pub mod proto {
 #[macro_use]
 extern crate log;
 
-use std::{process, str::FromStr, time::SystemTime};
+use std::{process::Command, str::FromStr, time::SystemTime};
 
 use config::Config;
 use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration};
@@ -49,7 +49,7 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
     let mut command_parts = command.split_whitespace();
 
     if let Some(command) = command_parts.next() {
-        let output = process::Command::new(command)
+        let output = Command::new(command)
             .args(command_parts)
             .output()
             .map_err(|err| {
@@ -82,10 +82,16 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
 impl From<proto::Configuration> for InterfaceConfiguration {
     fn from(config: proto::Configuration) -> Self {
         let peers = config.peers.into_iter().map(Peer::from).collect();
+        // Try to convert an array of `String`s to `IpAddrMask`, leaving out the failed ones.
+        let addresses = config
+            .addresses
+            .into_iter()
+            .filter_map(|s| IpAddrMask::from_str(&s).ok())
+            .collect();
         InterfaceConfiguration {
             name: config.name,
             prvkey: config.prvkey,
-            address: config.address,
+            addresses,
             port: config.port,
             peers,
             mtu: None,
