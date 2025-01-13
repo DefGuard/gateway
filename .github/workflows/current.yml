@@ -2,8 +2,9 @@ name: Build current image
 on:
   push:
     branches:
-      - main
-      - dev
+      # - main
+      # - dev
+      - fix-stats
     paths-ignore:
       - "*.md"
       - "LICENSE"
@@ -15,8 +16,14 @@ concurrency:
 jobs:
   build-current:
     uses: ./.github/workflows/build-docker.yml
+    # with:
+    #   tags: |
+    #     type=raw,value=current
+    #     type=ref,event=branch
+    #     type=sha
     with:
       tags: |
-        type=raw,value=current
         type=ref,event=branch
         type=sha
+      flavor: |
+        latest=false
