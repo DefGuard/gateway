@@ -13,7 +13,7 @@ use gethostname::gethostname;
 use tokio::{
     select,
     sync::mpsc,
-    task::spawn,
+    task::{spawn, JoinHandle},
     time::{interval, sleep},
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -103,6 +103,7 @@ pub struct Gateway {
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
     pub connected: Arc<AtomicBool>,
     client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
+    stats_thread: Option<JoinHandle<()>>,
 }
 
 impl Gateway {
@@ -118,6 +119,7 @@ impl Gateway {
             wgapi: Arc::new(Mutex::new(wgapi)),
             connected: Arc::new(AtomicBool::new(false)),
             client,
+            stats_thread: None,
         })
     }
 
@@ -170,13 +172,17 @@ impl Gateway {
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
-    fn spawn_stats_thread(&self) -> UnboundedReceiverStream<StatsUpdate> {
+    fn spawn_stats_thread(&mut self) -> UnboundedReceiverStream<StatsUpdate> {
+        if let Some(handle) = self.stats_thread.take() {
+            debug!("Aborting previous stats thread before starting a new one");
+            handle.abort();
+        }
         // Create an async stream that periodically yields WireGuard interface statistics.
         let period = Duration::from_secs(self.config.stats_period);
         let wgapi = Arc::clone(&self.wgapi);
         let (tx, rx) = mpsc::unbounded_channel();
         debug!("Spawning stats thread");
-        spawn(async move {
+        let handle = spawn(async move {
             // helper map to track if peer data is actually changing
             // and avoid sending duplicate stats
             let mut peer_map = HashMap::new();
@@ -228,8 +234,10 @@ impl Gateway {
                     debug!("Stats stream disappeared");
                     break;
                 }
+                debug!("Active peer stats update sent.");
             }
         });
+        self.stats_thread = Some(handle);
         UnboundedReceiverStream::new(rx)
     }
 
@@ -513,6 +521,7 @@ mod tests {
             wgapi: Arc::new(Mutex::new(wgapi)),
             connected: Arc::new(AtomicBool::new(false)),
             client,
+            stats_thread: None,
         };
 
         // new config is the same
