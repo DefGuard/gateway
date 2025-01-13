@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::read_to_string,
     str::FromStr,
     sync::{
@@ -139,10 +139,18 @@ impl Gateway {
         new_interface_configuration: &InterfaceConfiguration,
         new_peers: &[Peer],
     ) -> bool {
+        debug!("Checking if new configuration is different than current one");
         if let Some(current_configuration) = &self.interface_configuration {
-            return current_configuration != new_interface_configuration
-                || self.is_peer_list_changed(new_peers);
+            let interface_difference = current_configuration != new_interface_configuration;
+            let peer_difference = self.is_peer_list_changed(new_peers);
+            let result = interface_difference || peer_difference;
+            debug!(
+                "Configuration changed: {} (interface changed: {}, peers changed: {})",
+                result, interface_difference, peer_difference
+            );
+            return result;
         }
+        debug!("No current configuration found, assuming it's different");
         true
     }
 
@@ -150,25 +158,57 @@ impl Gateway {
     fn is_peer_list_changed(&self, new_peers: &[Peer]) -> bool {
         // check if number of peers is different
         if self.peers.len() != new_peers.len() {
+            debug!(
+                "Number of peers is different: now {}, before {}",
+                self.peers.len(),
+                new_peers.len()
+            );
             return true;
         }
+
+        let new_peers_keys = new_peers
+            .iter()
+            .map(|peer| peer.pubkey.as_str())
+            .collect::<HashSet<_>>();
+
+        let old_peers_keys = self
+            .peers
+            .keys()
+            .map(|k| k.as_str())
+            .collect::<HashSet<_>>();
 
         // check if all pubkeys are the same
-        if !new_peers
-            .iter()
-            .map(|peer| &peer.pubkey)
-            .all(|k| self.peers.contains_key(k))
-        {
+        // collect keys into hashset
+        let sym_diff = new_peers_keys
+            .symmetric_difference(&old_peers_keys)
+            .collect::<HashSet<_>>();
+
+        if !sym_diff.is_empty() {
+            debug!("Peer pubkeys are different, difference: {:?}", sym_diff);
             return true;
         }
 
+        // if !new_peers
+        //     .iter()
+        //     .map(|peer| &peer.pubkey)
+        //     .all(|k| self.peers.contains_key(k))
+        // {
+        //     // find keys that are different in one of the maps, make set exclusion
+
+        //     debug!("Peer pubkeys are different");
+        //     return true;
+        // }
+
         // check if all IPs are the same
-        !new_peers
+        let ips = !new_peers
             .iter()
             .all(|peer| match self.peers.get(&peer.pubkey) {
                 Some(p) => peer.allowed_ips == p.allowed_ips,
                 None => false,
-            })
+            });
+
+        debug!("Peer IPs changed: {}", ips);
+        ips
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
