@@ -57,6 +57,7 @@ jobs:
     runs-on:
       - self-hosted
       - ${{ matrix.os }}
+      - X64
     strategy:
       fail-fast: false
       matrix:
