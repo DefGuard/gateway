@@ -163,12 +163,11 @@ impl Gateway {
         }
 
         // check if all IPs are the same
-        !new_peers
-            .iter()
-            .all(|peer| match self.peers.get(&peer.pubkey) {
-                Some(p) => peer.allowed_ips == p.allowed_ips,
-                None => false,
-            })
+        !new_peers.iter().all(|peer| {
+            self.peers
+                .get(&peer.pubkey)
+                .map_or(false, |p| peer.allowed_ips == p.allowed_ips)
+        })
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
@@ -188,11 +187,9 @@ impl Gateway {
             let mut peer_map = HashMap::new();
             let mut interval = interval(period);
             let mut id = 1;
-            loop {
+            'outer: loop {
                 // wait until next iteration
                 interval.tick().await;
-                let mut payload = Payload::Empty(());
-
                 debug!("Sending active peer stats update.");
                 match wgapi.lock().unwrap().read_interface_data() {
                     Ok(host) => {
@@ -205,13 +202,22 @@ impl Gateway {
                             p.last_handshake
                                 .map_or(false, |lhs| lhs != SystemTime::UNIX_EPOCH)
                         }) {
-                            let has_changed = match peer_map.get(&peer.public_key) {
-                                Some(last_peer) => *last_peer != peer,
-                                None => true,
-                            };
+                            let has_changed = peer_map
+                                .get(&peer.public_key)
+                                .map_or(true, |last_peer| *last_peer != peer);
                             if has_changed {
                                 peer_map.insert(peer.public_key.clone(), peer.clone());
-                                payload = Payload::PeerStats((&peer).into());
+                                id += 1;
+                                if tx
+                                    .send(StatsUpdate {
+                                        id,
+                                        payload: Some(Payload::PeerStats((&peer).into())),
+                                    })
+                                    .is_err()
+                                {
+                                    debug!("Stats stream disappeared");
+                                    break 'outer;
+                                }
                             } else {
                                 debug!(
                                     "Stats for peer {} have not changed. Skipping.",
@@ -222,19 +228,7 @@ impl Gateway {
                     }
                     Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
                 }
-
-                id += 1;
-                if tx
-                    .send(StatsUpdate {
-                        id,
-                        payload: Some(payload),
-                    })
-                    .is_err()
-                {
-                    debug!("Stats stream disappeared");
-                    break;
-                }
-                debug!("Active peer stats update sent.");
+                debug!("Peer stats update for all peers sent.");
             }
         });
         self.stats_thread = Some(handle);
