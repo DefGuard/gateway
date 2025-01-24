@@ -190,7 +190,7 @@ impl Gateway {
             'outer: loop {
                 // wait until next iteration
                 interval.tick().await;
-                debug!("Sending active peer stats update.");
+                debug!("Sending active peer stats updates.");
                 let interface_data = wgapi.lock().unwrap().read_interface_data();
                 match interface_data {
                     Ok(host) => {
@@ -229,7 +229,7 @@ impl Gateway {
                     }
                     Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
                 }
-                debug!("Peer stats update for all peers sent.");
+                debug!("Sent peer stats updates for all peers.");
             }
         });
         self.stats_thread = Some(handle);
