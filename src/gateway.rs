@@ -191,7 +191,8 @@ impl Gateway {
                 // wait until next iteration
                 interval.tick().await;
                 debug!("Sending active peer stats update.");
-                match wgapi.lock().unwrap().read_interface_data() {
+                let interface_data = wgapi.lock().unwrap().read_interface_data();
+                match interface_data {
                     Ok(host) => {
                         let peers = host.peers;
                         debug!(
