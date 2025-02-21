@@ -5,6 +5,10 @@ pub mod server;
 
 pub mod proto {
     tonic::include_proto!("gateway");
+
+    pub mod enterprise {
+        tonic::include_proto!("firewall");
+    }
 }
 
 #[macro_use]
@@ -16,6 +20,8 @@ use config::Config;
 use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration};
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
+
+pub mod enterprise;
 
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("VERGEN_GIT_SHA"));
 
