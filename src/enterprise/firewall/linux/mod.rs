@@ -1,11 +1,25 @@
-mod netfilter;
+pub mod netfilter;
 
-use netfilter::{apply_filter_rules, clear_chains, init_firewall, masq_interface};
+use std::sync::atomic::{AtomicU32, Ordering};
+
+use mnl::mnl_sys::libc::c_char;
+use netfilter::{
+    allow_established_traffic, apply_filter_rules, clear_chains, init_firewall, masq_interface,
+    set_default_action,
+};
+use nftnl::{expr::Expression, nftnl_sys, Rule};
 
 use super::{
     api::{FirewallApi, FirewallManagementApi},
-    proto, Address, Port, Protocol,
+    proto, Address, FirewallRule, Port, Protocol,
 };
+
+static SET_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+pub fn get_set_id() -> u32 {
+    println!("SET_ID_COUNTER: {:?}", SET_ID_COUNTER);
+    SET_ID_COUNTER.fetch_add(1, Ordering::SeqCst)
+}
 
 #[derive(Debug, Default)]
 pub enum Action {
@@ -47,6 +61,7 @@ pub struct FilterRule {
     pub states: Vec<State>,
     pub counter: bool,
     pub id: u32,
+    pub v4: bool,
 }
 
 impl FirewallManagementApi for FirewallApi {
@@ -54,6 +69,7 @@ impl FirewallManagementApi for FirewallApi {
         println!("Initializing firewall for interface {}", self.ifname);
         init_firewall().expect("Failed to setup chains");
         masq_interface(&self.ifname).expect("Failed to masquerade interface");
+        allow_established_traffic(&self.ifname);
     }
 
     fn clear(&self) {
@@ -61,43 +77,56 @@ impl FirewallManagementApi for FirewallApi {
         clear_chains();
     }
 
-    fn set_access(
-        &self,
-        sources: Vec<Address>,
-        destinations: Vec<Address>,
-        destination_ports: Vec<Port>,
-        protocols: Vec<Protocol>,
-        allow: bool,
-        id: u32,
-    ) {
+    fn set_default_action(&self, allow: bool) {
+        println!(
+            "Setting default action to {} for interface {}",
+            if allow { "allow" } else { "drop" },
+            self.ifname
+        );
+
+        set_default_action(allow);
+    }
+
+    fn apply_rule(&self, rule: FirewallRule) {
         let mut rules = vec![];
 
-        if destination_ports.is_empty() {
+        if rule.destination_ports.is_empty() {
             let rule = FilterRule {
-                src_ips: sources,
-                dest_ips: destinations,
-                protocols,
-                action: allow.into(),
+                src_ips: rule.source_addrs,
+                dest_ips: rule.destination_addrs,
+                protocols: rule.protocols,
+                action: rule.allow.into(),
                 counter: true,
-                id,
+                id: rule.id,
                 ..Default::default()
             };
             rules.push(rule);
         } else {
-            let mut id_counter = id;
-            for protocol in protocols {
-                let rule = FilterRule {
-                    src_ips: sources.clone(),
-                    dest_ips: destinations.clone(),
-                    dest_ports: destination_ports.clone(),
-                    protocols: vec![protocol],
-                    action: allow.into(),
-                    counter: true,
-                    id: id_counter,
-                    ..Default::default()
-                };
-                rules.push(rule);
-                id_counter += 1;
+            for protocol in rule.protocols {
+                if protocol.supports_ports() {
+                    let rule = FilterRule {
+                        src_ips: rule.source_addrs.clone(),
+                        dest_ips: rule.destination_addrs.clone(),
+                        dest_ports: rule.destination_ports.clone(),
+                        protocols: vec![protocol],
+                        action: rule.allow.into(),
+                        counter: true,
+                        id: rule.id,
+                        ..Default::default()
+                    };
+                    rules.push(rule);
+                } else {
+                    let rule = FilterRule {
+                        src_ips: rule.source_addrs.clone(),
+                        dest_ips: rule.destination_addrs.clone(),
+                        protocols: vec![protocol],
+                        action: rule.allow.into(),
+                        counter: true,
+                        id: rule.id,
+                        ..Default::default()
+                    };
+                    rules.push(rule);
+                }
             }
         }
 

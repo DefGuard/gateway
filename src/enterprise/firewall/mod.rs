@@ -59,3 +59,67 @@ impl From<&proto::enterprise::Port> for Port {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Protocol(pub u8);
+
+pub struct FirewallRule {
+    pub id: u32,
+    pub source_addrs: Vec<Address>,
+    pub destination_addrs: Vec<Address>,
+    pub destination_ports: Vec<Port>,
+    pub protocols: Vec<Protocol>,
+    pub allow: bool,
+    pub v4: bool,
+    pub comment: Option<String>,
+}
+
+pub struct FirewallConfig {
+    pub rules: Vec<FirewallRule>,
+    pub default_action: bool,
+}
+
+impl From<proto::enterprise::FirewallConfig> for FirewallConfig {
+    fn from(config: proto::enterprise::FirewallConfig) -> Self {
+        let rules = config
+            .rules
+            .into_iter()
+            .map(|rule| FirewallRule {
+                // FIXME: Do something else here
+                id: rule.id as u32,
+                source_addrs: rule
+                    .source_addr
+                    .into_iter()
+                    .map(|addr| Address::try_from(&addr).unwrap())
+                    .collect(),
+                destination_addrs: rule
+                    .destination_addr
+                    .into_iter()
+                    .map(|addr| Address::try_from(&addr).unwrap())
+                    .collect(),
+                destination_ports: rule
+                    .destination_port
+                    .into_iter()
+                    .map(|port| Port::from(&port))
+                    .collect(),
+                protocols: rule
+                    .protocol
+                    .into_iter()
+                    .map(|proto| {
+                        proto::enterprise::Protocol::try_from(proto)
+                            .unwrap_or_else(|_| {
+                                panic!("Unsupported protocol: {:?}", proto);
+                            })
+                            .into()
+                    })
+                    .collect(),
+                allow: rule.verdict == proto::enterprise::FirewallPolicy::Allow as i32,
+                v4: config.ip_version == proto::enterprise::IpVersion::Ipv4 as i32,
+                comment: rule.comment,
+            })
+            .collect();
+
+        Self {
+            rules,
+            default_action: config.default_policy
+                == proto::enterprise::FirewallPolicy::Allow as i32,
+        }
+    }
+}

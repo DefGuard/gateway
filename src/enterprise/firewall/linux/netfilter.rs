@@ -1,4 +1,5 @@
-#[cfg(test)]
+use std::collections::HashSet;
+use std::ffi::c_void;
 use std::str::FromStr;
 use std::{
     ffi::CString,
@@ -9,21 +10,59 @@ use std::{
 use ipnetwork::IpNetwork;
 #[cfg(test)]
 use ipnetwork::{Ipv4Network, Ipv6Network};
-use mnl::mnl_sys::libc;
+use mnl::mnl_sys::libc::{self, c_char};
+use nftnl::nftnl_sys::{
+    nftnl_udata_buf_alloc, nftnl_udata_buf_data, nftnl_udata_buf_len, NFTNL_RULE_USERDATA,
+};
 use nftnl::{
     expr::{Expression, InterfaceName},
     nft_expr, nftnl_sys,
     set::{Set, SetKey},
     Batch, Chain, FinalizedBatch, ProtoFamily, Rule, Table,
 };
+use rand::{random, rngs::OsRng, Rng};
 
-use super::{proto, Action, Address, FilterRule, Port, Protocol, State};
+use super::{get_set_id, proto, Action, Address, FilterRule, Port, Protocol, State};
 
 const FILTER_TABLE: &str = "filter";
 const NAT_TABLE: &str = "nat";
 const DEFGUARD_TABLE: &str = "DEFGUARD";
 const POSTROUTING_CHAIN: &str = "POSTROUTING";
 const FORWARD_CHAIN: &str = "FORWARD";
+
+macro_rules! try_alloc {
+    ($e:expr) => {{
+        let ptr = $e;
+        if ptr.is_null() {
+            std::process::abort();
+        }
+        ptr
+    }};
+}
+
+pub struct Comment;
+
+impl Expression for Comment {
+    fn to_expr(&self, _rule: &Rule) -> *mut nftnl_sys::nftnl_expr {
+        try_alloc!(unsafe {
+            nftnl_sys::nftnl_expr_alloc(b"comment\0" as *const _ as *const c_char)
+        })
+    }
+}
+
+pub fn put_comment(rule: &mut Rule, comment: &str) {
+    let udata_buf = try_alloc!(unsafe { nftnl_udata_buf_alloc(256) });
+
+    let comment = &CString::new(comment).unwrap();
+    unsafe { nftnl_sys::nftnl_udata_put_strz(udata_buf, 0, comment.as_ptr()) };
+
+    unsafe {
+        let data = nftnl_udata_buf_data(udata_buf) as *const c_void;
+        let data_len = nftnl_udata_buf_len(udata_buf);
+        nftnl_sys::nftnl_rule_set_data(rule.as_ptr(), NFTNL_RULE_USERDATA as u16, data, data_len);
+        nftnl_sys::nftnl_udata_buf_free(udata_buf);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum AddressMatch {
@@ -98,7 +137,7 @@ impl Protocol {
         matches!(self.0 as i32, libc::IPPROTO_TCP | libc::IPPROTO_UDP)
     }
 
-    pub fn to_payload_expr(&self) -> &impl Expression {
+    pub fn to_port_payload_expr(&self) -> &impl Expression {
         match self.0 as i32 {
             libc::IPPROTO_TCP => &nft_expr!(payload tcp dport),
             libc::IPPROTO_UDP => &nft_expr!(payload udp dport),
@@ -171,34 +210,22 @@ fn add_port_to_set(set: *mut nftnl_sys::nftnl_set, port: &Port) {
 }
 
 fn add_protocol_to_set(set: *mut nftnl_sys::nftnl_set, proto: &Protocol) {
-    add_to_set(set, proto, Some(proto));
+    add_to_set(set, proto, None);
 }
 
 impl FirewallRule for FilterRule {
     fn to_chain_rule<'a>(&self, chain: &'a Chain, batch: &mut Batch) -> Rule<'a> {
         let mut rule = Rule::new(chain);
-
-        // let tcp = self.protocol == Some(libc::IPPROTO_TCP as u8);
-        // let tcp = matches!(self.protocol, Some(proto) if proto.0 == libc::IPPROTO_TCP as u8);
-        // println!("TCP: {}", tcp);
         let v4 = true;
 
         if !self.dest_ports.is_empty() && self.protocols.len() > 1 {
             panic!("Cannot specify multiple protocols with destination ports");
         }
 
-        let mut id_counter = self.id;
-
         // TODO: Reduce code duplication here
         if !self.src_ips.is_empty() {
             if v4 {
-                let set = new_anon_set::<Ipv4Addr>(
-                    id_counter,
-                    chain.get_table(),
-                    ProtoFamily::Inet,
-                    true,
-                );
-                id_counter += 1;
+                let set = new_anon_set::<Ipv4Addr>(chain.get_table(), ProtoFamily::Inet, true);
                 batch.add(&set, nftnl::MsgType::Add);
 
                 for ip in &self.src_ips {
@@ -215,14 +242,7 @@ impl FirewallRule for FilterRule {
 
                 rule.add_expr(&nft_expr!(lookup & set));
             } else {
-                let set = new_anon_set::<Ipv6Addr>(
-                    id_counter,
-                    chain.get_table(),
-                    ProtoFamily::Inet,
-                    true,
-                );
-                id_counter += 1;
-
+                let set = new_anon_set::<Ipv6Addr>(chain.get_table(), ProtoFamily::Inet, true);
                 batch.add(&set, nftnl::MsgType::Add);
 
                 for ip in &self.src_ips {
@@ -244,13 +264,7 @@ impl FirewallRule for FilterRule {
         // TODO: Reduce code duplication here
         if !self.dest_ips.is_empty() {
             if v4 {
-                let set = new_anon_set::<Ipv4Addr>(
-                    id_counter,
-                    chain.get_table(),
-                    ProtoFamily::Inet,
-                    true,
-                );
-                id_counter += 1;
+                let set = new_anon_set::<Ipv4Addr>(chain.get_table(), ProtoFamily::Inet, true);
                 batch.add(&set, nftnl::MsgType::Add);
 
                 for ip in &self.dest_ips {
@@ -267,13 +281,7 @@ impl FirewallRule for FilterRule {
 
                 rule.add_expr(&nft_expr!(lookup & set));
             } else {
-                let set = new_anon_set::<Ipv6Addr>(
-                    id_counter,
-                    chain.get_table(),
-                    ProtoFamily::Inet,
-                    true,
-                );
-                id_counter += 1;
+                let set = new_anon_set::<Ipv6Addr>(chain.get_table(), ProtoFamily::Inet, true);
                 batch.add(&set, nftnl::MsgType::Add);
 
                 for ip in &self.dest_ips {
@@ -293,15 +301,10 @@ impl FirewallRule for FilterRule {
         }
 
         if !self.protocols.is_empty() {
-            // If there are many protocols, put them as a set
+            // > 0 Protocols
+            // 0 Ports
             if self.protocols.len() > 1 {
-                let set = new_anon_set::<Protocol>(
-                    id_counter,
-                    chain.get_table(),
-                    ProtoFamily::Inet,
-                    true,
-                );
-                id_counter += 1;
+                let set = new_anon_set::<Protocol>(chain.get_table(), ProtoFamily::Inet, false);
                 batch.add(&set, nftnl::MsgType::Add);
 
                 for proto in &self.protocols {
@@ -312,19 +315,27 @@ impl FirewallRule for FilterRule {
                     batch.add(&elem, nftnl::MsgType::Add);
                 });
 
-                rule.add_expr(&nft_expr!(meta l4proto));
+                rule.add_expr(&nft_expr!(meta nfproto));
+
+                if v4 {
+                    rule.add_expr(&nft_expr!(cmp == libc::NFPROTO_IPV4 as u8));
+                    rule.add_expr(&nft_expr!(payload ipv4 protocol));
+                } else {
+                    rule.add_expr(&nft_expr!(cmp == libc::NFPROTO_IPV6 as u8));
+                    rule.add_expr(&nft_expr!(payload ipv6 nextheader));
+                }
+
                 rule.add_expr(&nft_expr!(lookup & set));
-            } else if !self.dest_ports.is_empty() {
+            }
+            // 1 Protocol
+            // > 0 Ports
+            else if !self.dest_ports.is_empty() {
                 let protocol = self.protocols.first().unwrap();
-                println!("Protocol: {:?}", protocol);
                 if protocol.supports_ports() {
-                    let set = new_anon_set::<InetService>(
-                        id_counter,
-                        chain.get_table(),
-                        ProtoFamily::Inet,
-                        true,
-                    );
-                    id_counter += 1;
+                    println!("Protocol: {:?}", protocol);
+
+                    let set =
+                        new_anon_set::<InetService>(chain.get_table(), ProtoFamily::Inet, true);
                     batch.add(&set, nftnl::MsgType::Add);
 
                     for port in &self.dest_ports {
@@ -335,10 +346,6 @@ impl FirewallRule for FilterRule {
                         batch.add(&elem, nftnl::MsgType::Add);
                     });
 
-                    rule.add_expr(&nft_expr!(meta l4proto));
-                    rule.add_expr(&nft_expr!(cmp == protocol.0));
-                    rule.add_expr(protocol.to_payload_expr());
-                    rule.add_expr(&nft_expr!(lookup & set));
                     // rule.add_expr(&nft_expr!(meta l4proto));
                     // if tcp {
                     //     rule.add_expr(&nft_expr!(cmp == libc::IPPROTO_TCP as u8));
@@ -347,7 +354,27 @@ impl FirewallRule for FilterRule {
                     //     rule.add_expr(&nft_expr!(cmp == libc::IPPROTO_UDP as u8));
                     //     rule.add_expr(&nft_expr!(payload udp dport));
                     // }
+
+                    rule.add_expr(&nft_expr!(meta l4proto));
+                    rule.add_expr(&nft_expr!(cmp == protocol.0));
+                    rule.add_expr(protocol.to_port_payload_expr());
+                    rule.add_expr(&nft_expr!(lookup & set));
                 }
+            }
+            // 1 Protocol
+            // 0 Ports
+            else if let Some(protocol) = self.protocols.first() {
+                rule.add_expr(&nft_expr!(meta nfproto));
+
+                if v4 {
+                    rule.add_expr(&nft_expr!(cmp == libc::NFPROTO_IPV4 as u8));
+                    rule.add_expr(&nft_expr!(payload ipv4 protocol));
+                } else {
+                    rule.add_expr(&nft_expr!(cmp == libc::NFPROTO_IPV6 as u8));
+                    rule.add_expr(&nft_expr!(payload ipv6 nextheader));
+                }
+
+                rule.add_expr(&nft_expr!(cmp == protocol.0));
             }
         }
 
@@ -386,6 +413,10 @@ impl FirewallRule for FilterRule {
             }
             Action::None => {}
         }
+
+        // comment test
+        let comment = format!("Rule ID: {}", self.id);
+        put_comment(&mut rule, &comment);
 
         rule
     }
@@ -521,6 +552,46 @@ pub fn masq_interface(ifname: &str) -> io::Result<()> {
     Ok(())
 }
 
+pub fn set_default_action(allow: bool) {
+    let mut batch = Batch::new();
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+    batch.add(&table, nftnl::MsgType::Add);
+
+    let mut forward_chain = Chains::Forward.to_chain(&table);
+    forward_chain.set_policy(if allow {
+        nftnl::Policy::Accept
+    } else {
+        nftnl::Policy::Drop
+    });
+    batch.add(&forward_chain, nftnl::MsgType::Add);
+
+    let finalized_batch = batch.finalize();
+    send_batch(&finalized_batch);
+}
+
+pub fn allow_established_traffic(ifname: &str) {
+    let mut batch = Batch::new();
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+    batch.add(&table, nftnl::MsgType::Add);
+
+    let forward_chain = Chains::Forward.to_chain(&table);
+    batch.add(&forward_chain, nftnl::MsgType::Add);
+
+    let established_rule = FilterRule {
+        states: vec![State::Established, State::Related],
+        iifname: Some(ifname.to_string()),
+        counter: true,
+        action: Action::Accept,
+        ..Default::default()
+    }
+    .to_chain_rule(&forward_chain, &mut batch);
+
+    batch.add(&established_rule, nftnl::MsgType::Add);
+
+    let finalized_batch = batch.finalize();
+    send_batch(&finalized_batch);
+}
+
 pub enum Tables {
     Filter(ProtoFamily),
     Nat(ProtoFamily),
@@ -622,11 +693,16 @@ fn max_address(network: &IpNetwork) -> IpAddr {
     }
 }
 
-fn new_anon_set<T>(id: u32, table: &Table, family: ProtoFamily, interval_set: bool) -> Set<T>
+fn new_anon_set<T>(table: &Table, family: ProtoFamily, interval_set: bool) -> Set<T>
 where
     T: SetKey,
 {
-    let set = Set::<T>::new(&CString::new("__set%d").unwrap(), id, table, family);
+    let set = Set::<T>::new(
+        &CString::new("__set%d").unwrap(),
+        get_set_id(),
+        table,
+        family,
+    );
 
     if interval_set {
         unsafe {

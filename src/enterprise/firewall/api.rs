@@ -1,13 +1,13 @@
 use std::net::IpAddr;
 
-use super::{Address, Port, Protocol};
+use super::{Address, FirewallRule, Port, Protocol};
 
 pub struct FirewallApi {
     pub ifname: String,
 }
 
 impl FirewallApi {
-    pub fn new(ifname: &str, default_action: bool) -> Self {
+    pub fn new(ifname: &str) -> Self {
         Self {
             ifname: ifname.into(),
         }
@@ -17,13 +17,6 @@ impl FirewallApi {
 pub trait FirewallManagementApi {
     fn setup(&self);
     fn clear(&self);
-    fn set_access(
-        &self,
-        sources: Vec<Address>,
-        destinations: Vec<Address>,
-        destination_ports: Vec<Port>,
-        protocols: Vec<Protocol>,
-        allow: bool,
-        id: u32,
-    );
+    fn apply_rule(&self, rule: FirewallRule);
+    fn set_default_action(&self, allow: bool);
 }
