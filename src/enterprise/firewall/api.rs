@@ -1,6 +1,6 @@
 use std::net::IpAddr;
 
-use super::{Address, FirewallRule, Port, Protocol};
+use super::{Address, FirewallError, FirewallRule, Policy, Port, Protocol};
 
 pub struct FirewallApi {
     pub ifname: String,
@@ -15,8 +15,8 @@ impl FirewallApi {
 }
 
 pub trait FirewallManagementApi {
-    fn setup(&self);
-    fn clear(&self);
-    fn apply_rule(&self, rule: FirewallRule);
-    fn set_default_action(&self, allow: bool);
+    fn setup(&self) -> Result<(), FirewallError>;
+    fn clear(&self) -> Result<(), FirewallError>;
+    fn apply_rule(&self, rule: FirewallRule) -> Result<(), FirewallError>;
+    fn set_default_policy(&self, policy: Policy) -> Result<(), FirewallError>;
 }
