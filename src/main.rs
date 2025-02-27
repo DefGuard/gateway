@@ -1,15 +1,14 @@
 use std::{fs::File, io::Write, process, sync::Arc};
 
+use defguard_gateway::{
+    config::get_config, error::GatewayError, execute_command, gateway::Gateway, init_syslog,
+    server::run_server,
+};
 #[cfg(not(target_os = "macos"))]
 use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 use tokio::task::JoinSet;
-
-use defguard_gateway::{
-    config::get_config, error::GatewayError, execute_command, gateway::Gateway, init_syslog,
-    server::run_server,
-};
 
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
@@ -42,12 +41,12 @@ async fn main() -> Result<(), GatewayError> {
     let ifname = config.ifname.clone();
     let mut gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
-        Gateway::new(config.clone(), wgapi)?
+        Gateway::new(config.clone(), wgapi, None)?
     } else {
         #[cfg(not(target_os = "macos"))]
         {
             let wgapi = WGApi::<Kernel>::new(ifname)?;
-            Gateway::new(config.clone(), wgapi)?
+            Gateway::new(config.clone(), wgapi, None)?
         }
         #[cfg(target_os = "macos")]
         {

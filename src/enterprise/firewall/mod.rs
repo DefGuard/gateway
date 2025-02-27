@@ -9,7 +9,7 @@ pub mod api;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Address {
     Ip(IpAddr),
     Network(IpNetwork),
@@ -17,19 +17,19 @@ pub enum Address {
 }
 
 impl Address {
-    pub fn from_proto(ip: &proto::enterprise::IpAddress) -> Result<Self, FirewallError> {
+    pub fn from_proto(ip: &proto::enterprise::firewall::IpAddress) -> Result<Self, FirewallError> {
         match &ip.address {
-            Some(proto::enterprise::ip_address::Address::Ip(ip)) => {
+            Some(proto::enterprise::firewall::ip_address::Address::Ip(ip)) => {
                 Ok(Self::Ip(IpAddr::from_str(ip).map_err(|err| {
                     FirewallError::TypeConversionError(format!("Invalid IP format: {}", err))
                 })?))
             }
-            Some(proto::enterprise::ip_address::Address::IpSubnet(network)) => Ok(Self::Network(
-                IpNetwork::from_str(network).map_err(|err| {
+            Some(proto::enterprise::firewall::ip_address::Address::IpSubnet(network)) => Ok(
+                Self::Network(IpNetwork::from_str(network).map_err(|err| {
                     FirewallError::TypeConversionError(format!("Invalid subnet format: {}", err))
-                })?,
-            )),
-            Some(proto::enterprise::ip_address::Address::IpRange(range)) => {
+                })?),
+            ),
+            Some(proto::enterprise::firewall::ip_address::Address::IpRange(range)) => {
                 let start = IpAddr::from_str(&range.start).map_err(|err| {
                     FirewallError::TypeConversionError(format!("Invalid IP format: {}", err))
                 })?;
@@ -46,16 +46,16 @@ impl Address {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Port {
     Single(u16),
     Range(u16, u16),
 }
 
 impl Port {
-    pub fn from_proto(port: &proto::enterprise::Port) -> Result<Self, FirewallError> {
+    pub fn from_proto(port: &proto::enterprise::firewall::Port) -> Result<Self, FirewallError> {
         match &port.port {
-            Some(proto::enterprise::port::Port::SinglePort(port)) => {
+            Some(proto::enterprise::firewall::port::Port::SinglePort(port)) => {
                 let port_u16 = u16::try_from(*port).map_err(|err| {
                     FirewallError::TypeConversionError(format!(
                         "Invalid port number ({}): {}",
@@ -64,7 +64,7 @@ impl Port {
                 })?;
                 Ok(Self::Single(port_u16))
             }
-            Some(proto::enterprise::port::Port::PortRange(range)) => {
+            Some(proto::enterprise::firewall::port::Port::PortRange(range)) => {
                 let start_u16 = u16::try_from(range.start).map_err(|err| {
                     FirewallError::TypeConversionError(format!(
                         "Invalid range start port number ({}): {}",
@@ -87,8 +87,16 @@ impl Port {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Protocol(pub u8);
+
+// Protocols that have the concept of ports
+pub const PORT_PROTOCOLS: [Protocol; 2] = [
+    // TCP
+    Protocol(6),
+    // UDP
+    Protocol(17),
+];
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Policy {
@@ -109,15 +117,15 @@ impl From<bool> for Policy {
 }
 
 impl Policy {
-    pub const fn from_proto(verdict: proto::enterprise::FirewallPolicy) -> Self {
+    pub const fn from_proto(verdict: proto::enterprise::firewall::FirewallPolicy) -> Self {
         match verdict {
-            proto::enterprise::FirewallPolicy::Allow => Self::Allow,
-            proto::enterprise::FirewallPolicy::Deny => Self::Deny,
+            proto::enterprise::firewall::FirewallPolicy::Allow => Self::Allow,
+            proto::enterprise::firewall::FirewallPolicy::Deny => Self::Deny,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FirewallRule {
     pub comment: Option<String>,
     pub destination_addrs: Vec<Address>,
@@ -129,16 +137,20 @@ pub struct FirewallRule {
     pub v4: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FirewallConfig {
     pub rules: Vec<FirewallRule>,
     pub default_policy: Policy,
+    pub v4: bool,
 }
 
 impl FirewallConfig {
-    pub fn from_proto(config: proto::enterprise::FirewallConfig) -> Result<Self, FirewallError> {
-        debug!("Parsing following received proto configuration: {config:?}");
+    pub fn from_proto(
+        config: proto::enterprise::firewall::FirewallConfig,
+    ) -> Result<Self, FirewallError> {
+        debug!("Parsing following received firewall proto configuration: {config:?}");
         let mut rules = vec![];
-        let v4 = config.ip_version == proto::enterprise::IpVersion::Ipv4 as i32;
+        let v4 = config.ip_version == proto::enterprise::firewall::IpVersion::Ipv4 as i32;
         let default_policy =
             Policy::from_proto(config.default_policy.try_into().map_err(|err| {
                 FirewallError::TypeConversionError(format!("Invalid default policy: {:?}", err))
@@ -146,7 +158,7 @@ impl FirewallConfig {
         debug!("Using IPv4: {v4:?}, default firewall policy defined: {default_policy:?}. Proceeding to parsing rules...");
 
         for rule in config.rules {
-            debug!("Parsing the following received proto rule: {rule:?}");
+            debug!("Parsing the following received Defguard ACL proto rule: {rule:?}");
             let mut source_addrs = vec![];
             let mut destination_addrs = vec![];
             let mut destination_ports = vec![];
@@ -167,7 +179,7 @@ impl FirewallConfig {
             for protocol in rule.protocols {
                 protocols.push(Protocol::from_proto(
                     // Since the protocol is an i32, convert it to the proto enum variant first
-                    proto::enterprise::Protocol::try_from(protocol).map_err(|err| {
+                    proto::enterprise::firewall::Protocol::try_from(protocol).map_err(|err| {
                         FirewallError::TypeConversionError(format!(
                             "Invalid protocol: {:?}. Details: {:?}",
                             protocol, err
@@ -199,6 +211,7 @@ impl FirewallConfig {
         Ok(Self {
             rules,
             default_policy,
+            v4,
         })
     }
 }
@@ -213,4 +226,6 @@ pub enum FirewallError {
     UnsupportedProtocol(u8),
     #[error("Netlink error: {0}")]
     NetlinkError(String),
+    #[error("Invalid configuration: {0}")]
+    InvalidConfiguration(String),
 }

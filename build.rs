@@ -13,9 +13,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         config,
         &[
             "proto/wireguard/gateway.proto",
-            "proto/enterprise/firewall.proto",
+            "proto/enterprise/firewall/firewall.proto",
         ],
-        &["proto/wireguard", "proto/enterprise"],
+        &["proto/wireguard", "proto/enterprise/firewall"],
     )?;
     Ok(())
 }

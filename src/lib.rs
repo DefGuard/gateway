@@ -4,10 +4,13 @@ pub mod gateway;
 pub mod server;
 
 pub mod proto {
-    tonic::include_proto!("gateway");
-
+    pub mod gateway {
+        tonic::include_proto!("gateway");
+    }
     pub mod enterprise {
-        tonic::include_proto!("firewall");
+        pub mod firewall {
+            tonic::include_proto!("enterprise.firewall");
+        }
     }
 }
 
@@ -85,8 +88,8 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
     Ok(())
 }
 
-impl From<proto::Configuration> for InterfaceConfiguration {
-    fn from(config: proto::Configuration) -> Self {
+impl From<proto::gateway::Configuration> for InterfaceConfiguration {
+    fn from(config: proto::gateway::Configuration) -> Self {
         let peers = config.peers.into_iter().map(Peer::from).collect();
         // Try to convert an array of `String`s to `IpAddrMask`, leaving out the failed ones.
         let addresses = config
@@ -105,8 +108,8 @@ impl From<proto::Configuration> for InterfaceConfiguration {
     }
 }
 
-impl From<proto::Peer> for Peer {
-    fn from(proto_peer: proto::Peer) -> Self {
+impl From<proto::gateway::Peer> for Peer {
+    fn from(proto_peer: proto::gateway::Peer) -> Self {
         let mut peer = Self::new(proto_peer.pubkey.as_str().try_into().unwrap_or_default());
         peer.persistent_keepalive_interval = proto_peer
             .keepalive_interval
@@ -123,7 +126,7 @@ impl From<proto::Peer> for Peer {
     }
 }
 
-impl From<&Peer> for proto::Peer {
+impl From<&Peer> for proto::gateway::Peer {
     fn from(peer: &Peer) -> Self {
         let preshared_key = peer.preshared_key.as_ref().map(ToString::to_string);
         Self {
@@ -135,7 +138,7 @@ impl From<&Peer> for proto::Peer {
     }
 }
 
-impl From<&Peer> for proto::PeerStats {
+impl From<&Peer> for proto::gateway::PeerStats {
     fn from(peer: &Peer) -> Self {
         Self {
             public_key: peer.public_key.to_string(),
