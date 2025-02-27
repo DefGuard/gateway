@@ -1,6 +1,6 @@
 FROM rust:1-slim as builder
 
-RUN apt-get update && apt-get -y install protobuf-compiler
+RUN apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
 WORKDIR /app
 COPY . .
 RUN cargo build --release
