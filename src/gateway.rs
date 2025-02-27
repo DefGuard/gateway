@@ -9,6 +9,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
 use tokio::{
     select,
@@ -27,15 +28,18 @@ use tonic::{
 
 use crate::{
     config::Config,
+    enterprise::firewall::{
+        api::{FirewallApi, FirewallManagementApi},
+        FirewallConfig, FirewallRule,
+    },
     error::GatewayError,
     execute_command, mask,
-    proto::{
+    proto::gateway::{
         gateway_service_client::GatewayServiceClient, stats_update::Payload, update, Configuration,
         ConfigurationRequest, Peer, StatsUpdate, Update,
     },
     VERSION,
 };
-use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 
 const TEN_SECS: Duration = Duration::from_secs(10);
 
@@ -101,6 +105,8 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<PubKey, Peer>,
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
+    firewall_api: Option<FirewallApi>,
+    firewall_rules: Vec<FirewallRule>,
     pub connected: Arc<AtomicBool>,
     client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
     stats_thread: Option<JoinHandle<()>>,
@@ -110,6 +116,7 @@ impl Gateway {
     pub fn new(
         config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
+        firewallapi: Option<FirewallApi>,
     ) -> Result<Self, GatewayError> {
         let client = Self::setup_client(&config)?;
         Ok(Self {
@@ -120,6 +127,8 @@ impl Gateway {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
+            firewall_api: firewallapi,
+            firewall_rules: vec![],
         })
     }
 
@@ -133,8 +142,15 @@ impl Gateway {
         self.peers = peers;
     }
 
+    fn is_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
+        if let Some(firewall_api) = &self.firewall_api {
+            return firewall_api.config_changed(new_fw_config);
+        }
+        true
+    }
+
     // check if new received configuration is different than current one
-    fn is_config_changed(
+    fn is_interface_config_changed(
         &self,
         new_interface_configuration: &InterfaceConfiguration,
         new_peers: &[Peer],
@@ -247,6 +263,97 @@ impl Gateway {
         }
     }
 
+    fn did_firewall_rules_change(&self, new_rules: &[FirewallRule]) -> bool {
+        debug!("Checking if Defguard ACL rules have changed");
+
+        if self.firewall_rules.len() != new_rules.len() {
+            debug!("Number of Defguard ACL rules is different, so the rules have changed");
+            return true;
+        }
+
+        for rule in new_rules {
+            if !self.firewall_rules.contains(rule) {
+                debug!("Found a new Defguard ACL rule: {rule:?}. Rules have changed.");
+                return true;
+            }
+        }
+
+        for rule in &self.firewall_rules {
+            if !new_rules.contains(rule) {
+                debug!("Found a removed Defguard ACL rule: {rule:?}. Rules have changed.");
+                return true;
+            }
+        }
+
+        debug!("Defguard ACL rules have not changed");
+        false
+    }
+
+    /// Process and apply firewall configuration changes.
+    /// - If the main config changed (default policy, IP version), reconfigure the whole firewall.
+    /// - If only the rules changed, apply the new rules. Currently also reconfigures the whole firewall but that
+    ///   should be temporary.
+    ///
+    /// TODO: Reduce cloning here
+    fn process_firewall_changes(
+        &mut self,
+        fw_config: Option<&FirewallConfig>,
+    ) -> Result<(), GatewayError> {
+        if let Some(fw_config) = fw_config {
+            debug!("Received firewall configuration: {fw_config:?}");
+            if self.is_firewall_config_changed(fw_config) {
+                debug!("Received firewall configuration is different than current one. Reconfiguring firewall...");
+                if let Some(api) = &mut self.firewall_api {
+                    api.maybe_update_from_config(fw_config)?;
+                    api.setup()?;
+                } else {
+                    let api = FirewallApi::from_config(&self.config.ifname, fw_config);
+                    api.setup()?;
+                    self.firewall_api = Some(api);
+                }
+
+                if self.did_firewall_rules_change(&fw_config.rules) {
+                    debug!("Received firewall rules are different than the current ones. Applying the new rules.");
+                    if let Some(api) = &self.firewall_api {
+                        api.apply_rules(fw_config.rules.clone())?;
+                        self.firewall_rules = fw_config.rules.clone();
+                    } else {
+                        error!(
+                            "Firewall API not initialized. Configuration: {:?}",
+                            fw_config.rules
+                        );
+                    }
+                } else {
+                    debug!("Received firewall rules are the same as the current ones. Skipping applying the rules.");
+                }
+            } else if self.did_firewall_rules_change(&fw_config.rules) {
+                debug!("Received firewall rules are different than the current ones. Applying the new rules.");
+                if let Some(api) = &self.firewall_api {
+                    // Temporary simplest approach is to drop everything and reapply all rules
+                    api.setup()?;
+                    api.apply_rules(fw_config.rules.clone())?;
+                    self.firewall_rules = fw_config.rules.clone();
+                } else {
+                    error!(
+                        "Firewall API not initialized. Configuration: {:?}",
+                        fw_config.rules
+                    );
+                }
+            } else {
+                debug!("Received firewall configuration and rules are identical to current one. Skipping firewall reconfiguration");
+            }
+        } else {
+            debug!("Received firewall configuration is empty, cleaning up firewall rules...");
+            if let Some(api) = &self.firewall_api {
+                api.cleanup()?;
+                self.firewall_api = None;
+                self.firewall_rules = vec![];
+            }
+        }
+
+        Ok(())
+    }
+
     /// Performs complete interface reconfiguration based on `configuration` object.
     /// Called when gateway (re)connects to gRPC endpoint and retrieves complete
     /// network and peers data.
@@ -262,27 +369,39 @@ impl Gateway {
 
         // check if new configuration is different than current one
         let new_interface_configuration = new_configuration.clone().into();
-        if !self.is_config_changed(&new_interface_configuration, &new_configuration.peers) {
+
+        if !self.is_interface_config_changed(&new_interface_configuration, &new_configuration.peers)
+        {
             debug!("Received configuration is identical to current one. Skipping interface reconfiguration");
-            return Ok(());
-        };
+        } else {
+            debug!(
+                "Received configuration is different than current one. Reconfiguring interface..."
+            );
+            self.wgapi
+                .lock()
+                .unwrap()
+                .configure_interface(&new_configuration.clone().into())?;
+            info!(
+                "Reconfigured WireGuard interface {} (addresses: {:?})",
+                new_configuration.name, new_configuration.addresses
+            );
+            trace!(
+                "Reconfigured WireGuard interface. Configuration: {:?}",
+                mask!(new_configuration, prvkey)
+            );
+            // store new configuration and peers
+            self.interface_configuration = Some(new_interface_configuration);
+            self.replace_peers(new_configuration.peers);
+        }
 
-        self.wgapi
-            .lock()
-            .unwrap()
-            .configure_interface(&new_configuration.clone().into())?;
-        info!(
-            "Reconfigured WireGuard interface {} (addresses: {:?})",
-            new_configuration.name, new_configuration.addresses
-        );
-        trace!(
-            "Reconfigured WireGuard interface. Configuration: {:?}",
-            mask!(new_configuration, prvkey)
-        );
+        let new_firewall_configuration =
+            if let Some(firewall_config) = new_configuration.firewall_config {
+                Some(FirewallConfig::from_proto(firewall_config)?)
+            } else {
+                None
+            };
 
-        // store new configuration and peers
-        self.interface_configuration = Some(new_interface_configuration);
-        self.replace_peers(new_configuration.peers);
+        self.process_firewall_changes(new_firewall_configuration.as_ref())?;
 
         Ok(())
     }
@@ -403,6 +522,25 @@ impl Gateway {
                                 }
                             };
                         }
+                        Some(update::Update::FirewallConfig(config)) => {
+                            debug!("Applying received firewall configuration: {config:?}");
+                            let config_str = format!("{:?}", config);
+                            match FirewallConfig::from_proto(config) {
+                                Ok(new_firewall_config) => {
+                                    debug!("Parsed the received firewall configuration: {new_firewall_config:?}, processing it and applying changes");
+                                    if let Err(err) =
+                                        self.process_firewall_changes(Some(&new_firewall_config))
+                                    {
+                                        error!("Failed to process received firewall configuration: {err}");
+                                    }
+                                }
+                                Err(err) => {
+                                    error!(
+                                        "Failed to parse received firewall configuration: {err}. Configuration: {config_str}"
+                                    );
+                                }
+                            }
+                        }
                         _ => warn!("Unsupported kind of update: {update:?}"),
                     }
                 }
@@ -517,12 +655,14 @@ mod tests {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
+            firewall_api: None,
+            firewall_rules: vec![],
         };
 
         // new config is the same
         let new_config = old_config.clone();
         let new_peers = old_peers.clone();
-        assert!(!gateway.is_config_changed(&new_config, &new_peers));
+        assert!(!gateway.is_interface_config_changed(&new_config, &new_peers));
 
         // only interface config is different
         let new_config = InterfaceConfiguration {
@@ -532,14 +672,14 @@ mod tests {
             port: 50051,
         };
         let new_peers = old_peers.clone();
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
+        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
 
         // peer was removed
         let new_config = old_config.clone();
         let mut new_peers = old_peers.clone();
         new_peers.pop();
 
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
+        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
 
         // peer was added
         let new_config = old_config.clone();
@@ -551,7 +691,7 @@ mod tests {
             keepalive_interval: None,
         });
 
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
+        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
 
         // peer pubkey changed
         let new_config = old_config.clone();
@@ -570,7 +710,7 @@ mod tests {
             },
         ];
 
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
+        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
 
         // peer IP changed
         let new_config = old_config.clone();
@@ -589,7 +729,7 @@ mod tests {
             },
         ];
 
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
+        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
 
         // peer preshared key changed
         let new_config = old_config.clone();
@@ -608,7 +748,7 @@ mod tests {
             },
         ];
 
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
+        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
 
         // peer keepalive interval changed
         let new_config = old_config.clone();
@@ -627,6 +767,6 @@ mod tests {
             },
         ];
 
-        assert!(gateway.is_config_changed(&new_config, &new_peers));
+        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
     }
 }
