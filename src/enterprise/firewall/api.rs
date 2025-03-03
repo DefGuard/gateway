@@ -5,15 +5,17 @@ pub struct FirewallApi {
     pub ifname: String,
     pub default_policy: Policy,
     pub v4: bool,
+    pub masquerade: bool,
 }
 
 impl FirewallApi {
     #[must_use]
-    pub fn from_config(ifname: &str, config: &FirewallConfig) -> Self {
+    pub fn from_config(ifname: &str, config: &FirewallConfig, masquerade: bool) -> Self {
         Self {
             ifname: ifname.into(),
             default_policy: config.default_policy,
             v4: config.v4,
+            masquerade,
         }
     }
 

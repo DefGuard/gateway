@@ -76,6 +76,11 @@ impl FirewallManagementApi for FirewallApi {
         debug!("Allowing all established traffic");
         allow_established_traffic()?;
         debug!("Allowed all established traffic");
+        if self.masquerade {
+            debug!("Enabling masquerade according to the gateway configuration");
+            self.set_masquerade_status(self.masquerade)?;
+            debug!("Masquerade enabled");
+        }
         debug!("Initialized firewall");
         Ok(())
     }

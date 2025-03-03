@@ -307,7 +307,11 @@ impl Gateway {
                     api.maybe_update_from_config(fw_config)?;
                     api.setup()?;
                 } else {
-                    let api = FirewallApi::from_config(&self.config.ifname, fw_config);
+                    let api = FirewallApi::from_config(
+                        &self.config.ifname,
+                        fw_config,
+                        self.config.masquerade,
+                    );
                     api.setup()?;
                     self.firewall_api = Some(api);
                 }
