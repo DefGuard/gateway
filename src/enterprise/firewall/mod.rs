@@ -6,8 +6,12 @@ use thiserror::Error;
 use crate::proto;
 
 pub mod api;
-#[cfg(target_os = "linux")]
+#[cfg(all(not(test), target_os = "linux"))]
 pub mod linux;
+
+// allow this only in tests
+#[cfg(test)]
+pub mod test;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Address {
@@ -97,6 +101,12 @@ pub const PORT_PROTOCOLS: [Protocol; 2] = [
     // UDP
     Protocol(17),
 ];
+
+impl Protocol {
+    pub fn supports_ports(&self) -> bool {
+        PORT_PROTOCOLS.contains(self)
+    }
+}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Policy {

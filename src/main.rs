@@ -1,7 +1,12 @@
 use std::{fs::File, io::Write, process, sync::Arc};
 
 use defguard_gateway::{
-    config::get_config, error::GatewayError, execute_command, gateway::Gateway, init_syslog,
+    config::get_config,
+    enterprise::firewall::api::{FirewallApi, FirewallManagementApi},
+    error::GatewayError,
+    execute_command,
+    gateway::Gateway,
+    init_syslog,
     server::run_server,
 };
 #[cfg(not(target_os = "macos"))]
@@ -39,14 +44,21 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     let ifname = config.ifname.clone();
+    let firewall_api = FirewallApi::new(&ifname);
+    #[cfg(target_os = "linux")]
+    if config.masquerade {
+        firewall_api.setup(None)?;
+        firewall_api.set_masquerade_status(true)?;
+    }
+
     let mut gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
-        Gateway::new(config.clone(), wgapi, None)?
+        Gateway::new(config.clone(), wgapi, firewall_api)?
     } else {
         #[cfg(not(target_os = "macos"))]
         {
             let wgapi = WGApi::<Kernel>::new(ifname)?;
-            Gateway::new(config.clone(), wgapi, None)?
+            Gateway::new(config.clone(), wgapi, firewall_api)?
         }
         #[cfg(target_os = "macos")]
         {
@@ -54,6 +66,7 @@ async fn main() -> Result<(), GatewayError> {
             return Ok(());
         }
     };
+
     let mut tasks = JoinSet::new();
     if let Some(health_port) = config.health_port {
         tasks.spawn(run_server(health_port, Arc::clone(&gateway.connected)));

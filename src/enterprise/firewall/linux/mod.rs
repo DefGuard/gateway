@@ -33,10 +33,6 @@ impl Protocol {
             }
         }
     }
-
-    pub fn supports_ports(&self) -> bool {
-        PORT_PROTOCOLS.contains(self)
-    }
 }
 
 #[derive(Debug, Default)]
@@ -69,18 +65,13 @@ pub struct FilterRule {
 }
 
 impl FirewallManagementApi for FirewallApi {
-    fn setup(&self) -> Result<(), FirewallError> {
+    fn setup(&self, default_policy: Option<Policy>) -> Result<(), FirewallError> {
         debug!("Initializing firewall, VPN interface: {}", self.ifname);
         self.cleanup()?;
-        init_firewall(Some(self.default_policy)).expect("Failed to setup chains");
+        init_firewall(default_policy).expect("Failed to setup chains");
         debug!("Allowing all established traffic");
         allow_established_traffic()?;
         debug!("Allowed all established traffic");
-        if self.masquerade {
-            debug!("Enabling masquerade according to the gateway configuration");
-            self.set_masquerade_status(self.masquerade)?;
-            debug!("Masquerade enabled");
-        }
         debug!("Initialized firewall");
         Ok(())
     }
@@ -94,7 +85,6 @@ impl FirewallManagementApi for FirewallApi {
 
     fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError> {
         debug!("Setting default firewall policy to: {:?}", policy);
-        self.default_policy = policy;
         set_default_policy(policy)?;
         debug!("Set firewall default policy to {:?}", policy);
         Ok(())
@@ -107,7 +97,7 @@ impl FirewallManagementApi for FirewallApi {
         Ok(())
     }
 
-    fn apply_rules(&self, rules: Vec<FirewallRule>) -> Result<(), FirewallError> {
+    fn add_rules(&self, rules: Vec<FirewallRule>) -> Result<(), FirewallError> {
         debug!("Applying the following Defguard ACL rules: {:?}", rules);
         for rule in rules {
             self.add_rule(rule)?;

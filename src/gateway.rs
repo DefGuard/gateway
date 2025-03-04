@@ -105,8 +105,8 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<PubKey, Peer>,
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
-    firewall_api: Option<FirewallApi>,
-    firewall_rules: Vec<FirewallRule>,
+    firewall_api: FirewallApi,
+    firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
     client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
     stats_thread: Option<JoinHandle<()>>,
@@ -116,7 +116,7 @@ impl Gateway {
     pub fn new(
         config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
-        firewallapi: Option<FirewallApi>,
+        firewall_api: FirewallApi,
     ) -> Result<Self, GatewayError> {
         let client = Self::setup_client(&config)?;
         Ok(Self {
@@ -127,8 +127,8 @@ impl Gateway {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
-            firewall_api: firewallapi,
-            firewall_rules: vec![],
+            firewall_api,
+            firewall_config: None,
         })
     }
 
@@ -140,13 +140,6 @@ impl Gateway {
             .map(|peer| (peer.pubkey.clone(), peer))
             .collect();
         self.peers = peers;
-    }
-
-    fn is_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
-        if let Some(firewall_api) = &self.firewall_api {
-            return firewall_api.config_changed(new_fw_config);
-        }
-        true
     }
 
     // check if new received configuration is different than current one
@@ -263,30 +256,46 @@ impl Gateway {
         }
     }
 
-    fn did_firewall_rules_change(&self, new_rules: &[FirewallRule]) -> bool {
+    /// Checks whether the firewall config changed, but doesn't check the rules.
+    fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
+        if let Some(current_config) = &self.firewall_config {
+            return current_config.default_policy != new_fw_config.default_policy
+                || current_config.v4 != new_fw_config.v4;
+        }
+
+        true
+    }
+
+    /// Checks whether the firewall rules have changed.
+    fn has_firewall_rules_changed(&self, new_rules: &[FirewallRule]) -> bool {
         debug!("Checking if Defguard ACL rules have changed");
-
-        if self.firewall_rules.len() != new_rules.len() {
-            debug!("Number of Defguard ACL rules is different, so the rules have changed");
-            return true;
-        }
-
-        for rule in new_rules {
-            if !self.firewall_rules.contains(rule) {
-                debug!("Found a new Defguard ACL rule: {rule:?}. Rules have changed.");
+        if let Some(current_config) = &self.firewall_config {
+            let current_rules = &current_config.rules;
+            if current_rules.len() != new_rules.len() {
+                debug!("Number of Defguard ACL rules is different, so the rules have changed");
                 return true;
             }
-        }
 
-        for rule in &self.firewall_rules {
-            if !new_rules.contains(rule) {
-                debug!("Found a removed Defguard ACL rule: {rule:?}. Rules have changed.");
-                return true;
+            for rule in new_rules {
+                if !current_rules.contains(rule) {
+                    debug!("Found a new Defguard ACL rule: {rule:?}. Rules have changed.");
+                    return true;
+                }
             }
-        }
 
-        debug!("Defguard ACL rules have not changed");
-        false
+            for rule in current_rules {
+                if !new_rules.contains(rule) {
+                    debug!("Found a removed Defguard ACL rule: {rule:?}. Rules have changed.");
+                    return true;
+                }
+            }
+
+            debug!("Defguard ACL rules are the same. Rules have not changed.");
+            false
+        } else {
+            debug!("There are new Defguard ACL rules in the new configuration, but we don't have any in the current one. Rules have changed.");
+            true
+        }
     }
 
     /// Process and apply firewall configuration changes.
@@ -301,58 +310,35 @@ impl Gateway {
     ) -> Result<(), GatewayError> {
         if let Some(fw_config) = fw_config {
             debug!("Received firewall configuration: {fw_config:?}");
-            if self.is_firewall_config_changed(fw_config) {
+            if self.has_firewall_config_changed(fw_config) {
                 debug!("Received firewall configuration is different than current one. Reconfiguring firewall...");
-                if let Some(api) = &mut self.firewall_api {
-                    api.maybe_update_from_config(fw_config)?;
-                    api.setup()?;
-                } else {
-                    let api = FirewallApi::from_config(
-                        &self.config.ifname,
-                        fw_config,
-                        self.config.masquerade,
-                    );
-                    api.setup()?;
-                    self.firewall_api = Some(api);
-                }
+                self.firewall_api.setup(Some(fw_config.default_policy))?;
+                self.firewall_config = Some(fw_config.clone());
+                debug!("Reconfigured firewall with new configuration");
 
-                if self.did_firewall_rules_change(&fw_config.rules) {
+                if self.has_firewall_rules_changed(&fw_config.rules) {
                     debug!("Received firewall rules are different than the current ones. Applying the new rules.");
-                    if let Some(api) = &self.firewall_api {
-                        api.apply_rules(fw_config.rules.clone())?;
-                        self.firewall_rules = fw_config.rules.clone();
-                    } else {
-                        error!(
-                            "Firewall API not initialized. Configuration: {:?}",
-                            fw_config.rules
-                        );
-                    }
+                    self.firewall_api.add_rules(fw_config.rules.clone())?;
                 } else {
                     debug!("Received firewall rules are the same as the current ones. Skipping applying the rules.");
                 }
-            } else if self.did_firewall_rules_change(&fw_config.rules) {
+            } else if self.has_firewall_rules_changed(&fw_config.rules) {
                 debug!("Received firewall rules are different than the current ones. Applying the new rules.");
-                if let Some(api) = &self.firewall_api {
-                    // Temporary simplest approach is to drop everything and reapply all rules
-                    api.setup()?;
-                    api.apply_rules(fw_config.rules.clone())?;
-                    self.firewall_rules = fw_config.rules.clone();
+                if let Some(current_config) = &mut self.firewall_config {
+                    let rules = &fw_config.rules;
+                    self.firewall_api.add_rules(rules.clone())?;
+                    current_config.rules = fw_config.rules.clone();
                 } else {
-                    error!(
-                        "Firewall API not initialized. Configuration: {:?}",
-                        fw_config.rules
-                    );
+                    unreachable!("Firewall config should be present here");
                 }
             } else {
                 debug!("Received firewall configuration and rules are identical to current one. Skipping firewall reconfiguration");
             }
         } else {
             debug!("Received firewall configuration is empty, cleaning up firewall rules...");
-            if let Some(api) = &self.firewall_api {
-                api.cleanup()?;
-                self.firewall_api = None;
-                self.firewall_rules = vec![];
-            }
+            self.firewall_api.cleanup()?;
+            self.firewall_config = None;
+            debug!("Cleaned up firewall rules");
         }
 
         Ok(())
@@ -613,8 +599,10 @@ mod tests {
     #[cfg(target_os = "macos")]
     use defguard_wireguard_rs::Userspace;
     use defguard_wireguard_rs::WGApi;
+    use ipnetwork::IpNetwork;
 
     use super::*;
+    use crate::enterprise::firewall::{Address, Policy, Port, Protocol};
 
     #[tokio::test]
     async fn test_configuration_comparison() {
@@ -651,6 +639,7 @@ mod tests {
         let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
         let config = Config::default();
         let client = Gateway::setup_client(&config).unwrap();
+        let firewall_api = FirewallApi::new("wg0");
         let gateway = Gateway {
             config,
             interface_configuration: Some(old_config.clone()),
@@ -659,8 +648,8 @@ mod tests {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
-            firewall_api: None,
-            firewall_rules: vec![],
+            firewall_api: firewall_api,
+            firewall_config: None,
         };
 
         // new config is the same
@@ -772,5 +761,189 @@ mod tests {
         ];
 
         assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
+    }
+
+    #[tokio::test]
+    async fn test_firewall_rules_comparison() {
+        use std::net::IpAddr;
+
+        let rule1 = FirewallRule {
+            comment: Some("Rule 1".to_string()),
+            destination_addrs: vec![Address::Ip(IpAddr::from_str("10.0.0.1").unwrap())],
+            destination_ports: vec![Port::Single(80)],
+            id: 1,
+            verdict: Policy::Allow,
+            protocols: vec![Protocol(6)], // TCP
+            source_addrs: vec![Address::Ip(IpAddr::from_str("192.168.1.1").unwrap())],
+            v4: true,
+        };
+
+        let rule2 = FirewallRule {
+            comment: Some("Rule 2".to_string()),
+            destination_addrs: vec![Address::Ip(IpAddr::from_str("10.0.0.2").unwrap())],
+            destination_ports: vec![Port::Single(443)],
+            id: 2,
+            verdict: Policy::Allow,
+            protocols: vec![Protocol(6)], // TCP
+            source_addrs: vec![Address::Ip(IpAddr::from_str("192.168.1.2").unwrap())],
+            v4: true,
+        };
+
+        let rule3 = FirewallRule {
+            comment: Some("Rule 3".to_string()),
+            destination_addrs: vec![Address::Network(
+                IpNetwork::from_str("10.0.1.0/24").unwrap(),
+            )],
+            destination_ports: vec![Port::Range(1000, 2000)],
+            id: 3,
+            verdict: Policy::Deny,
+            protocols: vec![Protocol(17)], // UDP
+            source_addrs: vec![Address::Network(
+                IpNetwork::from_str("192.168.0.0/16").unwrap(),
+            )],
+            v4: true,
+        };
+
+        let config1 = FirewallConfig {
+            rules: vec![rule1.clone(), rule2.clone()],
+            default_policy: Policy::Allow,
+            v4: true,
+        };
+
+        let config_empty = FirewallConfig {
+            rules: vec![],
+            default_policy: Policy::Allow,
+            v4: true,
+        };
+
+        #[cfg(target_os = "macos")]
+        let wgapi = WGApi::<Userspace>::new("wg0".into()).unwrap();
+        #[cfg(not(target_os = "macos"))]
+        let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
+
+        let config = Config::default();
+        let client = Gateway::setup_client(&config).unwrap();
+        let mut gateway = Gateway {
+            config,
+            interface_configuration: None,
+            peers: HashMap::new(),
+            wgapi: Arc::new(Mutex::new(wgapi)),
+            connected: Arc::new(AtomicBool::new(false)),
+            client,
+            stats_thread: None,
+            firewall_api: FirewallApi::new("test_interface"),
+            firewall_config: None,
+        };
+
+        // Gateway has no firewall config, new rules are empty
+        gateway.firewall_config = None;
+        assert!(gateway.has_firewall_rules_changed(&[]));
+
+        // Gateway has no firewall config, but new rules exist
+        gateway.firewall_config = None;
+        assert!(gateway.has_firewall_rules_changed(&[rule1.clone()]));
+
+        // Gateway has firewall config, with empty rules list
+        gateway.firewall_config = Some(config1.clone());
+        assert!(gateway.has_firewall_rules_changed(&[]));
+
+        // Gateway has firewall config, new rules have different length
+        gateway.firewall_config = Some(config1.clone());
+        assert!(gateway.has_firewall_rules_changed(&[rule1.clone()]));
+
+        // Gateway has firewall config, new rules have different content
+        gateway.firewall_config = Some(config1.clone());
+        assert!(gateway.has_firewall_rules_changed(&[rule1.clone(), rule3.clone()]));
+
+        // Gateway has firewall config, new rules are identical
+        gateway.firewall_config = Some(config1.clone());
+        assert!(!gateway.has_firewall_rules_changed(&[rule1.clone(), rule2.clone()]));
+
+        // Gateway has empty firewall config, new rules exist
+        gateway.firewall_config = Some(config_empty.clone());
+        assert!(gateway.has_firewall_rules_changed(&[rule1.clone()]));
+
+        // Both configs are empty
+        gateway.firewall_config = Some(config_empty.clone());
+        assert!(!gateway.has_firewall_rules_changed(&[]));
+    }
+
+    #[tokio::test]
+    async fn test_firewall_config_comparison() {
+        let config1 = FirewallConfig {
+            rules: vec![],
+            default_policy: Policy::Allow,
+            v4: true,
+        };
+
+        let config2 = FirewallConfig {
+            rules: vec![],
+            default_policy: Policy::Deny,
+            v4: true,
+        };
+
+        let config3 = FirewallConfig {
+            rules: vec![],
+            default_policy: Policy::Allow,
+            v4: false,
+        };
+
+        let config4 = FirewallConfig {
+            rules: vec![],
+            default_policy: Policy::Allow,
+            v4: true,
+        };
+
+        #[cfg(target_os = "macos")]
+        let wgapi = WGApi::<Userspace>::new("wg0".into()).unwrap();
+        #[cfg(not(target_os = "macos"))]
+        let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
+
+        let config = Config::default();
+        let client = Gateway::setup_client(&config).unwrap();
+        let mut gateway = Gateway {
+            config,
+            interface_configuration: None,
+            peers: HashMap::new(),
+            wgapi: Arc::new(Mutex::new(wgapi)),
+            connected: Arc::new(AtomicBool::new(false)),
+            client,
+            stats_thread: None,
+            firewall_api: FirewallApi::new("test_interface"),
+            firewall_config: None,
+        };
+        // Gateway has no config
+        gateway.firewall_config = None;
+        assert!(gateway.has_firewall_config_changed(&config1));
+
+        // Gateway has config, new config has different default_policy
+        gateway.firewall_config = Some(config1.clone());
+        assert!(gateway.has_firewall_config_changed(&config2));
+
+        // Gateway has config, new config has different v4 value
+        gateway.firewall_config = Some(config1.clone());
+        assert!(gateway.has_firewall_config_changed(&config3));
+
+        // Gateway has config, new config is identical
+        gateway.firewall_config = Some(config1.clone());
+        assert!(!gateway.has_firewall_config_changed(&config4));
+
+        // Rules are being ignored
+        let config5 = FirewallConfig {
+            rules: vec![FirewallRule {
+                comment: None,
+                destination_addrs: vec![],
+                destination_ports: vec![],
+                id: 0,
+                verdict: Policy::Allow,
+                protocols: vec![],
+                source_addrs: vec![],
+                v4: true,
+            }],
+            default_policy: Policy::Allow,
+            v4: true,
+        };
+        gateway.firewall_config = Some(config1.clone());
+        assert!(!gateway.has_firewall_config_changed(&config5));
     }
 }
