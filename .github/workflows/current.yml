@@ -4,6 +4,7 @@ on:
     branches:
       - main
       - dev
+      - firewall
     paths-ignore:
       - "*.md"
       - "LICENSE"
@@ -16,7 +17,12 @@ jobs:
   build-current:
     uses: ./.github/workflows/build-docker.yml
     with:
+      # tags: |
+      #   type=raw,value=current
+      #   type=ref,event=branch
+      #   type=sha
       tags: |
-        type=raw,value=current
         type=ref,event=branch
         type=sha
+      flavor: |
+        latest=false
