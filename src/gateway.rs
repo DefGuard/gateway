@@ -290,7 +290,7 @@ impl Gateway {
                 }
             }
 
-            debug!("Defguard ACL rules are the same. Rules have not changed.");
+            debug!("Defguard ACL rules are the same. Rules have not changed. My rules: {current_rules:?}, new rules: {new_rules:?}");
             false
         } else {
             debug!("There are new Defguard ACL rules in the new configuration, but we don't have any in the current one. Rules have changed.");
