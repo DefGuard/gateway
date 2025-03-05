@@ -313,7 +313,6 @@ impl Gateway {
             if self.has_firewall_config_changed(fw_config) {
                 debug!("Received firewall configuration is different than current one. Reconfiguring firewall...");
                 self.firewall_api.setup(Some(fw_config.default_policy))?;
-                self.firewall_config = Some(fw_config.clone());
                 debug!("Reconfigured firewall with new configuration");
 
                 if self.has_firewall_rules_changed(&fw_config.rules) {
@@ -322,6 +321,7 @@ impl Gateway {
                 } else {
                     debug!("Received firewall rules are the same as the current ones. Skipping applying the rules.");
                 }
+                self.firewall_config = Some(fw_config.clone());
             } else if self.has_firewall_rules_changed(&fw_config.rules) {
                 debug!("Received firewall rules are different than the current ones. Applying the new rules.");
                 if let Some(current_config) = &mut self.firewall_config {
