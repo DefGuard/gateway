@@ -50,3 +50,6 @@ syslog_socket = "/var/run/log"
 # 200 - Gateway is working and is connected to CORE
 # 503 - gateway works but is not connected to CORE
 #health_port = 55003
+
+# Optional: Enable automatic masquerading of traffic by the firewall
+#masquerade = true

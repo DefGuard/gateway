@@ -25,8 +25,8 @@ jobs:
       - name: Install Rust toolchain
         run: rustup update --no-self-update stable
 
-      - name: Install protoc
-        run: apt-get update && apt-get -y install protobuf-compiler
+      - name: Install dependencies
+        run: apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
 
       - name: Build Docs
         run: cargo doc --all --no-deps
