@@ -7,7 +7,7 @@ RUN cargo build --release
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get -y --no-install-recommends install \
-    iproute2 wireguard-tools sudo ca-certificates iptables ebtables && \
+    iproute2 wireguard-tools sudo ca-certificates iptables ebtables nftables && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/target/release/defguard-gateway /usr/local/bin
