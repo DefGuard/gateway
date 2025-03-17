@@ -326,8 +326,7 @@ impl Gateway {
             } else if self.has_firewall_rules_changed(&fw_config.rules) {
                 debug!("Received firewall rules are different than the current ones. Applying the new rules.");
                 if let Some(current_config) = &mut self.firewall_config {
-                    let rules = &fw_config.rules;
-                    self.firewall_api.add_rules(rules.clone())?;
+                    self.firewall_api.add_rules(fw_config.rules.clone())?;
                     current_config.rules = fw_config.rules.clone();
                 } else {
                     unreachable!("Firewall config should be present here");

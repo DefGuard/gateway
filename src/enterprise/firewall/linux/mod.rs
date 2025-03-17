@@ -45,11 +45,11 @@ pub enum State {
 }
 
 #[derive(Debug, Default)]
-pub struct FilterRule {
-    pub src_ips: Vec<Address>,
-    pub dest_ips: Vec<Address>,
-    pub src_ports: Vec<Port>,
-    pub dest_ports: Vec<Port>,
+pub struct FilterRule<'a> {
+    pub src_ips: &'a [Address],
+    pub dest_ips: &'a [Address],
+    pub src_ports: &'a [Port],
+    pub dest_ports: &'a [Port],
     pub protocols: Vec<Protocol>,
     pub oifname: Option<String>,
     pub iifname: Option<String>,
@@ -118,14 +118,14 @@ impl FirewallManagementApi for FirewallApi {
         if rule.destination_ports.is_empty() {
             debug!("No destination ports specified, applying single aggregate nftables rule for every protocol.");
             let rule = FilterRule {
-                src_ips: rule.source_addrs,
-                dest_ips: rule.destination_addrs,
+                src_ips: &rule.source_addrs,
+                dest_ips: &rule.destination_addrs,
                 protocols: rule.protocols,
                 action: rule.verdict,
                 counter: true,
                 defguard_rule_id: rule.id,
                 v4: rule.v4,
-                comment: rule.comment,
+                comment: rule.comment.clone(),
                 ..Default::default()
             };
             rules.push(rule);
@@ -136,9 +136,9 @@ impl FirewallManagementApi for FirewallApi {
                 if protocol.supports_ports() {
                     debug!("Protocol supports ports, rule.");
                     let rule = FilterRule {
-                        src_ips: rule.source_addrs.clone(),
-                        dest_ips: rule.destination_addrs.clone(),
-                        dest_ports: rule.destination_ports.clone(),
+                        src_ips: &rule.source_addrs,
+                        dest_ips: &rule.destination_addrs,
+                        dest_ports: &rule.destination_ports,
                         protocols: vec![protocol],
                         action: rule.verdict,
                         counter: true,
@@ -151,8 +151,8 @@ impl FirewallManagementApi for FirewallApi {
                 } else {
                     debug!("Protocol does not support ports, applying nftables rule and ignoring destination ports.");
                     let rule = FilterRule {
-                        src_ips: rule.source_addrs.clone(),
-                        dest_ips: rule.destination_addrs.clone(),
+                        src_ips: &rule.source_addrs,
+                        dest_ips: &rule.destination_addrs,
                         protocols: vec![protocol],
                         action: rule.verdict,
                         counter: true,
@@ -168,13 +168,13 @@ impl FirewallManagementApi for FirewallApi {
             debug!(
                 "Destination ports specified, but no protocols specified, applying nftables rules for each protocol that support ports."
             );
-            for protocol in PORT_PROTOCOLS.iter() {
+            for protocol in PORT_PROTOCOLS {
                 debug!("Applying nftables rule for protocol: {:?}", protocol);
                 let rule = FilterRule {
-                    src_ips: rule.source_addrs.clone(),
-                    dest_ips: rule.destination_addrs.clone(),
-                    dest_ports: rule.destination_ports.clone(),
-                    protocols: vec![*protocol],
+                    src_ips: &rule.source_addrs,
+                    dest_ips: &rule.destination_addrs,
+                    dest_ports: &rule.destination_ports,
+                    protocols: vec![protocol],
                     action: rule.verdict,
                     counter: true,
                     defguard_rule_id: rule.id,

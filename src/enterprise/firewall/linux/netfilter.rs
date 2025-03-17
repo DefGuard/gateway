@@ -160,7 +160,7 @@ fn add_protocol_to_set(
     Ok(())
 }
 
-impl FirewallRule for FilterRule {
+impl<'b> FirewallRule for FilterRule<'b> {
     fn to_chain_rule<'a>(
         &self,
         chain: &'a Chain,
@@ -184,7 +184,7 @@ impl FirewallRule for FilterRule {
                 let set = new_anon_set::<Ipv4Addr>(chain.get_table(), ProtoFamily::Inet, true)?;
                 batch.add(&set, nftnl::MsgType::Add);
 
-                for ip in &self.src_ips {
+                for ip in self.src_ips {
                     add_address_to_set(set.as_ptr(), ip)?;
                 }
 
@@ -202,7 +202,7 @@ impl FirewallRule for FilterRule {
                 let set = new_anon_set::<Ipv6Addr>(chain.get_table(), ProtoFamily::Inet, true)?;
                 batch.add(&set, nftnl::MsgType::Add);
 
-                for ip in &self.src_ips {
+                for ip in self.src_ips {
                     add_address_to_set(set.as_ptr(), ip)?;
                 }
 
@@ -230,7 +230,7 @@ impl FirewallRule for FilterRule {
                 let set = new_anon_set::<Ipv4Addr>(chain.get_table(), ProtoFamily::Inet, true)?;
                 batch.add(&set, nftnl::MsgType::Add);
 
-                for ip in &self.dest_ips {
+                for ip in self.dest_ips {
                     add_address_to_set(set.as_ptr(), ip)?;
                 }
 
@@ -248,7 +248,7 @@ impl FirewallRule for FilterRule {
                 let set = new_anon_set::<Ipv6Addr>(chain.get_table(), ProtoFamily::Inet, true)?;
                 batch.add(&set, nftnl::MsgType::Add);
 
-                for ip in &self.dest_ips {
+                for ip in self.dest_ips {
                     add_address_to_set(set.as_ptr(), ip)?;
                 }
 
@@ -313,7 +313,7 @@ impl FirewallRule for FilterRule {
                         )?;
                         batch.add(&set, nftnl::MsgType::Add);
 
-                        for port in &self.dest_ports {
+                        for port in self.dest_ports {
                             add_port_to_set(set.as_ptr(), port)?;
                         }
 
