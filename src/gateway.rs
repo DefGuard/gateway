@@ -299,7 +299,7 @@ impl Gateway {
     }
 
     /// Process and apply firewall configuration changes.
-    /// - If the main config changed (default policy, IP version), reconfigure the whole firewall.
+    /// - If the main config changed (default policy), reconfigure the whole firewall.
     /// - If only the rules changed, apply the new rules. Currently also reconfigures the whole firewall but that
     ///   should be temporary.
     ///
