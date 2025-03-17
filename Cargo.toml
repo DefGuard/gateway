@@ -19,9 +19,11 @@ tonic = { version = "0.12", features = ["gzip", "tls", "tls-native-roots"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1", features = [] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }
-mnl = "0.2"
 ipnetwork = "0.21"
+
+[target.'cfg(target_os = "linux")'.dependencies]
 nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "1a1147271f43b9d7182a114bb056a5224c35d38f" }
+mnl = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
