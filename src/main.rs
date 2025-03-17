@@ -47,7 +47,7 @@ async fn main() -> Result<(), GatewayError> {
     let firewall_api = FirewallApi::new(&ifname);
     #[cfg(target_os = "linux")]
     if config.masquerade {
-        firewall_api.setup(None)?;
+        firewall_api.setup(None, config.fw_priority)?;
         firewall_api.set_masquerade_status(true)?;
     }
 

@@ -515,7 +515,10 @@ impl FirewallRule for NatRule {
 // }
 
 /// Sets up the default chains for the firewall
-pub(crate) fn init_firewall(initial_policy: Option<Policy>) -> Result<(), FirewallError> {
+pub(crate) fn init_firewall(
+    initial_policy: Option<Policy>,
+    defguard_fwd_chain_priority: Option<i32>,
+) -> Result<(), FirewallError> {
     let mut batch = Batch::new();
     let table = Tables::Defguard(ProtoFamily::Inet).to_table();
 
@@ -524,7 +527,10 @@ pub(crate) fn init_firewall(initial_policy: Option<Policy>) -> Result<(), Firewa
     batch.add(&table, nftnl::MsgType::Add);
 
     let mut chain = Chains::Forward.to_chain(&table);
-    chain.set_hook(nftnl::Hook::Forward, FORWARD_PRIORITY);
+    chain.set_hook(
+        nftnl::Hook::Forward,
+        defguard_fwd_chain_priority.unwrap_or(FORWARD_PRIORITY),
+    );
     chain.set_policy(initial_policy.unwrap_or(Policy::Allow).into());
     chain.set_type(nftnl::ChainType::Filter);
     batch.add(&chain, nftnl::MsgType::Add);
@@ -608,8 +614,6 @@ pub(crate) fn allow_established_traffic() -> Result<(), FirewallError> {
 
     let established_rule = FilterRule {
         states: vec![State::Established, State::Related],
-        // TODO: This is not always the case, allow all established traffic for now
-        // iifname: Some(ifname.to_string()),
         counter: true,
         action: Policy::Allow,
         ..Default::default()
@@ -704,7 +708,7 @@ fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
     let portid = socket.portid();
     let mut buffer = vec![0; nftnl::nft_nlmsg_maxsize() as usize];
 
-    // TODO: Why is it 2?
+    // TODO: Why is it supposed to be 2?
     let seq = 2;
     while let Some(message) = socket_recv(&socket, &mut buffer[..])? {
         match mnl::cb_run(message, seq, portid) {

@@ -92,9 +92,13 @@ pub struct Config {
     pub health_port: Option<u16>,
 
     /// Whether the firewall should automatically apply masquerading
-    #[arg(long, env = "MASQUERADE")]
+    #[arg(long, env = "DEFGUARD_MASQUERADE")]
     #[serde(default)]
     pub masquerade: bool,
+
+    #[arg(long, env = "DEFGUARD_FW_PRIORITY")]
+    #[serde(default)]
+    pub fw_priority: Option<i32>,
 }
 
 impl Default for Config {
@@ -118,6 +122,7 @@ impl Default for Config {
             post_down: None,
             health_port: None,
             masquerade: false,
+            fw_priority: None,
         }
     }
 }

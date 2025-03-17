@@ -9,9 +9,8 @@ pub mod api;
 #[cfg(all(not(test), target_os = "linux"))]
 pub mod linux;
 
-// allow this only in tests
-#[cfg(test)]
-pub mod test;
+#[cfg(any(test, not(target_os = "linux")))]
+pub mod dummy;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Address {

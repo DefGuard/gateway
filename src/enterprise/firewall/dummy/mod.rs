@@ -5,7 +5,11 @@ use super::{
 use crate::proto;
 
 impl FirewallManagementApi for FirewallApi {
-    fn setup(&self, _default_policy: Option<Policy>) -> Result<(), FirewallError> {
+    fn setup(
+        &self,
+        _default_policy: Option<Policy>,
+        _priority: Option<i32>,
+    ) -> Result<(), FirewallError> {
         Ok(())
     }
 

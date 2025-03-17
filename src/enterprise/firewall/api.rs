@@ -16,7 +16,11 @@ impl FirewallApi {
 
 pub trait FirewallManagementApi {
     /// Sets up the firewall with the default policy and cleans up any existing rules
-    fn setup(&self, default_policy: Option<Policy>) -> Result<(), FirewallError>;
+    fn setup(
+        &self,
+        default_policy: Option<Policy>,
+        priority: Option<i32>,
+    ) -> Result<(), FirewallError>;
     fn cleanup(&self) -> Result<(), FirewallError>;
     fn add_rule(&self, rule: FirewallRule) -> Result<(), FirewallError>;
     fn add_rules(&self, rules: Vec<FirewallRule>) -> Result<(), FirewallError>;

@@ -312,7 +312,8 @@ impl Gateway {
             debug!("Received firewall configuration: {fw_config:?}");
             if self.has_firewall_config_changed(fw_config) {
                 debug!("Received firewall configuration is different than current one. Reconfiguring firewall...");
-                self.firewall_api.setup(Some(fw_config.default_policy))?;
+                self.firewall_api
+                    .setup(Some(fw_config.default_policy), self.config.fw_priority)?;
                 debug!("Reconfigured firewall with new configuration");
 
                 if self.has_firewall_rules_changed(&fw_config.rules) {
@@ -384,14 +385,17 @@ impl Gateway {
             self.replace_peers(new_configuration.peers);
         }
 
-        let new_firewall_configuration =
-            if let Some(firewall_config) = new_configuration.firewall_config {
-                Some(FirewallConfig::from_proto(firewall_config)?)
-            } else {
-                None
-            };
+        #[cfg(target_os = "linux")]
+        {
+            let new_firewall_configuration =
+                if let Some(firewall_config) = new_configuration.firewall_config {
+                    Some(FirewallConfig::from_proto(firewall_config)?)
+                } else {
+                    None
+                };
 
-        self.process_firewall_changes(new_firewall_configuration.as_ref())?;
+            self.process_firewall_changes(new_firewall_configuration.as_ref())?;
+        }
 
         Ok(())
     }
@@ -512,6 +516,7 @@ impl Gateway {
                                 }
                             };
                         }
+                        #[cfg(target_os = "linux")]
                         Some(update::Update::FirewallConfig(config)) => {
                             debug!("Applying received firewall configuration: {config:?}");
                             let config_str = format!("{:?}", config);

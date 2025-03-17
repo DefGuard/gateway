@@ -65,10 +65,14 @@ pub struct FilterRule {
 }
 
 impl FirewallManagementApi for FirewallApi {
-    fn setup(&self, default_policy: Option<Policy>) -> Result<(), FirewallError> {
+    fn setup(
+        &self,
+        default_policy: Option<Policy>,
+        priority: Option<i32>,
+    ) -> Result<(), FirewallError> {
         debug!("Initializing firewall, VPN interface: {}", self.ifname);
         self.cleanup()?;
-        init_firewall(default_policy).expect("Failed to setup chains");
+        init_firewall(default_policy, priority).expect("Failed to setup chains");
         debug!("Allowing all established traffic");
         allow_established_traffic()?;
         debug!("Allowed all established traffic");
