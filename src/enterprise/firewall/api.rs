@@ -1,8 +1,11 @@
+use nftnl::Batch;
+
 use super::{FirewallError, FirewallRule, Policy};
 
-#[derive(Debug, Clone)]
 pub struct FirewallApi {
     pub ifname: String,
+    #[cfg(target_os = "linux")]
+    pub(crate) batch: Option<Batch>,
 }
 
 impl FirewallApi {
@@ -10,6 +13,8 @@ impl FirewallApi {
     pub fn new(ifname: &str) -> Self {
         Self {
             ifname: ifname.into(),
+            #[cfg(target_os = "linux")]
+            batch: None,
         }
     }
 }
@@ -17,13 +22,16 @@ impl FirewallApi {
 pub trait FirewallManagementApi {
     /// Sets up the firewall with the default policy and cleans up any existing rules
     fn setup(
-        &self,
+        &mut self,
         default_policy: Option<Policy>,
         priority: Option<i32>,
     ) -> Result<(), FirewallError>;
-    fn cleanup(&self) -> Result<(), FirewallError>;
-    fn add_rule(&self, rule: FirewallRule) -> Result<(), FirewallError>;
-    fn add_rules(&self, rules: Vec<FirewallRule>) -> Result<(), FirewallError>;
+    fn cleanup(&mut self) -> Result<(), FirewallError>;
+    fn add_rule(&mut self, rule: FirewallRule) -> Result<(), FirewallError>;
+    fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError>;
     fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError>;
-    fn set_masquerade_status(&self, enabled: bool) -> Result<(), FirewallError>;
+    fn set_masquerade_status(&mut self, enabled: bool) -> Result<(), FirewallError>;
+    fn begin(&mut self) -> Result<(), FirewallError>;
+    fn commit(&mut self) -> Result<(), FirewallError>;
+    fn rollback(&mut self);
 }

@@ -257,12 +257,13 @@ impl Gateway {
         }
     }
 
-    /// Checks whether the firewall config changed, but doesn't check the rules.
+    /// Checks whether the firewall config changed
     #[cfg(any(target_os = "linux", test))]
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
-                || current_config.v4 != new_fw_config.v4;
+                || current_config.v4 != new_fw_config.v4
+                || self.has_firewall_rules_changed(&new_fw_config.rules);
         }
 
         true
@@ -316,31 +317,21 @@ impl Gateway {
             debug!("Received firewall configuration: {fw_config:?}");
             if self.has_firewall_config_changed(fw_config) {
                 debug!("Received firewall configuration is different than current one. Reconfiguring firewall...");
+                self.firewall_api.begin()?;
                 self.firewall_api
                     .setup(Some(fw_config.default_policy), self.config.fw_priority)?;
-                debug!("Reconfigured firewall with new configuration");
-
-                if self.has_firewall_rules_changed(&fw_config.rules) {
-                    debug!("Received firewall rules are different than the current ones. Applying the new rules.");
-                    self.firewall_api.add_rules(fw_config.rules.clone())?;
-                } else {
-                    debug!("Received firewall rules are the same as the current ones. Skipping applying the rules.");
-                }
+                self.firewall_api.add_rules(fw_config.rules.clone())?;
+                self.firewall_api.commit()?;
                 self.firewall_config = Some(fw_config.clone());
-            } else if self.has_firewall_rules_changed(&fw_config.rules) {
-                debug!("Received firewall rules are different than the current ones. Applying the new rules.");
-                if let Some(current_config) = &mut self.firewall_config {
-                    self.firewall_api.add_rules(fw_config.rules.clone())?;
-                    current_config.rules = fw_config.rules.clone();
-                } else {
-                    unreachable!("Firewall config should be present here");
-                }
+                info!("Reconfigured firewall with new configuration");
             } else {
-                debug!("Received firewall configuration and rules are identical to current one. Skipping firewall reconfiguration");
+                debug!("Received firewall configuration is the same as current one. Skipping reconfiguration.");
             }
         } else {
             debug!("Received firewall configuration is empty, cleaning up firewall rules...");
+            self.firewall_api.begin()?;
             self.firewall_api.cleanup()?;
+            self.firewall_api.commit()?;
             self.firewall_config = None;
             debug!("Cleaned up firewall rules");
         }
@@ -656,7 +647,7 @@ mod tests {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
-            firewall_api: firewall_api,
+            firewall_api,
             firewall_config: None,
         };
 

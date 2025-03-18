@@ -41,11 +41,12 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     let ifname = config.ifname.clone();
-    let firewall_api = FirewallApi::new(&ifname);
+    let mut firewall_api = FirewallApi::new(&ifname);
     #[cfg(target_os = "linux")]
     if config.masquerade {
-        firewall_api.setup(None, config.fw_priority)?;
+        firewall_api.begin()?;
         firewall_api.set_masquerade_status(true)?;
+        firewall_api.commit()?;
     }
 
     let mut gateway = if config.userspace {

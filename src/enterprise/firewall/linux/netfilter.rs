@@ -173,7 +173,7 @@ impl<'b> FirewallRule for FilterRule<'b> {
 
         if !self.dest_ports.is_empty() && self.protocols.len() > 1 {
             return Err(FirewallError::InvalidConfiguration(
-                    format!("Cannot specify multiple protocols with destination ports, specified protocols: {:?}, destination ports: {:?}, Defguard Rule ID: {}", 
+                    format!("Cannot specify multiple protocols with destination ports, specified protocols: {:?}, destination ports: {:?}, Defguard Rule ID: {}",
                     self.protocols, self.dest_ports, self.defguard_rule_id)
             ));
         }
@@ -517,8 +517,8 @@ impl FirewallRule for NatRule {
 pub(crate) fn init_firewall(
     initial_policy: Option<Policy>,
     defguard_fwd_chain_priority: Option<i32>,
+    batch: &mut Batch,
 ) -> Result<(), FirewallError> {
-    let mut batch = Batch::new();
     let table = Tables::Defguard(ProtoFamily::Inet).to_table();
 
     batch.add(&table, nftnl::MsgType::Add);
@@ -534,28 +534,23 @@ pub(crate) fn init_firewall(
     chain.set_type(nftnl::ChainType::Filter);
     batch.add(&chain, nftnl::MsgType::Add);
 
-    let finalized_batch = batch.finalize();
-
-    send_batch(&finalized_batch)?;
-
     Ok(())
 }
 
-pub(crate) fn drop_table() -> Result<(), FirewallError> {
-    let mut batch = Batch::new();
+pub(crate) fn drop_table(batch: &mut Batch) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table();
     batch.add(&table, nftnl::MsgType::Add);
     batch.add(&table, nftnl::MsgType::Del);
-
-    let finalized_batch = batch.finalize();
-    send_batch(&finalized_batch)?;
 
     Ok(())
 }
 
 /// Applies masquerade on the specified interface for the outgoing packets
-pub(crate) fn set_masq(ifname: &str, enabled: bool) -> Result<(), FirewallError> {
-    let mut batch = Batch::new();
+pub(crate) fn set_masq(
+    ifname: &str,
+    enabled: bool,
+    batch: &mut Batch,
+) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table();
     batch.add(&table, nftnl::MsgType::Add);
 
@@ -570,7 +565,7 @@ pub(crate) fn set_masq(ifname: &str, enabled: bool) -> Result<(), FirewallError>
         counter: true,
         ..Default::default()
     }
-    .to_chain_rule(&nat_chain, &mut batch)?;
+    .to_chain_rule(&nat_chain, batch)?;
 
     if enabled {
         batch.add(&nat_rule, nftnl::MsgType::Add);
@@ -578,14 +573,10 @@ pub(crate) fn set_masq(ifname: &str, enabled: bool) -> Result<(), FirewallError>
         batch.add(&nat_rule, nftnl::MsgType::Del);
     }
 
-    let finalized_batch = batch.finalize();
-    send_batch(&finalized_batch)?;
-
     Ok(())
 }
 
-pub(crate) fn set_default_policy(policy: Policy) -> Result<(), FirewallError> {
-    let mut batch = Batch::new();
+pub(crate) fn set_default_policy(policy: Policy, batch: &mut Batch) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table();
     batch.add(&table, nftnl::MsgType::Add);
 
@@ -597,14 +588,10 @@ pub(crate) fn set_default_policy(policy: Policy) -> Result<(), FirewallError> {
     });
     batch.add(&forward_chain, nftnl::MsgType::Add);
 
-    let finalized_batch = batch.finalize();
-    send_batch(&finalized_batch)?;
-
     Ok(())
 }
 
-pub(crate) fn allow_established_traffic() -> Result<(), FirewallError> {
-    let mut batch = Batch::new();
+pub(crate) fn allow_established_traffic(batch: &mut Batch) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table();
     batch.add(&table, nftnl::MsgType::Add);
 
@@ -617,12 +604,9 @@ pub(crate) fn allow_established_traffic() -> Result<(), FirewallError> {
         action: Policy::Allow,
         ..Default::default()
     }
-    .to_chain_rule(&forward_chain, &mut batch)?;
+    .to_chain_rule(&forward_chain, batch)?;
 
     batch.add(&established_rule, nftnl::MsgType::Add);
-
-    let finalized_batch = batch.finalize();
-    send_batch(&finalized_batch)?;
 
     Ok(())
 }
@@ -677,8 +661,10 @@ impl Chains {
     }
 }
 
-pub(crate) fn apply_filter_rules(rules: Vec<FilterRule>) -> Result<(), FirewallError> {
-    let mut batch = Batch::new();
+pub(crate) fn apply_filter_rules(
+    rules: Vec<FilterRule>,
+    batch: &mut Batch,
+) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table();
     batch.add(&table, nftnl::MsgType::Add);
 
@@ -686,18 +672,14 @@ pub(crate) fn apply_filter_rules(rules: Vec<FilterRule>) -> Result<(), FirewallE
     batch.add(&forward_chain, nftnl::MsgType::Add);
 
     for rule in rules.iter() {
-        let chain_rule = rule.to_chain_rule(&forward_chain, &mut batch)?;
+        let chain_rule = rule.to_chain_rule(&forward_chain, batch)?;
         batch.add(&chain_rule, nftnl::MsgType::Add);
     }
-
-    let finalized_batch = batch.finalize();
-
-    send_batch(&finalized_batch)?;
 
     Ok(())
 }
 
-fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
+pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
     let socket = mnl::Socket::new(mnl::Bus::Netfilter)
         .map_err(|e| FirewallError::NetlinkError(format!("Failed to create socket: {e:?}")))?;
     socket.send_all(batch).map_err(|e| {

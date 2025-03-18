@@ -248,4 +248,8 @@ pub enum FirewallError {
     NetlinkError(String),
     #[error("Invalid configuration: {0}")]
     InvalidConfiguration(String),
+    #[error("Firewall transaction not started. Start the firewall transaction first in order to interact with the firewall API.")]
+    TransactionNotStarted,
+    #[error("Firewall transaction failed: {0}")]
+    TransactionFailed(String),
 }
