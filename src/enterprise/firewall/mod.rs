@@ -154,14 +154,16 @@ pub struct FirewallRule {
     pub verdict: Policy,
     pub protocols: Vec<Protocol>,
     pub source_addrs: Vec<Address>,
-    pub v4: bool,
+    /// Whether a rule uses IPv4 (true) or IPv6 (false)
+    pub ipv4: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FirewallConfig {
     pub rules: Vec<FirewallRule>,
     pub default_policy: Policy,
-    pub v4: bool,
+    /// Whether the rules use IPv4 (true) or IPv6 (false)
+    pub ipv4: bool,
 }
 
 impl FirewallConfig {
@@ -219,7 +221,7 @@ impl FirewallConfig {
                 destination_ports,
                 protocols,
                 verdict,
-                v4,
+                ipv4: v4,
                 comment: rule.comment,
             };
 
@@ -231,7 +233,7 @@ impl FirewallConfig {
         Ok(Self {
             rules,
             default_policy,
-            v4,
+            ipv4: v4,
         })
     }
 }

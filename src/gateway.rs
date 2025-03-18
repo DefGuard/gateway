@@ -262,7 +262,7 @@ impl Gateway {
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
-                || current_config.v4 != new_fw_config.v4
+                || current_config.ipv4 != new_fw_config.ipv4
                 || self.has_firewall_rules_changed(&new_fw_config.rules);
         }
 
@@ -774,7 +774,7 @@ mod tests {
             verdict: Policy::Allow,
             protocols: vec![Protocol(6)], // TCP
             source_addrs: vec![Address::Ip(IpAddr::from_str("192.168.1.1").unwrap())],
-            v4: true,
+            ipv4: true,
         };
 
         let rule2 = FirewallRule {
@@ -785,7 +785,7 @@ mod tests {
             verdict: Policy::Allow,
             protocols: vec![Protocol(6)], // TCP
             source_addrs: vec![Address::Ip(IpAddr::from_str("192.168.1.2").unwrap())],
-            v4: true,
+            ipv4: true,
         };
 
         let rule3 = FirewallRule {
@@ -800,19 +800,19 @@ mod tests {
             source_addrs: vec![Address::Network(
                 IpNetwork::from_str("192.168.0.0/16").unwrap(),
             )],
-            v4: true,
+            ipv4: true,
         };
 
         let config1 = FirewallConfig {
             rules: vec![rule1.clone(), rule2.clone()],
             default_policy: Policy::Allow,
-            v4: true,
+            ipv4: true,
         };
 
         let config_empty = FirewallConfig {
             rules: vec![],
             default_policy: Policy::Allow,
-            v4: true,
+            ipv4: true,
         };
 
         #[cfg(target_os = "macos")]
@@ -872,25 +872,25 @@ mod tests {
         let config1 = FirewallConfig {
             rules: vec![],
             default_policy: Policy::Allow,
-            v4: true,
+            ipv4: true,
         };
 
         let config2 = FirewallConfig {
             rules: vec![],
             default_policy: Policy::Deny,
-            v4: true,
+            ipv4: true,
         };
 
         let config3 = FirewallConfig {
             rules: vec![],
             default_policy: Policy::Allow,
-            v4: false,
+            ipv4: false,
         };
 
         let config4 = FirewallConfig {
             rules: vec![],
             default_policy: Policy::Allow,
-            v4: true,
+            ipv4: true,
         };
 
         #[cfg(target_os = "macos")]
@@ -937,10 +937,10 @@ mod tests {
                 verdict: Policy::Allow,
                 protocols: vec![],
                 source_addrs: vec![],
-                v4: true,
+                ipv4: true,
             }],
             default_policy: Policy::Allow,
-            v4: true,
+            ipv4: true,
         };
         gateway.firewall_config = Some(config1.clone());
         assert!(!gateway.has_firewall_config_changed(&config5));
