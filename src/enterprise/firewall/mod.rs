@@ -39,6 +39,12 @@ impl Address {
                 let end = IpAddr::from_str(&range.end).map_err(|err| {
                     FirewallError::TypeConversionError(format!("Invalid IP format: {}", err))
                 })?;
+                if start > end {
+                    return Err(FirewallError::TypeConversionError(format!(
+                        "Invalid IP range: start IP ({}) is greater than end IP ({})",
+                        start, end
+                    )));
+                }
                 Ok(Self::Range(start, end))
             }
             _ => Err(FirewallError::TypeConversionError(format!(
@@ -80,6 +86,12 @@ impl Port {
                         range.end, err
                     ))
                 })?;
+                if start_u16 > end_u16 {
+                    return Err(FirewallError::TypeConversionError(format!(
+                        "Invalid port range: start port ({}) is greater than end port ({})",
+                        start_u16, end_u16
+                    )));
+                }
                 Ok(Self::Range(start_u16, end_u16))
             }
             _ => Err(FirewallError::TypeConversionError(format!(
@@ -109,10 +121,9 @@ impl Protocol {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Policy {
+    #[default]
     Allow,
     Deny,
-    #[default]
-    None,
 }
 
 impl From<bool> for Policy {

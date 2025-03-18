@@ -26,9 +26,7 @@ use tonic::{
     Request, Status, Streaming,
 };
 
-#[cfg(test)]
-use crate::enterprise::firewall::FirewallRule;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", test))]
 use crate::enterprise::firewall::{api::FirewallManagementApi, FirewallRule};
 use crate::{
     config::Config,

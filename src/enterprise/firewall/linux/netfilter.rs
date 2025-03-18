@@ -65,7 +65,7 @@ impl From<Policy> for nftnl::Policy {
     fn from(policy: Policy) -> Self {
         match policy {
             // This mirrors the nftables behavior, where passing no policy results in the default accept policy
-            Policy::Allow | Policy::None => Self::Accept,
+            Policy::Allow => Self::Accept,
             Policy::Deny => Self::Drop,
         }
     }
@@ -406,7 +406,6 @@ impl<'b> FirewallRule for FilterRule<'b> {
             Policy::Deny => {
                 rule.add_expr(&nft_expr!(verdict drop));
             }
-            Policy::None => {}
         }
 
         // comment <comment>
