@@ -1,13 +1,10 @@
 use std::{fs::File, io::Write, process, sync::Arc};
 
+#[cfg(target_os = "linux")]
+use defguard_gateway::enterprise::firewall::api::FirewallManagementApi;
 use defguard_gateway::{
-    config::get_config,
-    enterprise::firewall::api::{FirewallApi, FirewallManagementApi},
-    error::GatewayError,
-    execute_command,
-    gateway::Gateway,
-    init_syslog,
-    server::run_server,
+    config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
+    execute_command, gateway::Gateway, init_syslog, server::run_server,
 };
 #[cfg(not(target_os = "macos"))]
 use defguard_wireguard_rs::Kernel;

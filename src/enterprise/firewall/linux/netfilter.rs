@@ -32,8 +32,8 @@ const FORWARD_PRIORITY: i32 = 0;
 struct InetService(u16);
 
 impl SetKey for InetService {
-    const TYPE: u32 = 13;
     const LEN: u32 = 2;
+    const TYPE: u32 = 13;
 
     fn data(&self) -> Box<[u8]> {
         Box::new(self.0.to_be_bytes())
@@ -72,8 +72,8 @@ impl From<Policy> for nftnl::Policy {
 }
 
 impl SetKey for Protocol {
-    const TYPE: u32 = 12;
     const LEN: u32 = 1;
+    const TYPE: u32 = 12;
 
     fn data(&self) -> Box<[u8]> {
         Box::new([self.0])

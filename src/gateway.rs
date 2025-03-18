@@ -26,12 +26,13 @@ use tonic::{
     Request, Status, Streaming,
 };
 
+#[cfg(test)]
+use crate::enterprise::firewall::FirewallRule;
+#[cfg(target_os = "linux")]
+use crate::enterprise::firewall::{api::FirewallManagementApi, FirewallRule};
 use crate::{
     config::Config,
-    enterprise::firewall::{
-        api::{FirewallApi, FirewallManagementApi},
-        FirewallConfig, FirewallRule,
-    },
+    enterprise::firewall::{api::FirewallApi, FirewallConfig},
     error::GatewayError,
     execute_command, mask,
     proto::gateway::{
@@ -105,7 +106,9 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<PubKey, Peer>,
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
+    #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_api: FirewallApi,
+    #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
     client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
@@ -257,6 +260,7 @@ impl Gateway {
     }
 
     /// Checks whether the firewall config changed, but doesn't check the rules.
+    #[cfg(any(target_os = "linux", test))]
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
@@ -267,6 +271,7 @@ impl Gateway {
     }
 
     /// Checks whether the firewall rules have changed.
+    #[cfg(any(target_os = "linux", test))]
     fn has_firewall_rules_changed(&self, new_rules: &[FirewallRule]) -> bool {
         debug!("Checking if Defguard ACL rules have changed");
         if let Some(current_config) = &self.firewall_config {
@@ -304,6 +309,7 @@ impl Gateway {
     ///   should be temporary.
     ///
     /// TODO: Reduce cloning here
+    #[cfg(target_os = "linux")]
     fn process_firewall_changes(
         &mut self,
         fw_config: Option<&FirewallConfig>,
@@ -606,7 +612,7 @@ mod tests {
     use ipnetwork::IpNetwork;
 
     use super::*;
-    use crate::enterprise::firewall::{Address, Policy, Port, Protocol};
+    use crate::enterprise::firewall::{Address, FirewallRule, Policy, Port, Protocol};
 
     #[tokio::test]
     async fn test_configuration_comparison() {
