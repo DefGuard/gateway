@@ -90,14 +90,14 @@ impl FirewallManagementApi for FirewallApi {
     fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError> {
         debug!("Setting default firewall policy to: {policy:?}");
         set_default_policy(policy)?;
-        debug!("Set firewall default policy to {policy:?});
+        debug!("Set firewall default policy to {policy:?}");
         Ok(())
     }
 
     fn set_masquerade_status(&self, enabled: bool) -> Result<(), FirewallError> {
-        debug!("Setting masquerade status to: {enabled:?});
+        debug!("Setting masquerade status to: {enabled:?}");
         set_masq(&self.ifname, enabled)?;
-        debug!("Set masquerade status to: {enabled:?});
+        debug!("Set masquerade status to: {enabled:?}");
         Ok(())
     }
 
