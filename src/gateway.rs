@@ -320,6 +320,9 @@ impl Gateway {
                 self.firewall_api.begin()?;
                 self.firewall_api
                     .setup(Some(fw_config.default_policy), self.config.fw_priority)?;
+                if self.config.masquerade {
+                    self.firewall_api.set_masquerade_status(true)?;
+                }
                 self.firewall_api.add_rules(fw_config.rules.clone())?;
                 self.firewall_api.commit()?;
                 self.firewall_config = Some(fw_config.clone());
