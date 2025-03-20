@@ -1,7 +1,5 @@
 use std::{fs::File, io::Write, process, sync::Arc};
 
-#[cfg(target_os = "linux")]
-use defguard_gateway::enterprise::firewall::api::FirewallManagementApi;
 use defguard_gateway::{
     config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
     execute_command, gateway::Gateway, init_syslog, server::run_server,
@@ -41,13 +39,7 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     let ifname = config.ifname.clone();
-    let mut firewall_api = FirewallApi::new(&ifname);
-    #[cfg(target_os = "linux")]
-    if config.masquerade {
-        firewall_api.begin()?;
-        firewall_api.set_masquerade_status(true)?;
-        firewall_api.commit()?;
-    }
+    let firewall_api = FirewallApi::new(&ifname);
 
     let mut gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
