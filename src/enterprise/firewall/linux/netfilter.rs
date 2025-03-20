@@ -545,6 +545,15 @@ pub(crate) fn drop_table(batch: &mut Batch) -> Result<(), FirewallError> {
     Ok(())
 }
 
+pub(crate) fn drop_chain(chain: &Chains, batch: &mut Batch) -> Result<(), FirewallError> {
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+    let chain = chain.to_chain(&table);
+    batch.add(&chain, nftnl::MsgType::Add);
+    batch.add(&chain, nftnl::MsgType::Del);
+
+    Ok(())
+}
+
 /// Applies masquerade on the specified interface for the outgoing packets
 pub(crate) fn set_masq(
     ifname: &str,
@@ -553,6 +562,8 @@ pub(crate) fn set_masq(
 ) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table();
     batch.add(&table, nftnl::MsgType::Add);
+
+    drop_chain(&Chains::Postrouting, batch)?;
 
     let mut nat_chain = Chains::Postrouting.to_chain(&table);
     nat_chain.set_hook(nftnl::Hook::PostRouting, POSTROUTING_PRIORITY);
