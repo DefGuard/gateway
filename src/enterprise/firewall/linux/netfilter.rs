@@ -25,6 +25,7 @@ const DEFGUARD_TABLE: &str = "DEFGUARD";
 const POSTROUTING_CHAIN: &str = "POSTROUTING";
 const FORWARD_CHAIN: &str = "FORWARD";
 const ANON_SET_NAME: &str = "__set%d";
+const LOOPBACK_IFACE: &str = "lo";
 
 const POSTROUTING_PRIORITY: i32 = 100;
 const FORWARD_PRIORITY: i32 = 0;
@@ -446,6 +447,8 @@ struct NatRule {
     dest_ip: Option<IpAddr>,
     oifname: Option<String>,
     iifname: Option<String>,
+    negated_oifname: bool,
+    negated_iifname: bool,
     counter: bool,
 }
 
@@ -478,13 +481,21 @@ impl FirewallRule for NatRule {
         if let Some(iifname) = &self.iifname {
             rule.add_expr(&nft_expr!(meta iifname));
             let exact = InterfaceName::Exact(CString::new(iifname.as_str()).unwrap());
-            rule.add_expr(&nft_expr!(cmp == exact));
+            if self.negated_iifname {
+                rule.add_expr(&nft_expr!(cmp != exact));
+            } else {
+                rule.add_expr(&nft_expr!(cmp == exact));
+            }
         }
 
         if let Some(oifname) = &self.oifname {
             rule.add_expr(&nft_expr!(meta oifname));
             let exact = InterfaceName::Exact(CString::new(oifname.as_str()).unwrap());
-            rule.add_expr(&nft_expr!(cmp == exact));
+            if self.negated_oifname {
+                rule.add_expr(&nft_expr!(cmp != exact));
+            } else {
+                rule.add_expr(&nft_expr!(cmp == exact));
+            }
         }
 
         if self.counter {
@@ -572,7 +583,8 @@ pub(crate) fn set_masq(
     batch.add(&nat_chain, nftnl::MsgType::Add);
 
     let nat_rule = NatRule {
-        oifname: Some(ifname.to_string()),
+        oifname: Some(LOOPBACK_IFACE.to_string()),
+        negated_oifname: true,
         counter: true,
         ..Default::default()
     }
