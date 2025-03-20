@@ -153,7 +153,7 @@ impl FirewallManagementApi for FirewallApi {
                 action: rule.verdict,
                 counter: true,
                 defguard_rule_id: rule.id,
-                v4: rule.v4,
+                v4: rule.ipv4,
                 comment: rule.comment.clone(),
                 ..Default::default()
             };
@@ -172,7 +172,7 @@ impl FirewallManagementApi for FirewallApi {
                         action: rule.verdict,
                         counter: true,
                         defguard_rule_id: rule.id,
-                        v4: rule.v4,
+                        v4: rule.ipv4,
                         comment: rule.comment.clone(),
                         ..Default::default()
                     };
@@ -186,7 +186,7 @@ impl FirewallManagementApi for FirewallApi {
                         action: rule.verdict,
                         counter: true,
                         defguard_rule_id: rule.id,
-                        v4: rule.v4,
+                        v4: rule.ipv4,
                         comment: rule.comment.clone(),
                         ..Default::default()
                     };
@@ -207,7 +207,7 @@ impl FirewallManagementApi for FirewallApi {
                     action: rule.verdict,
                     counter: true,
                     defguard_rule_id: rule.id,
-                    v4: rule.v4,
+                    v4: rule.ipv4,
                     comment: rule.comment.clone(),
                     ..Default::default()
                 };
