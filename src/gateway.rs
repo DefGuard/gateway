@@ -934,7 +934,7 @@ mod tests {
         gateway.firewall_config = Some(config1.clone());
         assert!(!gateway.has_firewall_config_changed(&config4));
 
-        // Rules are being ignored
+        // Rules are not being ignored
         let config5 = FirewallConfig {
             rules: vec![FirewallRule {
                 comment: None,
@@ -950,6 +950,6 @@ mod tests {
             ipv4: true,
         };
         gateway.firewall_config = Some(config1.clone());
-        assert!(!gateway.has_firewall_config_changed(&config5));
+        assert!(gateway.has_firewall_config_changed(&config5));
     }
 }
