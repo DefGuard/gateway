@@ -6,14 +6,14 @@ use crate::proto;
 
 impl FirewallManagementApi for FirewallApi {
     fn setup(
-        &self,
+        &mut self,
         _default_policy: Option<Policy>,
         _priority: Option<i32>,
     ) -> Result<(), FirewallError> {
         Ok(())
     }
 
-    fn cleanup(&self) -> Result<(), FirewallError> {
+    fn cleanup(&mut self) -> Result<(), FirewallError> {
         Ok(())
     }
 
@@ -21,15 +21,25 @@ impl FirewallManagementApi for FirewallApi {
         Ok(())
     }
 
-    fn set_masquerade_status(&self, _enabled: bool) -> Result<(), FirewallError> {
+    fn set_masquerade_status(&mut self, _enabled: bool) -> Result<(), FirewallError> {
         Ok(())
     }
 
-    fn add_rules(&self, _rules: Vec<FirewallRule>) -> Result<(), FirewallError> {
+    fn add_rules(&mut self, _rules: Vec<FirewallRule>) -> Result<(), FirewallError> {
         Ok(())
     }
 
-    fn add_rule(&self, _rule: FirewallRule) -> Result<(), FirewallError> {
+    fn add_rule(&mut self, _rule: FirewallRule) -> Result<(), FirewallError> {
+        Ok(())
+    }
+
+    fn begin(&mut self) -> Result<(), FirewallError> {
+        Ok(())
+    }
+
+    fn rollback(&mut self) {}
+
+    fn commit(&mut self) -> Result<(), FirewallError> {
         Ok(())
     }
 }
