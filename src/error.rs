@@ -1,6 +1,8 @@
 use defguard_wireguard_rs::error::WireguardInterfaceError;
 use thiserror::Error;
 
+use crate::enterprise::firewall::FirewallError;
+
 #[derive(Debug, Error)]
 pub enum GatewayError {
     #[error("Command {command} execution failed. Error: {error}")]
@@ -38,4 +40,7 @@ pub enum GatewayError {
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),
+
+    #[error("Firewall error: {0}")]
+    FirewallError(#[from] FirewallError),
 }

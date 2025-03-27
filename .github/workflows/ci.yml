@@ -35,8 +35,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: Install protoc
-        run: apt-get update && apt-get -y install protobuf-compiler
+      - name: Install dependencies
+        run: apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
       - name: Check format
         run: |
           rustup component add rustfmt

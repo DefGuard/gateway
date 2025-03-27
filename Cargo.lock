@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "defguard-gateway"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "axum",
  "base64",
@@ -406,7 +406,10 @@ dependencies = [
  "defguard_wireguard_rs",
  "env_logger",
  "gethostname",
+ "ipnetwork",
  "log",
+ "mnl",
+ "nftnl",
  "prost",
  "prost-build",
  "serde",
@@ -978,6 +981,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipnetwork"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf370abdafd54d13e54a620e8c3e1145f28e46cc9d704bc6d94414559df41763"
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1103,6 +1112,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnl"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1a5469630da93e1813bb257964c0ccee3b26b6879dd858039ddec35cc8681ed"
+dependencies = [
+ "libc",
+ "log",
+ "mnl-sys",
+]
+
+[[package]]
+name = "mnl-sys"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9750685b201e1ecfaaf7aa5d0387829170fa565989cc481b49080aa155f70457"
+dependencies = [
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
 name = "multimap"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1181,6 +1211,26 @@ dependencies = [
  "bytes",
  "libc",
  "log",
+]
+
+[[package]]
+name = "nftnl"
+version = "0.7.0"
+source = "git+https://github.com/DefGuard/nftnl-rs.git?rev=1a1147271f43b9d7182a114bb056a5224c35d38f#1a1147271f43b9d7182a114bb056a5224c35d38f"
+dependencies = [
+ "bitflags",
+ "log",
+ "nftnl-sys",
+]
+
+[[package]]
+name = "nftnl-sys"
+version = "0.6.2"
+source = "git+https://github.com/DefGuard/nftnl-rs.git?rev=1a1147271f43b9d7182a114bb056a5224c35d38f#1a1147271f43b9d7182a114bb056a5224c35d38f"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "pkg-config",
 ]
 
 [[package]]
