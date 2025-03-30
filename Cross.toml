@@ -2,6 +2,10 @@
 pre-build = [
     "dpkg --add-architecture $CROSS_DEB_ARCH",
     "apt-get update && apt-get install --assume-yes unzip libnftnl-dev:$CROSS_DEB_ARCH libmnl-dev:$CROSS_DEB_ARCH",
+    "ls -la /usr/lib/pkgconfig/ || true",
+    "ls -la /usr/lib/$CROSS_DEB_ARCH/pkgconfig/ || true",
+    "ls -la /usr/lib/x86_64-linux-gnu/pkgconfig/ || true",
+    "find /usr -name 'libnftnl.pc' || true",
     "PB_REL='https://github.com/protocolbuffers/protobuf/releases'",
     "PB_VERSION='3.20.0' && curl -LO $PB_REL/download/v$PB_VERSION/protoc-$PB_VERSION-linux-x86_64.zip",
     "unzip protoc-$PB_VERSION-linux-x86_64.zip bin/protoc include/google/* -d /usr",
@@ -20,6 +24,10 @@ pre-build = [
 pre-build = [
     "dpkg --add-architecture $CROSS_DEB_ARCH",
     "apt-get update && apt-get install --assume-yes unzip libnftnl-dev:$CROSS_DEB_ARCH libmnl-dev:$CROSS_DEB_ARCH",
+    "ls -la /usr/lib/pkgconfig/ || true",
+    "ls -la /usr/lib/$CROSS_DEB_ARCH/pkgconfig/ || true",
+    "ls -la /usr/lib/aarch64-linux-gnu/pkgconfig/ || true",
+    "find /usr -name 'libnftnl.pc' || true",
     "PB_REL='https://github.com/protocolbuffers/protobuf/releases'",
     "PB_VERSION='3.20.0' && curl -LO $PB_REL/download/v$PB_VERSION/protoc-$PB_VERSION-linux-x86_64.zip",
     "unzip protoc-$PB_VERSION-linux-x86_64.zip bin/protoc include/google/* -d /usr",
