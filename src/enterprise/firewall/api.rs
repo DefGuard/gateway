@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 use nftnl::Batch;
 
 use super::{FirewallError, FirewallRule, Policy};
