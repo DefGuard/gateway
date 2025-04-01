@@ -144,7 +144,7 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
             match keyword {
                 "a" | "addr" => {
                     let mut addresses = Vec::new();
-                    while let Some(address) = token_iter.next() {
+                    for address in token_iter.by_ref() {
                         match address.parse() {
                             Ok(ipaddr) => addresses.push(ipaddr),
                             Err(err) => eprintln!("Skipping {address}: {err}"),

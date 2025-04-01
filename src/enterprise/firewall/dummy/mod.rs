@@ -48,8 +48,6 @@ impl Protocol {
     pub const fn from_proto(
         proto: proto::enterprise::firewall::Protocol,
     ) -> Result<Self, FirewallError> {
-        match proto {
-            _ => Ok(Self(proto as u8)),
-        }
+        Ok(Self(proto as u8))
     }
 }
