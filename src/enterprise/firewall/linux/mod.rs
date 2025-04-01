@@ -253,7 +253,7 @@ impl FirewallManagementApi for FirewallApi {
             debug!("Firewall transaction successfully committed to kernel");
             Ok(())
         } else {
-            return Err(FirewallError::TransactionNotStarted);
+            Err(FirewallError::TransactionNotStarted)
         }
     }
 }

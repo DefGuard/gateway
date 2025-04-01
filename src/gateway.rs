@@ -176,7 +176,7 @@ impl Gateway {
         !new_peers.iter().all(|peer| {
             self.peers
                 .get(&peer.pubkey)
-                .map_or(false, |p| peer.allowed_ips == p.allowed_ips)
+                .is_some_and(|p| peer.allowed_ips == p.allowed_ips)
         })
     }
 
@@ -211,11 +211,11 @@ impl Gateway {
                         );
                         for peer in peers.into_values().filter(|p| {
                             p.last_handshake
-                                .map_or(false, |lhs| lhs != SystemTime::UNIX_EPOCH)
+                                .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
                         }) {
                             let has_changed = peer_map
                                 .get(&peer.public_key)
-                                .map_or(true, |last_peer| *last_peer != peer);
+                                .is_none_or(|last_peer| *last_peer != peer);
                             if has_changed {
                                 peer_map.insert(peer.public_key.clone(), peer.clone());
                                 id += 1;

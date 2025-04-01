@@ -53,7 +53,7 @@ impl State {
 }
 
 impl Protocol {
-    pub(crate) fn to_port_payload_expr(&self) -> Result<&impl Expression, FirewallError> {
+    pub(crate) fn as_port_payload_expr(&self) -> Result<&impl Expression, FirewallError> {
         match self.0.into() {
             libc::IPPROTO_TCP => Ok(&nft_expr!(payload tcp dport)),
             libc::IPPROTO_UDP => Ok(&nft_expr!(payload udp dport)),
@@ -161,7 +161,7 @@ fn add_protocol_to_set(
     Ok(())
 }
 
-impl<'b> FirewallRule for FilterRule<'b> {
+impl FirewallRule for FilterRule<'_> {
     fn to_chain_rule<'a>(
         &self,
         chain: &'a Chain,
@@ -325,7 +325,7 @@ impl<'b> FirewallRule for FilterRule<'b> {
 
                         rule.add_expr(&nft_expr!(meta l4proto));
                         rule.add_expr(&nft_expr!(cmp == protocol.0));
-                        rule.add_expr(protocol.to_port_payload_expr()?);
+                        rule.add_expr(protocol.as_port_payload_expr()?);
                         rule.add_expr(&nft_expr!(lookup & set));
                     }
                 }
@@ -567,7 +567,7 @@ pub(crate) fn drop_chain(chain: &Chains, batch: &mut Batch) -> Result<(), Firewa
 
 /// Applies masquerade on the specified interface for the outgoing packets
 pub(crate) fn set_masq(
-    ifname: &str,
+    _ifname: &str,
     enabled: bool,
     batch: &mut Batch,
 ) -> Result<(), FirewallError> {

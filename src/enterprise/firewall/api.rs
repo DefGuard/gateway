@@ -6,6 +6,7 @@ use super::{FirewallError, FirewallRule, Policy};
 pub struct FirewallApi {
     pub ifname: String,
     #[cfg(target_os = "linux")]
+    #[allow(dead_code)]
     pub(crate) batch: Option<Batch>,
 }
 
