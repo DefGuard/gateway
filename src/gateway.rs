@@ -37,7 +37,7 @@ use crate::{
         gateway_service_client::GatewayServiceClient, stats_update::Payload, update, Configuration,
         ConfigurationRequest, Peer, StatsUpdate, Update,
     },
-    VERSION,
+    to_interface_configuration, to_peer, to_proto_peerstats, VERSION,
 };
 
 const TEN_SECS: Duration = Duration::from_secs(10);
@@ -222,7 +222,9 @@ impl Gateway {
                                 if tx
                                     .send(StatsUpdate {
                                         id,
-                                        payload: Some(Payload::PeerStats((&peer).into())),
+                                        payload: Some(Payload::PeerStats(to_proto_peerstats(
+                                            &peer,
+                                        ))),
                                     })
                                     .is_err()
                                 {
@@ -368,7 +370,7 @@ impl Gateway {
             self.wgapi
                 .lock()
                 .unwrap()
-                .configure_interface(&new_configuration.clone().into())?;
+                .configure_interface(&to_interface_configuration(new_configuration.clone()))?;
             info!(
                 "Reconfigured WireGuard interface {} (addresses: {:?})",
                 new_configuration.name, new_configuration.addresses
@@ -507,7 +509,7 @@ impl Gateway {
                                     .wgapi
                                     .lock()
                                     .unwrap()
-                                    .configure_peer(&peer_config.into())
+                                    .configure_peer(&to_peer(peer_config))
                                 {
                                     error!("Failed to update peer: {err}");
                                 }

@@ -8,6 +8,7 @@ axum = { version = "0.7", features = ["macros"] }
 base64 = "0.22"
 clap = { version = "4.5", features = ["derive", "env"] }
 defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs.git", rev = "v0.7.1" }
+defguard_protos = { git = "https://github.com/DefGuard/defguard.git", subdir = "crates/defguard_protos", rev = "71d482bba6b4df0d25eaa8c551a93da2648d4e6a" }
 env_logger = "0.11"
 gethostname = "0.5"
 log = "0.4"

@@ -5,7 +5,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use defguard_gateway::proto;
+use defguard_gateway::to_proto_peer;
+use defguard_protos::proto;
 use defguard_wireguard_rs::{
     host::{Host, Peer},
     key::Key,
@@ -74,12 +75,7 @@ impl From<&HostConfig> for proto::gateway::Configuration {
                 .map(|addr| addr.to_string())
                 .collect(),
             port: host_config.host.listen_port as u32,
-            peers: host_config
-                .host
-                .peers
-                .values()
-                .map(|peer| peer.into())
-                .collect(),
+            peers: host_config.host.peers.values().map(to_proto_peer).collect(),
             firewall_config: None,
         }
     }
@@ -161,7 +157,9 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
 
                             let update = proto::gateway::Update {
                                 update_type: proto::gateway::UpdateType::Create as i32,
-                                update: Some(proto::gateway::update::Update::Peer((&peer).into())),
+                                update: Some(proto::gateway::update::Update::Peer(to_proto_peer(
+                                    &peer,
+                                ))),
                             };
                             clients.lock().unwrap().retain(
                                 move |addr,
@@ -190,7 +188,9 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
 
                             let update = proto::gateway::Update {
                                 update_type: proto::gateway::UpdateType::Delete as i32,
-                                update: Some(proto::gateway::update::Update::Peer((&peer).into())),
+                                update: Some(proto::gateway::update::Update::Peer(to_proto_peer(
+                                    &peer,
+                                ))),
                             };
                             clients.lock().unwrap().retain(
                                 move |addr,

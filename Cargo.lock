@@ -403,6 +403,7 @@ dependencies = [
  "axum",
  "base64",
  "clap",
+ "defguard_protos",
  "defguard_wireguard_rs",
  "env_logger",
  "gethostname",
@@ -422,6 +423,17 @@ dependencies = [
  "tonic-build",
  "vergen-git2",
  "x25519-dalek",
+]
+
+[[package]]
+name = "defguard_protos"
+version = "0.0.0"
+source = "git+https://github.com/DefGuard/defguard.git?rev=71d482bba6b4df0d25eaa8c551a93da2648d4e6a#71d482bba6b4df0d25eaa8c551a93da2648d4e6a"
+dependencies = [
+ "prost",
+ "prost-build",
+ "tonic",
+ "tonic-build",
 ]
 
 [[package]]

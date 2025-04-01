@@ -3,16 +3,16 @@ pub mod error;
 pub mod gateway;
 pub mod server;
 
-pub mod proto {
-    pub mod gateway {
-        tonic::include_proto!("gateway");
-    }
-    pub mod enterprise {
-        pub mod firewall {
-            tonic::include_proto!("enterprise.firewall");
-        }
-    }
-}
+// pub mod proto {
+//     pub mod gateway {
+//         tonic::include_proto!("gateway");
+//     }
+//     pub mod enterprise {
+//         pub mod firewall {
+//             tonic::include_proto!("enterprise.firewall");
+//         }
+//     }
+// }
 
 #[macro_use]
 extern crate log;
@@ -20,6 +20,7 @@ extern crate log;
 use std::{process::Command, str::FromStr, time::SystemTime};
 
 use config::Config;
+use defguard_protos::proto;
 use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration};
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
@@ -88,71 +89,132 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
     Ok(())
 }
 
-impl From<proto::gateway::Configuration> for InterfaceConfiguration {
-    fn from(config: proto::gateway::Configuration) -> Self {
-        let peers = config.peers.into_iter().map(Peer::from).collect();
-        // Try to convert an array of `String`s to `IpAddrMask`, leaving out the failed ones.
-        let addresses = config
-            .addresses
-            .into_iter()
-            .filter_map(|s| IpAddrMask::from_str(&s).ok())
-            .collect();
-        InterfaceConfiguration {
-            name: config.name,
-            prvkey: config.prvkey,
-            addresses,
-            port: config.port,
-            peers,
-            mtu: None,
-        }
+fn to_interface_configuration(config: proto::gateway::Configuration) -> InterfaceConfiguration {
+    let peers = config.peers.into_iter().map(to_peer).collect();
+    // Try to convert an array of `String`s to `IpAddrMask`, leaving out the failed ones.
+    let addresses = config
+        .addresses
+        .into_iter()
+        .filter_map(|s| IpAddrMask::from_str(&s).ok())
+        .collect();
+    InterfaceConfiguration {
+        name: config.name,
+        prvkey: config.prvkey,
+        addresses,
+        port: config.port,
+        peers,
+        mtu: None,
     }
 }
 
-impl From<proto::gateway::Peer> for Peer {
-    fn from(proto_peer: proto::gateway::Peer) -> Self {
-        let mut peer = Self::new(proto_peer.pubkey.as_str().try_into().unwrap_or_default());
-        peer.persistent_keepalive_interval = proto_peer
-            .keepalive_interval
-            .and_then(|interval| u16::try_from(interval).ok());
-        peer.preshared_key = proto_peer
-            .preshared_key
-            .map(|key| key.as_str().try_into().unwrap_or_default());
-        peer.allowed_ips = proto_peer
-            .allowed_ips
-            .iter()
-            .filter_map(|entry| IpAddrMask::from_str(entry).ok())
-            .collect();
-        peer
+// impl From<proto::gateway::Configuration> for InterfaceConfiguration {
+//     fn from(config: proto::gateway::Configuration) -> Self {
+//         let peers = config.peers.into_iter().map(Peer::from).collect();
+//         // Try to convert an array of `String`s to `IpAddrMask`, leaving out the failed ones.
+//         let addresses = config
+//             .addresses
+//             .into_iter()
+//             .filter_map(|s| IpAddrMask::from_str(&s).ok())
+//             .collect();
+//         InterfaceConfiguration {
+//             name: config.name,
+//             prvkey: config.prvkey,
+//             addresses,
+//             port: config.port,
+//             peers,
+//             mtu: None,
+//         }
+//     }
+// }
+
+fn to_peer(proto_peer: proto::gateway::Peer) -> Peer {
+    let mut peer = Peer::new(proto_peer.pubkey.as_str().try_into().unwrap_or_default());
+    peer.persistent_keepalive_interval = proto_peer
+        .keepalive_interval
+        .and_then(|interval| u16::try_from(interval).ok());
+    peer.preshared_key = proto_peer
+        .preshared_key
+        .map(|key| key.as_str().try_into().unwrap_or_default());
+    peer.allowed_ips = proto_peer
+        .allowed_ips
+        .iter()
+        .filter_map(|entry| IpAddrMask::from_str(entry).ok())
+        .collect();
+    peer
+}
+
+// impl From<proto::gateway::Peer> for Peer {
+//     fn from(proto_peer: proto::gateway::Peer) -> Self {
+//         let mut peer = Self::new(proto_peer.pubkey.as_str().try_into().unwrap_or_default());
+//         peer.persistent_keepalive_interval = proto_peer
+//             .keepalive_interval
+//             .and_then(|interval| u16::try_from(interval).ok());
+//         peer.preshared_key = proto_peer
+//             .preshared_key
+//             .map(|key| key.as_str().try_into().unwrap_or_default());
+//         peer.allowed_ips = proto_peer
+//             .allowed_ips
+//             .iter()
+//             .filter_map(|entry| IpAddrMask::from_str(entry).ok())
+//             .collect();
+//         peer
+//     }
+// }
+
+pub fn to_proto_peer(peer: &Peer) -> proto::gateway::Peer {
+    let preshared_key = peer.preshared_key.as_ref().map(ToString::to_string);
+    proto::gateway::Peer {
+        pubkey: peer.public_key.to_string(),
+        allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
+        preshared_key,
+        keepalive_interval: peer.persistent_keepalive_interval.map(u32::from),
     }
 }
 
-impl From<&Peer> for proto::gateway::Peer {
-    fn from(peer: &Peer) -> Self {
-        let preshared_key = peer.preshared_key.as_ref().map(ToString::to_string);
-        Self {
-            pubkey: peer.public_key.to_string(),
-            allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
-            preshared_key,
-            keepalive_interval: peer.persistent_keepalive_interval.map(u32::from),
-        }
+// impl From<&Peer> for proto::gateway::Peer {
+//     fn from(peer: &Peer) -> Self {
+//         let preshared_key = peer.preshared_key.as_ref().map(ToString::to_string);
+//         Self {
+//             pubkey: peer.public_key.to_string(),
+//             allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
+//             preshared_key,
+//             keepalive_interval: peer.persistent_keepalive_interval.map(u32::from),
+//         }
+//     }
+// }
+
+fn to_proto_peerstats(peer: &Peer) -> proto::gateway::PeerStats {
+    proto::gateway::PeerStats {
+        public_key: peer.public_key.to_string(),
+        endpoint: peer
+            .endpoint
+            .map_or(String::new(), |endpoint| endpoint.to_string()),
+        allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
+        latest_handshake: peer.last_handshake.map_or(0, |ts| {
+            ts.duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |duration| duration.as_secs())
+        }),
+        download: peer.rx_bytes,
+        upload: peer.tx_bytes,
+        keepalive_interval: u32::from(peer.persistent_keepalive_interval.unwrap_or_default()),
     }
 }
 
-impl From<&Peer> for proto::gateway::PeerStats {
-    fn from(peer: &Peer) -> Self {
-        Self {
-            public_key: peer.public_key.to_string(),
-            endpoint: peer
-                .endpoint
-                .map_or(String::new(), |endpoint| endpoint.to_string()),
-            allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
-            latest_handshake: peer.last_handshake.map_or(0, |ts| {
-                ts.duration_since(SystemTime::UNIX_EPOCH)
-                    .map_or(0, |duration| duration.as_secs())
-            }),
-            download: peer.rx_bytes,
-            upload: peer.tx_bytes,
-            keepalive_interval: u32::from(peer.persistent_keepalive_interval.unwrap_or_default()),
-        }
-    }
-}
+// impl From<&Peer> for proto::gateway::PeerStats {
+//     fn from(peer: &Peer) -> Self {
+//         Self {
+//             public_key: peer.public_key.to_string(),
+//             endpoint: peer
+//                 .endpoint
+//                 .map_or(String::new(), |endpoint| endpoint.to_string()),
+//             allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
+//             latest_handshake: peer.last_handshake.map_or(0, |ts| {
+//                 ts.duration_since(SystemTime::UNIX_EPOCH)
+//                     .map_or(0, |duration| duration.as_secs())
+//             }),
+//             download: peer.rx_bytes,
+//             upload: peer.tx_bytes,
+//             keepalive_interval: u32::from(peer.persistent_keepalive_interval.unwrap_or_default()),
+//         }
+//     }
+// }
