@@ -170,7 +170,7 @@ impl FirewallRule for FilterRule<'_> {
         let mut rule = Rule::new(chain);
         debug!("Converting {:?} to nftables expression", self);
         // Debug purposes only
-        let mut matches = vec![];
+        let mut matches = Vec::new();
 
         if !self.dest_ports.is_empty() && self.protocols.len() > 1 {
             return Err(FirewallError::InvalidConfiguration(
