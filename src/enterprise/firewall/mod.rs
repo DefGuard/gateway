@@ -9,8 +9,10 @@ pub mod api;
 #[cfg(all(not(test), target_os = "linux"))]
 pub mod linux;
 
-#[cfg(any(test, not(target_os = "linux")))]
-pub mod dummy;
+// #[cfg(any(test, not(target_os = "linux")))]
+// pub mod dummy;
+
+pub mod bsd;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Address {
@@ -252,4 +254,6 @@ pub enum FirewallError {
     TransactionNotStarted,
     #[error("Firewall transaction failed: {0}")]
     TransactionFailed(String),
+    #[error("PF error: {0}")]
+    PfError(#[from] pfctl::Error),
 }

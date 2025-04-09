@@ -457,6 +457,7 @@ dependencies = [
  "log",
  "mnl",
  "nftnl",
+ "pfctl",
  "prost",
  "prost-build",
  "serde",
@@ -1035,6 +1036,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "ioctl-sys"
+version = "0.8.0"
+source = "git+https://github.com/DefGuard/ioctl.git?rev=86939204d9362a4aa1a2b989967a5486bde50c3d#86939204d9362a4aa1a2b989967a5486bde50c3d"
+
+[[package]]
 name = "ipnetwork"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1387,6 +1393,17 @@ checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
 dependencies = [
  "fixedbitset",
  "indexmap 2.9.0",
+]
+
+[[package]]
+name = "pfctl"
+version = "0.6.1"
+source = "git+https://github.com/DefGuard/pfctl-rs.git?rev=6e6dde64bc47901f84f9535afe9973278833d28b#6e6dde64bc47901f84f9535afe9973278833d28b"
+dependencies = [
+ "derive_builder",
+ "ioctl-sys",
+ "ipnetwork",
+ "libc",
 ]
 
 [[package]]

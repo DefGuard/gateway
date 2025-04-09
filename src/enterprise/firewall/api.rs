@@ -1,13 +1,16 @@
 #[cfg(target_os = "linux")]
 use nftnl::Batch;
+use pfctl::{AnchorChange, Transaction};
 
-use super::{FirewallError, FirewallRule, Policy};
+use super::{bsd::PfRules, FirewallError, FirewallRule, Policy};
 
 pub struct FirewallApi {
     pub ifname: String,
     #[cfg(target_os = "linux")]
     #[allow(dead_code)]
     pub(crate) batch: Option<Batch>,
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) batch: Option<PfRules>,
 }
 
 impl FirewallApi {
@@ -16,6 +19,8 @@ impl FirewallApi {
         Self {
             ifname: ifname.into(),
             #[cfg(target_os = "linux")]
+            batch: None,
+            #[cfg(not(target_os = "linux"))]
             batch: None,
         }
     }
