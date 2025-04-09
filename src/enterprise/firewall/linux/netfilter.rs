@@ -663,7 +663,6 @@ pub(crate) fn allow_established_traffic(batch: &mut Batch) -> Result<(), Firewal
         ..Default::default()
     }
     .to_chain_rule(&forward_chain, batch)?;
-
     batch.add(&established_rule, nftnl::MsgType::Add);
 
     Ok(())
@@ -690,7 +689,6 @@ pub(crate) fn ignore_unrelated_traffic(
         ..Default::default()
     }
     .to_chain_rule(&forward_chain, batch)?;
-
     batch.add(&ignore_rule, nftnl::MsgType::Add);
 
     Ok(())
