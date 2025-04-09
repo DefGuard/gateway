@@ -680,9 +680,7 @@ pub(crate) fn ignore_unrelated_traffic(
 
     let ignore_rule = FilterRule {
         iifname: Some(ifname.to_string()),
-        oifname: Some(ifname.to_string()),
         negated_iifname: true,
-        negated_oifname: true,
         action: Policy::Allow,
         counter: true,
         comment: Some("Ignore traffic not related to the VPN".to_string()),
