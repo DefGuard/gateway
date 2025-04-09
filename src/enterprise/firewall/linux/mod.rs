@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use mnl::mnl_sys::libc;
 use netfilter::{
-    allow_established_traffic, apply_filter_rules, drop_table, init_firewall, send_batch,
-    set_default_policy, set_masq,
+    allow_established_traffic, apply_filter_rules, drop_table, ignore_unrelated_traffic,
+    init_firewall, send_batch, set_default_policy, set_masq,
 };
 use nftnl::Batch;
 
@@ -63,6 +63,8 @@ pub struct FilterRule<'a> {
     pub defguard_rule_id: i64,
     pub v4: bool,
     pub comment: Option<String>,
+    pub negated_oifname: bool,
+    pub negated_iifname: bool,
 }
 
 impl FirewallManagementApi for FirewallApi {
@@ -80,6 +82,7 @@ impl FirewallManagementApi for FirewallApi {
             drop_table(batch)?;
             init_firewall(default_policy, priority, batch).expect("Failed to setup chains");
             debug!("Allowing all established traffic");
+            ignore_unrelated_traffic(batch, &self.ifname)?;
             allow_established_traffic(batch)?;
             debug!("Allowed all established traffic");
             debug!("Initialized firewall");
