@@ -26,8 +26,10 @@ use tonic::{
     Request, Status, Streaming,
 };
 
+#[cfg(target_os = "linux")]
+use crate::enterprise::firewall::api::FirewallManagementApi;
 #[cfg(any(target_os = "linux", test))]
-use crate::enterprise::firewall::{api::FirewallManagementApi, FirewallRule};
+use crate::enterprise::firewall::FirewallRule;
 use crate::{
     config::Config,
     enterprise::firewall::{api::FirewallApi, FirewallConfig},
@@ -358,12 +360,10 @@ impl Gateway {
         // check if new configuration is different than current one
         let new_interface_configuration = new_configuration.clone().into();
 
-        if !self.is_interface_config_changed(&new_interface_configuration, &new_configuration.peers)
+        if self.is_interface_config_changed(&new_interface_configuration, &new_configuration.peers)
         {
-            debug!("Received configuration is identical to current one. Skipping interface reconfiguration");
-        } else {
             debug!(
-                "Received configuration is different than current one. Reconfiguring interface..."
+                "Received configuration is different than the current one. Reconfiguring interface..."
             );
             self.wgapi
                 .lock()
@@ -380,6 +380,8 @@ impl Gateway {
             // store new configuration and peers
             self.interface_configuration = Some(new_interface_configuration);
             self.replace_peers(new_configuration.peers);
+        } else {
+            debug!("Received configuration is identical to the current one. Skipping interface reconfiguration.");
         }
 
         #[cfg(target_os = "linux")]
@@ -880,7 +882,7 @@ mod tests {
         assert!(gateway.has_firewall_rules_changed(&[rule1.clone()]));
 
         // Both configs are empty
-        gateway.firewall_config = Some(config_empty.clone());
+        gateway.firewall_config = Some(config_empty);
         assert!(!gateway.has_firewall_rules_changed(&[]));
     }
 
@@ -959,7 +961,7 @@ mod tests {
             default_policy: Policy::Allow,
             ipv4: true,
         };
-        gateway.firewall_config = Some(config1.clone());
+        gateway.firewall_config = Some(config1);
         assert!(gateway.has_firewall_config_changed(&config5));
     }
 }

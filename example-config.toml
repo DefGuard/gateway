@@ -53,3 +53,6 @@ syslog_socket = "/var/run/log"
 
 # Optional: Enable automatic masquerading of traffic by the firewall
 #masquerade = true
+
+# Optional: Set the priority of the Defguard forward chain
+#fw_priority = 0

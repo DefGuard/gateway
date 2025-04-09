@@ -24,25 +24,24 @@ impl Address {
         match &ip.address {
             Some(proto::enterprise::firewall::ip_address::Address::Ip(ip)) => {
                 Ok(Self::Ip(IpAddr::from_str(ip).map_err(|err| {
-                    FirewallError::TypeConversionError(format!("Invalid IP format: {}", err))
+                    FirewallError::TypeConversionError(format!("Invalid IP format: {err}"))
                 })?))
             }
             Some(proto::enterprise::firewall::ip_address::Address::IpSubnet(network)) => Ok(
                 Self::Network(IpNetwork::from_str(network).map_err(|err| {
-                    FirewallError::TypeConversionError(format!("Invalid subnet format: {}", err))
+                    FirewallError::TypeConversionError(format!("Invalid subnet format: {err}"))
                 })?),
             ),
             Some(proto::enterprise::firewall::ip_address::Address::IpRange(range)) => {
                 let start = IpAddr::from_str(&range.start).map_err(|err| {
-                    FirewallError::TypeConversionError(format!("Invalid IP format: {}", err))
+                    FirewallError::TypeConversionError(format!("Invalid IP format: {err}"))
                 })?;
                 let end = IpAddr::from_str(&range.end).map_err(|err| {
-                    FirewallError::TypeConversionError(format!("Invalid IP format: {}", err))
+                    FirewallError::TypeConversionError(format!("Invalid IP format: {err}"))
                 })?;
                 if start > end {
                     return Err(FirewallError::TypeConversionError(format!(
-                        "Invalid IP range: start IP ({}) is greater than end IP ({})",
-                        start, end
+                        "Invalid IP range: start IP ({start}) is greater than end IP ({end})",
                     )));
                 }
                 Ok(Self::Range(start, end))
@@ -67,8 +66,7 @@ impl Port {
             Some(proto::enterprise::firewall::port::Port::SinglePort(port)) => {
                 let port_u16 = u16::try_from(*port).map_err(|err| {
                     FirewallError::TypeConversionError(format!(
-                        "Invalid port number ({}): {}",
-                        port, err
+                        "Invalid port number ({port}): {err}"
                     ))
                 })?;
                 Ok(Self::Single(port_u16))
@@ -76,20 +74,19 @@ impl Port {
             Some(proto::enterprise::firewall::port::Port::PortRange(range)) => {
                 let start_u16 = u16::try_from(range.start).map_err(|err| {
                     FirewallError::TypeConversionError(format!(
-                        "Invalid range start port number ({}): {}",
-                        range.start, err
+                        "Invalid range start port number ({}): {err}",
+                        range.start
                     ))
                 })?;
                 let end_u16 = u16::try_from(range.end).map_err(|err| {
                     FirewallError::TypeConversionError(format!(
-                        "Invalid range end port number ({}): {}",
-                        range.end, err
+                        "Invalid range end port number ({}): {err}",
+                        range.end
                     ))
                 })?;
                 if start_u16 > end_u16 {
                     return Err(FirewallError::TypeConversionError(format!(
-                        "Invalid port range: start port ({}) is greater than end port ({})",
-                        start_u16, end_u16
+                        "Invalid port range: start port ({start_u16}) is greater than end port ({end_u16})"
                     )));
                 }
                 Ok(Self::Range(start_u16, end_u16))
@@ -114,6 +111,7 @@ pub const PORT_PROTOCOLS: [Protocol; 2] = [
 ];
 
 impl Protocol {
+    #[must_use]
     pub fn supports_ports(&self) -> bool {
         PORT_PROTOCOLS.contains(self)
     }
@@ -137,6 +135,7 @@ impl From<bool> for Policy {
 }
 
 impl Policy {
+    #[must_use]
     pub const fn from_proto(verdict: proto::enterprise::firewall::FirewallPolicy) -> Self {
         match verdict {
             proto::enterprise::firewall::FirewallPolicy::Allow => Self::Allow,
@@ -171,20 +170,20 @@ impl FirewallConfig {
         config: proto::enterprise::firewall::FirewallConfig,
     ) -> Result<Self, FirewallError> {
         debug!("Parsing following received firewall proto configuration: {config:?}");
-        let mut rules = vec![];
+        let mut rules = Vec::new();
         let v4 = config.ip_version == proto::enterprise::firewall::IpVersion::Ipv4 as i32;
         let default_policy =
             Policy::from_proto(config.default_policy.try_into().map_err(|err| {
-                FirewallError::TypeConversionError(format!("Invalid default policy: {:?}", err))
+                FirewallError::TypeConversionError(format!("Invalid default policy: {err:?}"))
             })?);
         debug!("Using IPv4: {v4:?}, default firewall policy defined: {default_policy:?}. Proceeding to parsing rules...");
 
         for rule in config.rules {
             debug!("Parsing the following received Defguard ACL proto rule: {rule:?}");
-            let mut source_addrs = vec![];
-            let mut destination_addrs = vec![];
-            let mut destination_ports = vec![];
-            let mut protocols = vec![];
+            let mut source_addrs = Vec::new();
+            let mut destination_addrs = Vec::new();
+            let mut destination_ports = Vec::new();
+            let mut protocols = Vec::new();
 
             for addr in rule.source_addrs {
                 source_addrs.push(Address::from_proto(&addr)?);
@@ -203,15 +202,14 @@ impl FirewallConfig {
                     // Since the protocol is an i32, convert it to the proto enum variant first
                     proto::enterprise::firewall::Protocol::try_from(protocol).map_err(|err| {
                         FirewallError::TypeConversionError(format!(
-                            "Invalid protocol: {:?}. Details: {:?}",
-                            protocol, err
+                            "Invalid protocol: {protocol:?}. Details: {err:?}",
                         ))
                     })?,
                 )?);
             }
 
             let verdict = Policy::from_proto(rule.verdict.try_into().map_err(|err| {
-                FirewallError::TypeConversionError(format!("Invalid rule verdict: {:?}", err))
+                FirewallError::TypeConversionError(format!("Invalid rule verdict: {err:?}"))
             })?);
 
             let firewall_rule = FirewallRule {

@@ -73,10 +73,7 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
 
-            info!(
-                "Command {} executed successfully. Stdout: {}",
-                command, stdout
-            );
+            info!("Command {command} executed successfully. Stdout: {stdout}",);
             if !stderr.is_empty() {
                 error!("Stderr:\n{stderr}");
             }
