@@ -264,8 +264,7 @@ impl Gateway {
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
-                || current_config.ipv4 != new_fw_config.ipv4
-                || self.has_firewall_rules_changed(&new_fw_config.rules);
+                || self.have_firewall_rules_changed(&new_fw_config.rules);
         }
 
         true
@@ -273,7 +272,7 @@ impl Gateway {
 
     /// Checks whether the firewall rules have changed.
     #[cfg(any(target_os = "linux", test))]
-    fn has_firewall_rules_changed(&self, new_rules: &[FirewallRule]) -> bool {
+    fn have_firewall_rules_changed(&self, new_rules: &[FirewallRule]) -> bool {
         debug!("Checking if Defguard ACL rules have changed");
         if let Some(current_config) = &self.firewall_config {
             let current_rules = &current_config.rules;
@@ -818,13 +817,11 @@ mod tests {
         let config1 = FirewallConfig {
             rules: vec![rule1.clone(), rule2.clone()],
             default_policy: Policy::Allow,
-            ipv4: true,
         };
 
         let config_empty = FirewallConfig {
             rules: vec![],
             default_policy: Policy::Allow,
-            ipv4: true,
         };
 
         #[cfg(target_os = "macos")]
@@ -848,35 +845,35 @@ mod tests {
 
         // Gateway has no firewall config, new rules are empty
         gateway.firewall_config = None;
-        assert!(gateway.has_firewall_rules_changed(&[]));
+        assert!(gateway.have_firewall_rules_changed(&[]));
 
         // Gateway has no firewall config, but new rules exist
         gateway.firewall_config = None;
-        assert!(gateway.has_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
 
         // Gateway has firewall config, with empty rules list
         gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.has_firewall_rules_changed(&[]));
+        assert!(gateway.have_firewall_rules_changed(&[]));
 
         // Gateway has firewall config, new rules have different length
         gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.has_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
 
         // Gateway has firewall config, new rules have different content
         gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.has_firewall_rules_changed(&[rule1.clone(), rule3.clone()]));
+        assert!(gateway.have_firewall_rules_changed(&[rule1.clone(), rule3.clone()]));
 
         // Gateway has firewall config, new rules are identical
         gateway.firewall_config = Some(config1.clone());
-        assert!(!gateway.has_firewall_rules_changed(&[rule1.clone(), rule2.clone()]));
+        assert!(!gateway.have_firewall_rules_changed(&[rule1.clone(), rule2.clone()]));
 
         // Gateway has empty firewall config, new rules exist
         gateway.firewall_config = Some(config_empty.clone());
-        assert!(gateway.has_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
 
         // Both configs are empty
         gateway.firewall_config = Some(config_empty);
-        assert!(!gateway.has_firewall_rules_changed(&[]));
+        assert!(!gateway.have_firewall_rules_changed(&[]));
     }
 
     #[tokio::test]
@@ -884,25 +881,16 @@ mod tests {
         let config1 = FirewallConfig {
             rules: vec![],
             default_policy: Policy::Allow,
-            ipv4: true,
         };
 
         let config2 = FirewallConfig {
             rules: vec![],
             default_policy: Policy::Deny,
-            ipv4: true,
         };
 
         let config3 = FirewallConfig {
             rules: vec![],
             default_policy: Policy::Allow,
-            ipv4: false,
-        };
-
-        let config4 = FirewallConfig {
-            rules: vec![],
-            default_policy: Policy::Allow,
-            ipv4: true,
         };
 
         #[cfg(target_os = "macos")]
@@ -931,16 +919,12 @@ mod tests {
         gateway.firewall_config = Some(config1.clone());
         assert!(gateway.has_firewall_config_changed(&config2));
 
-        // Gateway has config, new config has different v4 value
-        gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.has_firewall_config_changed(&config3));
-
         // Gateway has config, new config is identical
         gateway.firewall_config = Some(config1.clone());
-        assert!(!gateway.has_firewall_config_changed(&config4));
+        assert!(!gateway.has_firewall_config_changed(&config3));
 
         // Rules are not being ignored
-        let config5 = FirewallConfig {
+        let config4 = FirewallConfig {
             rules: vec![FirewallRule {
                 comment: None,
                 destination_addrs: vec![],
@@ -952,9 +936,25 @@ mod tests {
                 ipv4: true,
             }],
             default_policy: Policy::Allow,
-            ipv4: true,
         };
         gateway.firewall_config = Some(config1);
+        assert!(gateway.has_firewall_config_changed(&config4));
+
+        // Rule IP versions are not being ignored
+        let config5 = FirewallConfig {
+            rules: vec![FirewallRule {
+                comment: None,
+                destination_addrs: vec![],
+                destination_ports: vec![],
+                id: 0,
+                verdict: Policy::Allow,
+                protocols: vec![],
+                source_addrs: vec![],
+                ipv4: false,
+            }],
+            default_policy: Policy::Allow,
+        };
+        gateway.firewall_config = Some(config4);
         assert!(gateway.has_firewall_config_changed(&config5));
     }
 }
