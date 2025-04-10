@@ -535,6 +535,13 @@ impl Gateway {
                                 }
                             }
                         }
+                        #[cfg(target_os = "linux")]
+                        Some(update::Update::DisableFirewall(_)) => {
+                            debug!("Disabling firewall configuration");
+                            if let Err(err) = self.process_firewall_changes(None) {
+                                error!("Failed to disable firewall configuration: {err}");
+                            }
+                        }
                         _ => warn!("Unsupported kind of update: {update:?}"),
                     }
                 }

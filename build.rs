@@ -17,5 +17,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
         &["proto/wireguard", "proto/enterprise/firewall"],
     )?;
+    println!("cargo:rerun-if-changed=proto");
     Ok(())
 }
