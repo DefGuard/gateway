@@ -65,7 +65,6 @@ impl Protocol {
 impl From<Policy> for nftnl::Policy {
     fn from(policy: Policy) -> Self {
         match policy {
-            // This mirrors the nftables behavior, where passing no policy results in the default accept policy
             Policy::Allow => Self::Accept,
             Policy::Deny => Self::Drop,
         }
@@ -363,7 +362,11 @@ impl FirewallRule for FilterRule<'_> {
             // iifname <interface>
             rule.add_expr(&nft_expr!(meta iifname));
             let exact = InterfaceName::Exact(CString::new(iifname.as_str()).unwrap());
-            rule.add_expr(&nft_expr!(cmp == exact));
+            if self.negated_iifname {
+                rule.add_expr(&nft_expr!(cmp != exact));
+            } else {
+                rule.add_expr(&nft_expr!(cmp == exact));
+            }
             debug!("Added input interface match to rule: {:?}", iifname);
             matches.push(format!("INPUT INTERFACE: {:?}", iifname));
         }
@@ -372,7 +375,11 @@ impl FirewallRule for FilterRule<'_> {
             // oifname <interface>
             rule.add_expr(&nft_expr!(meta oifname));
             let exact = InterfaceName::Exact(CString::new(oifname.as_str()).unwrap());
-            rule.add_expr(&nft_expr!(cmp == exact));
+            if self.negated_oifname {
+                rule.add_expr(&nft_expr!(cmp != exact));
+            } else {
+                rule.add_expr(&nft_expr!(cmp == exact));
+            }
             debug!("Added output interface match to rule: {:?}", oifname);
             matches.push(format!("OUTPUT INTERFACE: {:?}", oifname));
         }
@@ -508,17 +515,44 @@ impl FirewallRule for NatRule {
     }
 }
 
-// struct JumpRule;
+// Left in case if this is ever needed
+// struct JumpRule<'a> {
+//     src_chain: &'a Chain<'a>,
+//     dest_chain: &'a Chain<'a>,
+//     oifname: Option<String>,
+//     iifname: Option<String>,
+//     negated_oifname: bool,
+//     negated_iifname: bool,
+// }
 
-// impl JumpRule {
-//     fn to_chain_rule<'a>(
-//         src_chain: &'a Chain,
-//         dest_chain: &'a Chain,
-//     ) -> Result<Rule<'a>, FirewallError> {
-//         let mut rule = Rule::new(src_chain);
+// impl<'a> JumpRule<'a> {
+//     fn to_chain_rule(&self) -> Result<Rule<'a>, FirewallError> {
+//         let mut rule = Rule::new(self.src_chain);
+
+//         if let Some(iifname) = &self.iifname {
+//             rule.add_expr(&nft_expr!(meta iifname));
+//             let exact = InterfaceName::Exact(CString::new(iifname.as_str()).unwrap());
+//             if self.negated_iifname {
+//                 rule.add_expr(&nft_expr!(cmp != exact));
+//             } else {
+//                 rule.add_expr(&nft_expr!(cmp == exact));
+//             }
+//         }
+
+//         if let Some(oifname) = &self.oifname {
+//             rule.add_expr(&nft_expr!(meta oifname));
+//             let exact = InterfaceName::Exact(CString::new(oifname.as_str()).unwrap());
+//             if self.negated_oifname {
+//                 rule.add_expr(&nft_expr!(cmp != exact));
+//             } else {
+//                 rule.add_expr(&nft_expr!(cmp == exact));
+//             }
+//         }
+
+//         // first, match
 
 //         rule.add_expr(&nft_expr!(counter));
-//         rule.add_expr(&nft_expr!(verdict jump dest_chain.get_name().into()));
+//         rule.add_expr(&nft_expr!(verdict jump self.dest_chain.get_name().into()));
 
 //         Ok(rule)
 //     }
@@ -536,14 +570,14 @@ pub(crate) fn init_firewall(
     batch.add(&table, nftnl::MsgType::Del);
     batch.add(&table, nftnl::MsgType::Add);
 
-    let mut chain = Chains::Forward.to_chain(&table);
-    chain.set_hook(
+    let mut fw_chain = Chains::Forward.to_chain(&table);
+    fw_chain.set_hook(
         nftnl::Hook::Forward,
         defguard_fwd_chain_priority.unwrap_or(FORWARD_PRIORITY),
     );
-    chain.set_policy(initial_policy.unwrap_or(Policy::Allow).into());
-    chain.set_type(nftnl::ChainType::Filter);
-    batch.add(&chain, nftnl::MsgType::Add);
+    fw_chain.set_policy(initial_policy.unwrap_or(Policy::Allow).into());
+    fw_chain.set_type(nftnl::ChainType::Filter);
+    batch.add(&fw_chain, nftnl::MsgType::Add);
 
     Ok(())
 }
@@ -625,11 +659,35 @@ pub(crate) fn allow_established_traffic(batch: &mut Batch) -> Result<(), Firewal
         states: vec![State::Established, State::Related],
         counter: true,
         action: Policy::Allow,
+        comment: Some("Allow established and related traffic".to_string()),
         ..Default::default()
     }
     .to_chain_rule(&forward_chain, batch)?;
-
     batch.add(&established_rule, nftnl::MsgType::Add);
+
+    Ok(())
+}
+
+pub(crate) fn ignore_unrelated_traffic(
+    batch: &mut Batch,
+    ifname: &str,
+) -> Result<(), FirewallError> {
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+    batch.add(&table, nftnl::MsgType::Add);
+
+    let forward_chain = Chains::Forward.to_chain(&table);
+    batch.add(&forward_chain, nftnl::MsgType::Add);
+
+    let ignore_rule = FilterRule {
+        iifname: Some(ifname.to_string()),
+        negated_iifname: true,
+        action: Policy::Allow,
+        counter: true,
+        comment: Some("Ignore traffic not related to the VPN".to_string()),
+        ..Default::default()
+    }
+    .to_chain_rule(&forward_chain, batch)?;
+    batch.add(&ignore_rule, nftnl::MsgType::Add);
 
     Ok(())
 }
