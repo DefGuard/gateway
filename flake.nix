@@ -34,6 +34,8 @@
           protobuf
           sqlx-cli
           rustToolchain
+          libnftnl
+          libmnl
         ];
       };
     });

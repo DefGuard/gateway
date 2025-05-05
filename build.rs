@@ -11,8 +11,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.protoc_arg("--experimental_allow_proto3_optional");
     tonic_build::configure().compile_protos_with_config(
         config,
-        &["proto/wireguard/gateway.proto"],
-        &["proto/wireguard"],
+        &[
+            "proto/wireguard/gateway.proto",
+            "proto/enterprise/firewall/firewall.proto",
+        ],
+        &["proto/wireguard", "proto/enterprise/firewall"],
     )?;
+    println!("cargo:rerun-if-changed=proto");
     Ok(())
 }

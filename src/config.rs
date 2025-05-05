@@ -90,6 +90,15 @@ pub struct Config {
     /// 503 - gateway works but is not connected to CORE
     #[arg(long, env = "HEALTH_PORT")]
     pub health_port: Option<u16>,
+
+    /// Whether the firewall should automatically apply masquerading
+    #[arg(long, env = "DEFGUARD_MASQUERADE")]
+    #[serde(default)]
+    pub masquerade: bool,
+
+    #[arg(long, env = "DEFGUARD_FW_PRIORITY")]
+    #[serde(default)]
+    pub fw_priority: Option<i32>,
 }
 
 impl Default for Config {
@@ -112,6 +121,8 @@ impl Default for Config {
             pre_down: None,
             post_down: None,
             health_port: None,
+            masquerade: false,
+            fw_priority: None,
         }
     }
 }

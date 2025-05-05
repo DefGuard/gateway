@@ -27,7 +27,7 @@ pub struct HostConfig {
     host: Host,
 }
 
-type ClientMap = HashMap<SocketAddr, UnboundedSender<Result<proto::Update, Status>>>;
+type ClientMap = HashMap<SocketAddr, UnboundedSender<Result<proto::gateway::Update, Status>>>;
 
 struct GatewayServer {
     config_rx: Receiver<HostConfig>,
@@ -42,12 +42,12 @@ impl GatewayServer {
         tokio::spawn(async move {
             while task_config_rx.changed().await.is_ok() {
                 let config = (&*task_config_rx.borrow()).into();
-                let update = proto::Update {
-                    update_type: proto::UpdateType::Modify as i32,
-                    update: Some(proto::update::Update::Network(config)),
+                let update = proto::gateway::Update {
+                    update_type: proto::gateway::UpdateType::Modify as i32,
+                    update: Some(proto::gateway::update::Update::Network(config)),
                 };
                 task_clients.lock().unwrap().retain(
-                    move |_addr, tx: &mut UnboundedSender<Result<proto::Update, Status>>| {
+                    move |_addr, tx: &mut UnboundedSender<Result<proto::gateway::Update, Status>>| {
                         tx.send(Ok(update.clone())).is_ok()
                     },
                 );
@@ -58,7 +58,7 @@ impl GatewayServer {
     }
 }
 
-impl From<&HostConfig> for proto::Configuration {
+impl From<&HostConfig> for proto::gateway::Configuration {
     fn from(host_config: &HostConfig) -> Self {
         Self {
             name: host_config.name.clone(),
@@ -80,18 +80,19 @@ impl From<&HostConfig> for proto::Configuration {
                 .values()
                 .map(|peer| peer.into())
                 .collect(),
+            firewall_config: None,
         }
     }
 }
 
 #[tonic::async_trait]
-impl proto::gateway_service_server::GatewayService for GatewayServer {
-    type UpdatesStream = UnboundedReceiverStream<Result<proto::Update, Status>>;
+impl proto::gateway::gateway_service_server::GatewayService for GatewayServer {
+    type UpdatesStream = UnboundedReceiverStream<Result<proto::gateway::Update, Status>>;
 
     async fn config(
         &self,
-        request: Request<proto::ConfigurationRequest>,
-    ) -> Result<Response<proto::Configuration>, Status> {
+        request: Request<proto::gateway::ConfigurationRequest>,
+    ) -> Result<Response<proto::gateway::Configuration>, Status> {
         let address = request.remote_addr().unwrap();
         eprintln!("CONFIG connected from: {address}");
         Ok(Response::new((&*self.config_rx.borrow()).into()))
@@ -99,7 +100,7 @@ impl proto::gateway_service_server::GatewayService for GatewayServer {
 
     async fn stats(
         &self,
-        request: Request<Streaming<proto::StatsUpdate>>,
+        request: Request<Streaming<proto::gateway::StatsUpdate>>,
     ) -> Result<Response<()>, Status> {
         let address = request.remote_addr().unwrap();
         eprintln!("STATS connected from: {address}");
@@ -143,7 +144,7 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
             match keyword {
                 "a" | "addr" => {
                     let mut addresses = Vec::new();
-                    while let Some(address) = token_iter.next() {
+                    for address in token_iter.by_ref() {
                         match address.parse() {
                             Ok(ipaddr) => addresses.push(ipaddr),
                             Err(err) => eprintln!("Skipping {address}: {err}"),
@@ -158,12 +159,15 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
                         if let Ok(key) = Key::try_from(key) {
                             let peer = Peer::new(key.clone());
 
-                            let update = proto::Update {
-                                update_type: proto::UpdateType::Create as i32,
-                                update: Some(proto::update::Update::Peer((&peer).into())),
+                            let update = proto::gateway::Update {
+                                update_type: proto::gateway::UpdateType::Create as i32,
+                                update: Some(proto::gateway::update::Update::Peer((&peer).into())),
                             };
                             clients.lock().unwrap().retain(
-                                move |addr, tx: &mut UnboundedSender<Result<proto::Update, Status>>| {
+                                move |addr,
+                                      tx: &mut UnboundedSender<
+                                    Result<proto::gateway::Update, Status>,
+                                >| {
                                     eprintln!("Sending peer update to {addr}");
                                     tx.send(Ok(update.clone())).is_ok()
                                 },
@@ -184,12 +188,15 @@ pub async fn cli(tx: Sender<HostConfig>, clients: Arc<Mutex<ClientMap>>) {
                         if let Ok(key) = Key::try_from(key) {
                             let peer = Peer::new(key);
 
-                            let update = proto::Update {
-                                update_type: proto::UpdateType::Delete as i32,
-                                update: Some(proto::update::Update::Peer((&peer).into())),
+                            let update = proto::gateway::Update {
+                                update_type: proto::gateway::UpdateType::Delete as i32,
+                                update: Some(proto::gateway::update::Update::Peer((&peer).into())),
                             };
                             clients.lock().unwrap().retain(
-                                move |addr, tx: &mut UnboundedSender<Result<proto::Update, Status>>| {
+                                move |addr,
+                                      tx: &mut UnboundedSender<
+                                    Result<proto::gateway::Update, Status>,
+                                >| {
                                     eprintln!("Sending peer update to {addr}");
                                     tx.send(Ok(update.clone())).is_ok()
                                 },
@@ -234,7 +241,7 @@ pub async fn grpc(
     config_rx: Receiver<HostConfig>,
     clients: Arc<Mutex<ClientMap>>,
 ) -> Result<(), tonic::transport::Error> {
-    let gateway_service = proto::gateway_service_server::GatewayServiceServer::new(
+    let gateway_service = proto::gateway::gateway_service_server::GatewayServiceServer::new(
         GatewayServer::new(config_rx, clients),
     );
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 50055); // TODO: port as an option
