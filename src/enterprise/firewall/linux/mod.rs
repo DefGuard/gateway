@@ -79,11 +79,12 @@ impl FirewallManagementApi for FirewallApi {
     ) -> Result<(), FirewallError> {
         debug!("Initializing firewall, VPN interface: {}", self.ifname);
         if let Some(batch) = &mut self.batch {
-            drop_table(batch)?;
-            init_firewall(default_policy, priority, batch).expect("Failed to setup chains");
+            drop_table(batch, &self.ifname)?;
+            init_firewall(default_policy, priority, batch, &self.ifname)
+                .expect("Failed to setup chains");
             debug!("Allowing all established traffic");
             ignore_unrelated_traffic(batch, &self.ifname)?;
-            allow_established_traffic(batch)?;
+            allow_established_traffic(batch, &self.ifname)?;
             debug!("Allowed all established traffic");
             debug!("Initialized firewall");
             Ok(())
@@ -96,7 +97,7 @@ impl FirewallManagementApi for FirewallApi {
     fn cleanup(&mut self) -> Result<(), FirewallError> {
         debug!("Cleaning up all previous firewall rules, if any");
         if let Some(batch) = &mut self.batch {
-            drop_table(batch)?;
+            drop_table(batch, &self.ifname)?;
         } else {
             return Err(FirewallError::TransactionNotStarted);
         }
@@ -108,7 +109,7 @@ impl FirewallManagementApi for FirewallApi {
     fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError> {
         debug!("Setting default firewall policy to: {policy:?}");
         if let Some(batch) = &mut self.batch {
-            set_default_policy(policy, batch)?;
+            set_default_policy(policy, batch, &self.ifname)?;
         } else {
             return Err(FirewallError::TransactionNotStarted);
         }
@@ -218,7 +219,7 @@ impl FirewallManagementApi for FirewallApi {
             }
         }
 
-        apply_filter_rules(rules, batch)?;
+        apply_filter_rules(rules, batch, &self.ifname)?;
 
         debug!(
             "Applied firewall rules for Defguard ACL rule ID: {}",
