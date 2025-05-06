@@ -161,8 +161,6 @@ pub struct FirewallRule {
 pub struct FirewallConfig {
     pub rules: Vec<FirewallRule>,
     pub default_policy: Policy,
-    /// Whether the rules use IPv4 (true) or IPv6 (false)
-    pub ipv4: bool,
 }
 
 impl FirewallConfig {
@@ -171,12 +169,13 @@ impl FirewallConfig {
     ) -> Result<Self, FirewallError> {
         debug!("Parsing following received firewall proto configuration: {config:?}");
         let mut rules = Vec::new();
-        let v4 = config.ip_version == proto::enterprise::firewall::IpVersion::Ipv4 as i32;
         let default_policy =
             Policy::from_proto(config.default_policy.try_into().map_err(|err| {
                 FirewallError::TypeConversionError(format!("Invalid default policy: {err:?}"))
             })?);
-        debug!("Using IPv4: {v4:?}, default firewall policy defined: {default_policy:?}. Proceeding to parsing rules...");
+        debug!(
+            "Default firewall policy defined: {default_policy:?}. Proceeding to parsing rules..."
+        );
 
         for rule in config.rules {
             debug!("Parsing the following received Defguard ACL proto rule: {rule:?}");
@@ -212,6 +211,7 @@ impl FirewallConfig {
                 FirewallError::TypeConversionError(format!("Invalid rule verdict: {err:?}"))
             })?);
 
+            let ipv4 = rule.ip_version == proto::enterprise::firewall::IpVersion::Ipv4 as i32;
             let firewall_rule = FirewallRule {
                 id: rule.id,
                 source_addrs,
@@ -219,7 +219,7 @@ impl FirewallConfig {
                 destination_ports,
                 protocols,
                 verdict,
-                ipv4: v4,
+                ipv4,
                 comment: rule.comment,
             };
 
@@ -231,7 +231,6 @@ impl FirewallConfig {
         Ok(Self {
             rules,
             default_policy,
-            ipv4: v4,
         })
     }
 }
