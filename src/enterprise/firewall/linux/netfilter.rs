@@ -613,7 +613,7 @@ pub(crate) fn set_masq(
     let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
 
-    drop_chain(&Chains::Postrouting, batch)?;
+    drop_chain(&Chains::Postrouting, batch, ifname)?;
 
     let mut nat_chain = Chains::Postrouting.to_chain(&table);
     nat_chain.set_hook(nftnl::Hook::PostRouting, POSTROUTING_PRIORITY);
