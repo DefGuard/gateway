@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["State"],"fn":["get_set_id"],"mod":["netfilter"],"struct":["FilterRule"]};

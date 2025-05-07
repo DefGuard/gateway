@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["PORT_PROTOCOLS"],"enum":["Address","FirewallError","Policy","Port"],"mod":["api","linux"],"struct":["FirewallConfig","FirewallRule","Protocol"]};
