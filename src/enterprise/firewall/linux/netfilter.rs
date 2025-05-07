@@ -21,7 +21,7 @@ use crate::enterprise::firewall::FirewallError;
 
 const FILTER_TABLE: &str = "filter";
 const NAT_TABLE: &str = "nat";
-const DEFGUARD_TABLE: &str = "DEFGUARD";
+const DEFGUARD_TABLE: &str = "DEFGUARD-{IFNAME}";
 const POSTROUTING_CHAIN: &str = "POSTROUTING";
 const FORWARD_CHAIN: &str = "FORWARD";
 const ANON_SET_NAME: &str = "__set%d";
@@ -563,8 +563,9 @@ pub(crate) fn init_firewall(
     initial_policy: Option<Policy>,
     defguard_fwd_chain_priority: Option<i32>,
     batch: &mut Batch,
+    ifname: &str,
 ) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
 
     batch.add(&table, nftnl::MsgType::Add);
     batch.add(&table, nftnl::MsgType::Del);
@@ -582,16 +583,20 @@ pub(crate) fn init_firewall(
     Ok(())
 }
 
-pub(crate) fn drop_table(batch: &mut Batch) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+pub(crate) fn drop_table(batch: &mut Batch, ifname: &str) -> Result<(), FirewallError> {
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
     batch.add(&table, nftnl::MsgType::Del);
 
     Ok(())
 }
 
-pub(crate) fn drop_chain(chain: &Chains, batch: &mut Batch) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+pub(crate) fn drop_chain(
+    chain: &Chains,
+    batch: &mut Batch,
+    ifname: &str,
+) -> Result<(), FirewallError> {
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     let chain = chain.to_chain(&table);
     batch.add(&chain, nftnl::MsgType::Add);
     batch.add(&chain, nftnl::MsgType::Del);
@@ -601,14 +606,14 @@ pub(crate) fn drop_chain(chain: &Chains, batch: &mut Batch) -> Result<(), Firewa
 
 /// Applies masquerade on the specified interface for the outgoing packets
 pub(crate) fn set_masq(
-    _ifname: &str,
+    ifname: &str,
     enabled: bool,
     batch: &mut Batch,
 ) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
 
-    drop_chain(&Chains::Postrouting, batch)?;
+    drop_chain(&Chains::Postrouting, batch, ifname)?;
 
     let mut nat_chain = Chains::Postrouting.to_chain(&table);
     nat_chain.set_hook(nftnl::Hook::PostRouting, POSTROUTING_PRIORITY);
@@ -633,8 +638,12 @@ pub(crate) fn set_masq(
     Ok(())
 }
 
-pub(crate) fn set_default_policy(policy: Policy, batch: &mut Batch) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+pub(crate) fn set_default_policy(
+    policy: Policy,
+    batch: &mut Batch,
+    ifname: &str,
+) -> Result<(), FirewallError> {
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
 
     let mut forward_chain = Chains::Forward.to_chain(&table);
@@ -648,8 +657,11 @@ pub(crate) fn set_default_policy(policy: Policy, batch: &mut Batch) -> Result<()
     Ok(())
 }
 
-pub(crate) fn allow_established_traffic(batch: &mut Batch) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+pub(crate) fn allow_established_traffic(
+    batch: &mut Batch,
+    ifname: &str,
+) -> Result<(), FirewallError> {
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
 
     let forward_chain = Chains::Forward.to_chain(&table);
@@ -672,7 +684,7 @@ pub(crate) fn ignore_unrelated_traffic(
     batch: &mut Batch,
     ifname: &str,
 ) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
 
     let forward_chain = Chains::Forward.to_chain(&table);
@@ -699,7 +711,7 @@ pub enum Tables {
 }
 
 impl Tables {
-    fn to_table(&self) -> Table {
+    fn to_table(&self, ifname: &str) -> Table {
         match self {
             Self::Filter(family) => Table::new(
                 &CString::new(FILTER_TABLE)
@@ -712,7 +724,7 @@ impl Tables {
                 *family,
             ),
             Self::Defguard(family) => Table::new(
-                &CString::new(DEFGUARD_TABLE)
+                &CString::new(DEFGUARD_TABLE.replace("{IFNAME}", ifname))
                     .expect("Failed to create CString from DEFGUARD_TABLE constant."),
                 *family,
             ),
@@ -745,8 +757,9 @@ impl Chains {
 pub(crate) fn apply_filter_rules(
     rules: Vec<FilterRule>,
     batch: &mut Batch,
+    ifname: &str,
 ) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table();
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
 
     let forward_chain = Chains::Forward.to_chain(&table);
