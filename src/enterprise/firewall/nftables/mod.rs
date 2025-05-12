@@ -2,7 +2,6 @@ pub mod netfilter;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use mnl::mnl_sys::libc;
 use netfilter::{
     allow_established_traffic, apply_filter_rules, drop_table, ignore_unrelated_traffic,
     init_firewall, send_batch, set_default_policy, set_masq,
@@ -11,29 +10,13 @@ use nftnl::Batch;
 
 use super::{
     api::{FirewallApi, FirewallManagementApi},
-    Address, FirewallError, FirewallRule, Policy, Port, Protocol, PORT_PROTOCOLS,
+    Address, FirewallError, FirewallRule, Policy, Port, Protocol,
 };
-use crate::proto;
 
 static SET_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 pub fn get_set_id() -> u32 {
     SET_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
-}
-
-impl Protocol {
-    pub const fn from_proto(
-        proto: proto::enterprise::firewall::Protocol,
-    ) -> Result<Self, FirewallError> {
-        match proto {
-            proto::enterprise::firewall::Protocol::Tcp => Ok(Self(libc::IPPROTO_TCP as u8)),
-            proto::enterprise::firewall::Protocol::Udp => Ok(Self(libc::IPPROTO_UDP as u8)),
-            proto::enterprise::firewall::Protocol::Icmp => Ok(Self(libc::IPPROTO_ICMP as u8)),
-            proto::enterprise::firewall::Protocol::Invalid => {
-                Err(FirewallError::UnsupportedProtocol(proto as u8))
-            }
-        }
-    }
 }
 
 #[derive(Debug, Default)]
@@ -74,10 +57,10 @@ impl FirewallManagementApi for FirewallApi {
     /// This allows for making atomic changes to the firewall rules.
     fn setup(
         &mut self,
-        default_policy: Option<Policy>,
+        default_policy: Policy,
         priority: Option<i32>,
     ) -> Result<(), FirewallError> {
-        debug!("Initializing firewall, VPN interface: {}", self.ifname);
+        debug!("Initializing firewall, VPN interface: {}", &self.ifname);
         if let Some(batch) = &mut self.batch {
             drop_table(batch)?;
             init_firewall(default_policy, priority, batch).expect("Failed to setup chains");
@@ -200,8 +183,8 @@ impl FirewallManagementApi for FirewallApi {
             debug!(
                 "Destination ports specified, but no protocols specified, applying nftables rules for each protocol that support ports."
             );
-            for protocol in PORT_PROTOCOLS {
-                debug!("Applying nftables rule for protocol: {:?}", protocol);
+            for protocol in [Protocol::Tcp, Protocol::Udp] {
+                debug!("Applying nftables rule for protocol: {protocol:?}");
                 let rule = FilterRule {
                     src_ips: &rule.source_addrs,
                     dest_ips: &rule.destination_addrs,

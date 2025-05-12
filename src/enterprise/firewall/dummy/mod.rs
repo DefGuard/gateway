@@ -1,13 +1,12 @@
 use super::{
     api::{FirewallApi, FirewallManagementApi},
-    FirewallError, FirewallRule, Policy, Protocol,
+    FirewallError, FirewallRule, Policy,
 };
-use crate::proto;
 
 impl FirewallManagementApi for FirewallApi {
     fn setup(
         &mut self,
-        _default_policy: Option<Policy>,
+        _default_policy: Policy,
         _priority: Option<i32>,
     ) -> Result<(), FirewallError> {
         Ok(())
@@ -41,13 +40,5 @@ impl FirewallManagementApi for FirewallApi {
 
     fn commit(&mut self) -> Result<(), FirewallError> {
         Ok(())
-    }
-}
-
-impl Protocol {
-    pub const fn from_proto(
-        proto: proto::enterprise::firewall::Protocol,
-    ) -> Result<Self, FirewallError> {
-        Ok(Self(proto as u8))
     }
 }

@@ -39,7 +39,7 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     let ifname = config.ifname.clone();
-    let firewall_api = FirewallApi::new(&ifname);
+    let firewall_api = FirewallApi::new(&ifname)?;
 
     let mut gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;

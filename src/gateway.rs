@@ -321,7 +321,7 @@ impl Gateway {
                 debug!("Received firewall configuration is different than current one. Reconfiguring firewall...");
                 self.firewall_api.begin()?;
                 self.firewall_api
-                    .setup(Some(fw_config.default_policy), self.config.fw_priority)?;
+                    .setup(fw_config.default_policy, self.config.fw_priority)?;
                 if self.config.masquerade {
                     self.firewall_api.set_masquerade_status(true)?;
                 }
@@ -612,6 +612,8 @@ impl Gateway {
 
 #[cfg(test)]
 mod tests {
+    use std::net::Ipv4Addr;
+
     #[cfg(not(target_os = "macos"))]
     use defguard_wireguard_rs::Kernel;
     #[cfg(target_os = "macos")]
@@ -657,7 +659,7 @@ mod tests {
         let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
         let config = Config::default();
         let client = Gateway::setup_client(&config).unwrap();
-        let firewall_api = FirewallApi::new("wg0");
+        let firewall_api = FirewallApi::new("wg0").unwrap();
         let gateway = Gateway {
             config,
             interface_configuration: Some(old_config.clone()),
@@ -787,23 +789,31 @@ mod tests {
 
         let rule1 = FirewallRule {
             comment: Some("Rule 1".to_string()),
-            destination_addrs: vec![Address::Ip(IpAddr::from_str("10.0.0.1").unwrap())],
+            destination_addrs: vec![Address::Network(
+                IpNetwork::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 32).unwrap(),
+            )],
             destination_ports: vec![Port::Single(80)],
             id: 1,
             verdict: Policy::Allow,
-            protocols: vec![Protocol(6)], // TCP
-            source_addrs: vec![Address::Ip(IpAddr::from_str("192.168.1.1").unwrap())],
+            protocols: vec![Protocol::Tcp],
+            source_addrs: vec![Address::Network(
+                IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 32).unwrap(),
+            )],
             ipv4: true,
         };
 
         let rule2 = FirewallRule {
             comment: Some("Rule 2".to_string()),
-            destination_addrs: vec![Address::Ip(IpAddr::from_str("10.0.0.2").unwrap())],
+            destination_addrs: vec![Address::Network(
+                IpNetwork::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 32).unwrap(),
+            )],
             destination_ports: vec![Port::Single(443)],
             id: 2,
             verdict: Policy::Allow,
-            protocols: vec![Protocol(6)], // TCP
-            source_addrs: vec![Address::Ip(IpAddr::from_str("192.168.1.2").unwrap())],
+            protocols: vec![Protocol::Tcp],
+            source_addrs: vec![Address::Network(
+                IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2)), 32).unwrap(),
+            )],
             ipv4: true,
         };
 
@@ -815,7 +825,7 @@ mod tests {
             destination_ports: vec![Port::Range(1000, 2000)],
             id: 3,
             verdict: Policy::Deny,
-            protocols: vec![Protocol(17)], // UDP
+            protocols: vec![Protocol::Udp],
             source_addrs: vec![Address::Network(
                 IpNetwork::from_str("192.168.0.0/16").unwrap(),
             )],
@@ -829,7 +839,7 @@ mod tests {
         };
 
         let config_empty = FirewallConfig {
-            rules: vec![],
+            rules: Vec::new(),
             default_policy: Policy::Allow,
             ipv4: true,
         };
@@ -849,7 +859,7 @@ mod tests {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
-            firewall_api: FirewallApi::new("test_interface"),
+            firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
         };
 
@@ -889,25 +899,25 @@ mod tests {
     #[tokio::test]
     async fn test_firewall_config_comparison() {
         let config1 = FirewallConfig {
-            rules: vec![],
+            rules: Vec::new(),
             default_policy: Policy::Allow,
             ipv4: true,
         };
 
         let config2 = FirewallConfig {
-            rules: vec![],
+            rules: Vec::new(),
             default_policy: Policy::Deny,
             ipv4: true,
         };
 
         let config3 = FirewallConfig {
-            rules: vec![],
+            rules: Vec::new(),
             default_policy: Policy::Allow,
             ipv4: false,
         };
 
         let config4 = FirewallConfig {
-            rules: vec![],
+            rules: Vec::new(),
             default_policy: Policy::Allow,
             ipv4: true,
         };
@@ -927,7 +937,7 @@ mod tests {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
-            firewall_api: FirewallApi::new("test_interface"),
+            firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
         };
         // Gateway has no config
@@ -950,12 +960,12 @@ mod tests {
         let config5 = FirewallConfig {
             rules: vec![FirewallRule {
                 comment: None,
-                destination_addrs: vec![],
-                destination_ports: vec![],
+                destination_addrs: Vec::new(),
+                destination_ports: Vec::new(),
                 id: 0,
                 verdict: Policy::Allow,
-                protocols: vec![],
-                source_addrs: vec![],
+                protocols: Vec::new(),
+                source_addrs: Vec::new(),
                 ipv4: true,
             }],
             default_policy: Policy::Allow,
