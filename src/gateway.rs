@@ -335,6 +335,9 @@ impl Gateway {
             debug!("Received firewall configuration is empty, cleaning up firewall rules...");
             self.firewall_api.begin()?;
             self.firewall_api.cleanup()?;
+            if self.config.masquerade {
+                self.firewall_api.set_masquerade_status(true)?;
+            }
             self.firewall_api.commit()?;
             self.firewall_config = None;
             debug!("Cleaned up firewall rules");
