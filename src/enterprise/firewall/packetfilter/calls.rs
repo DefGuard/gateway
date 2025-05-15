@@ -421,8 +421,8 @@ pub struct Rule {
     pub proto: c_uchar,
     pub(crate) r#type: c_uchar,
     pub code: c_uchar,
-    pub flags: c_uchar,
-    pub flagset: c_uchar,
+    pub flags: c_uchar,   // TCP_FLAG
+    pub flagset: c_uchar, // TCP_FLAG
     pub min_ttl: c_uchar,
     pub allow_opts: c_uchar,
     pub rt: c_uchar,

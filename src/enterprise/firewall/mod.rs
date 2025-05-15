@@ -4,7 +4,7 @@ mod dummy;
 mod iprange;
 #[cfg(all(not(test), target_os = "linux"))]
 mod nftables;
-#[cfg(all(not(test), any(target_os = "freebsd", target_os = "macos")))]
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
 mod packetfilter;
 
 use std::{net::IpAddr, str::FromStr};
@@ -165,6 +165,14 @@ impl Policy {
     }
 }
 
+// struct AddressIter<'a>(&'a [Address]);
+
+// impl<'a> Iterator for AddressIter<'a> {
+//     type Item = IpNetwork;
+
+//     fn next(&mut self) -> Option<Self::Item> {}
+// }
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FirewallRule {
     pub comment: Option<String>,
@@ -178,12 +186,16 @@ pub(crate) struct FirewallRule {
     pub ipv4: bool, // FIXME: is that really needed?
 }
 
+// impl FirewallRule {
+//     pub fn iter_source_addrs(&self) -> AddressIter {
+//         AddressIter(self.destination_addrs.as_slice())
+//     }
+// }
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FirewallConfig {
     pub rules: Vec<FirewallRule>,
     pub default_policy: Policy,
-    /// Whether the rules use IPv4 (true) or IPv6 (false)
-    pub ipv4: bool, // TODO: remove
 }
 
 impl FirewallConfig {
@@ -192,14 +204,12 @@ impl FirewallConfig {
     ) -> Result<Self, FirewallError> {
         debug!("Parsing following received firewall proto configuration: {config:?}");
         let mut rules = Vec::new();
-        let v4 = config.ip_version == proto::enterprise::firewall::IpVersion::Ipv4 as i32;
         let default_policy =
             Policy::from_proto(config.default_policy.try_into().map_err(|err| {
                 FirewallError::TypeConversionError(format!("Invalid default policy: {err:?}"))
             })?);
         debug!(
-            "Using IPv4: {v4:?}, default firewall policy defined: {default_policy:?}. \
-            Proceeding to parsing rules..."
+            "Default firewall policy defined: {default_policy:?}. Proceeding to parsing rules..."
         );
 
         for rule in config.rules {
@@ -236,6 +246,7 @@ impl FirewallConfig {
                 FirewallError::TypeConversionError(format!("Invalid rule verdict: {err:?}"))
             })?);
 
+            let ipv4 = rule.ip_version == proto::enterprise::firewall::IpVersion::Ipv4 as i32;
             let firewall_rule = FirewallRule {
                 id: rule.id,
                 source_addrs,
@@ -243,7 +254,7 @@ impl FirewallConfig {
                 destination_ports,
                 protocols,
                 verdict,
-                ipv4: v4,
+                ipv4,
                 comment: rule.comment,
             };
 
@@ -255,7 +266,6 @@ impl FirewallConfig {
         Ok(Self {
             rules,
             default_policy,
-            ipv4: v4,
         })
     }
 }

@@ -169,6 +169,7 @@ impl PacketFilter {
 }
 */
 
+#[cfg(not(test))]
 impl FirewallManagementApi for FirewallApi {
     fn setup(
         &mut self,
