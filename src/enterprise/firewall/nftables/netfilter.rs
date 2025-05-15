@@ -21,7 +21,7 @@ use crate::enterprise::firewall::{iprange::IpAddrRange, FirewallError};
 
 const FILTER_TABLE: &str = "filter";
 const NAT_TABLE: &str = "nat";
-const DEFGUARD_TABLE: &str = "DEFGUARD-{IFNAME}";
+const DEFGUARD_TABLE: &str = "DEFGUARD-";
 const POSTROUTING_CHAIN: &str = "POSTROUTING";
 const FORWARD_CHAIN: &str = "FORWARD";
 const ANON_SET_NAME: &CStr = c"__set%d";
@@ -712,7 +712,7 @@ impl Tables {
                 *family,
             ),
             Self::Defguard(family) => Table::new(
-                &CString::new(DEFGUARD_TABLE.replace("{IFNAME}", ifname))
+                &CString::new(DEFGUARD_TABLE.to_owned() + ifname)
                     .expect("Failed to create CString from DEFGUARD_TABLE constant."),
                 *family,
             ),

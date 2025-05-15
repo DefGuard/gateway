@@ -12,22 +12,17 @@ const DEV_PF: &str = "/dev/pf";
 pub struct FirewallApi {
     pub(crate) ifname: String,
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-    file: File,
+    pub(crate) file: File,
     #[cfg(target_os = "linux")]
     pub(crate) batch: Option<Batch>,
 }
 
 impl FirewallApi {
-    #[must_use]
     pub fn new<S: Into<String>>(ifname: S) -> Result<Self, FirewallError> {
         Ok(Self {
             ifname: ifname.into(),
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
-            file: OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(DEV_PF)
-                .map_err(|err| FirewallError::Io(err))?,
+            file: OpenOptions::new().read(true).write(true).open(DEV_PF)?,
             #[cfg(target_os = "linux")]
             batch: None,
         })
@@ -41,9 +36,6 @@ pub(crate) trait FirewallManagementApi {
 
     /// Clean up the firewall rules.
     fn cleanup(&mut self) -> Result<(), FirewallError>;
-
-    /// Add firewall `rule`.
-    fn add_rule(&mut self, rule: FirewallRule) -> Result<(), FirewallError>;
 
     /// Add fireall `rules`.
     fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError>;

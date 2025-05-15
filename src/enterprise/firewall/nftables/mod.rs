@@ -50,6 +50,111 @@ pub struct FilterRule<'a> {
     pub negated_iifname: bool,
 }
 
+impl FirewallApi {
+    fn add_rule(&mut self, rule: FirewallRule) -> Result<(), FirewallError> {
+        debug!("Applying the following Defguard ACL rule: {rule:?}");
+        let mut rules = Vec::new();
+        let batch = if let Some(ref mut batch) = self.batch {
+            batch
+        } else {
+            return Err(FirewallError::TransactionNotStarted);
+        };
+
+        debug!(
+            "The rule will be split into multiple nftables rules based on the specified \
+            destination ports and protocols."
+        );
+        if rule.destination_ports.is_empty() {
+            debug!(
+                "No destination ports specified, applying single aggregate nftables rule for \
+                every protocol."
+            );
+            let rule = FilterRule {
+                src_ips: &rule.source_addrs,
+                dest_ips: &rule.destination_addrs,
+                protocols: rule.protocols,
+                action: rule.verdict,
+                counter: true,
+                defguard_rule_id: rule.id,
+                v4: rule.ipv4,
+                comment: rule.comment.clone(),
+                ..Default::default()
+            };
+            rules.push(rule);
+        } else if !rule.protocols.is_empty() {
+            debug!(
+                "Destination ports and protocols specified, applying individual nftables rules \
+                for each protocol."
+            );
+            for protocol in rule.protocols {
+                debug!("Applying rule for protocol: {protocol:?}");
+                if protocol.supports_ports() {
+                    debug!("Protocol supports ports, rule.");
+                    let rule = FilterRule {
+                        src_ips: &rule.source_addrs,
+                        dest_ips: &rule.destination_addrs,
+                        dest_ports: &rule.destination_ports,
+                        protocols: vec![protocol],
+                        action: rule.verdict,
+                        counter: true,
+                        defguard_rule_id: rule.id,
+                        v4: rule.ipv4,
+                        comment: rule.comment.clone(),
+                        ..Default::default()
+                    };
+                    rules.push(rule);
+                } else {
+                    debug!(
+                        "Protocol does not support ports, applying nftables rule and ignoring \
+                        destination ports."
+                    );
+                    let rule = FilterRule {
+                        src_ips: &rule.source_addrs,
+                        dest_ips: &rule.destination_addrs,
+                        protocols: vec![protocol],
+                        action: rule.verdict,
+                        counter: true,
+                        defguard_rule_id: rule.id,
+                        v4: rule.ipv4,
+                        comment: rule.comment.clone(),
+                        ..Default::default()
+                    };
+                    rules.push(rule);
+                }
+            }
+        } else {
+            debug!(
+                "Destination ports specified, but no protocols specified, applying nftables rules \
+                for each protocol that support ports."
+            );
+            for protocol in [Protocol::Tcp, Protocol::Udp] {
+                debug!("Applying nftables rule for protocol: {protocol:?}");
+                let rule = FilterRule {
+                    src_ips: &rule.source_addrs,
+                    dest_ips: &rule.destination_addrs,
+                    dest_ports: &rule.destination_ports,
+                    protocols: vec![protocol],
+                    action: rule.verdict,
+                    counter: true,
+                    defguard_rule_id: rule.id,
+                    v4: rule.ipv4,
+                    comment: rule.comment.clone(),
+                    ..Default::default()
+                };
+                rules.push(rule);
+            }
+        }
+
+        apply_filter_rules(rules, batch, &self.ifname)?;
+
+        debug!(
+            "Applied firewall rules for Defguard ACL rule ID: {}",
+            rule.id
+        );
+        Ok(())
+    }
+}
+
 impl FirewallManagementApi for FirewallApi {
     /// Sets up the firewall with the given default policy and priority. Drops the previous table.
     ///
@@ -60,7 +165,7 @@ impl FirewallManagementApi for FirewallApi {
         default_policy: Policy,
         priority: Option<i32>,
     ) -> Result<(), FirewallError> {
-        debug!("Initializing firewall, VPN interface: {}", &self.ifname);
+        debug!("Initializing firewall, VPN interface: {}", self.ifname);
         if let Some(batch) = &mut self.batch {
             drop_table(batch, &self.ifname)?;
             init_firewall(default_policy, priority, batch, &self.ifname)
@@ -113,101 +218,11 @@ impl FirewallManagementApi for FirewallApi {
     }
 
     fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError> {
-        debug!("Applying the following Defguard ACL rules: {:?}", rules);
+        debug!("Applying the following Defguard ACL rules: {rules:?}");
         for rule in rules {
             self.add_rule(rule)?;
         }
         debug!("Applied all Defguard ACL rules");
-        Ok(())
-    }
-
-    fn add_rule(&mut self, rule: FirewallRule) -> Result<(), FirewallError> {
-        debug!("Applying the following Defguard ACL rule: {:?}", rule);
-        let mut rules = Vec::new();
-        let batch = if let Some(ref mut batch) = self.batch {
-            batch
-        } else {
-            return Err(FirewallError::TransactionNotStarted);
-        };
-
-        debug!("The rule will be split into multiple nftables rules based on the specified destination ports and protocols.");
-        if rule.destination_ports.is_empty() {
-            debug!("No destination ports specified, applying single aggregate nftables rule for every protocol.");
-            let rule = FilterRule {
-                src_ips: &rule.source_addrs,
-                dest_ips: &rule.destination_addrs,
-                protocols: rule.protocols,
-                action: rule.verdict,
-                counter: true,
-                defguard_rule_id: rule.id,
-                v4: rule.ipv4,
-                comment: rule.comment.clone(),
-                ..Default::default()
-            };
-            rules.push(rule);
-        } else if !rule.protocols.is_empty() {
-            debug!("Destination ports and protocols specified, applying individual nftables rules for each protocol.");
-            for protocol in rule.protocols {
-                debug!("Applying rule for protocol: {:?}", protocol);
-                if protocol.supports_ports() {
-                    debug!("Protocol supports ports, rule.");
-                    let rule = FilterRule {
-                        src_ips: &rule.source_addrs,
-                        dest_ips: &rule.destination_addrs,
-                        dest_ports: &rule.destination_ports,
-                        protocols: vec![protocol],
-                        action: rule.verdict,
-                        counter: true,
-                        defguard_rule_id: rule.id,
-                        v4: rule.ipv4,
-                        comment: rule.comment.clone(),
-                        ..Default::default()
-                    };
-                    rules.push(rule);
-                } else {
-                    debug!("Protocol does not support ports, applying nftables rule and ignoring destination ports.");
-                    let rule = FilterRule {
-                        src_ips: &rule.source_addrs,
-                        dest_ips: &rule.destination_addrs,
-                        protocols: vec![protocol],
-                        action: rule.verdict,
-                        counter: true,
-                        defguard_rule_id: rule.id,
-                        v4: rule.ipv4,
-                        comment: rule.comment.clone(),
-                        ..Default::default()
-                    };
-                    rules.push(rule);
-                }
-            }
-        } else {
-            debug!(
-                "Destination ports specified, but no protocols specified, applying nftables rules for each protocol that support ports."
-            );
-            for protocol in [Protocol::Tcp, Protocol::Udp] {
-                debug!("Applying nftables rule for protocol: {protocol:?}");
-                let rule = FilterRule {
-                    src_ips: &rule.source_addrs,
-                    dest_ips: &rule.destination_addrs,
-                    dest_ports: &rule.destination_ports,
-                    protocols: vec![protocol],
-                    action: rule.verdict,
-                    counter: true,
-                    defguard_rule_id: rule.id,
-                    v4: rule.ipv4,
-                    comment: rule.comment.clone(),
-                    ..Default::default()
-                };
-                rules.push(rule);
-            }
-        }
-
-        apply_filter_rules(rules, batch, &self.ifname)?;
-
-        debug!(
-            "Applied firewall rules for Defguard ACL rule ID: {}",
-            rule.id
-        );
         Ok(())
     }
 
@@ -220,8 +235,10 @@ impl FirewallManagementApi for FirewallApi {
             Ok(())
         } else {
             Err(FirewallError::TransactionFailed(
-                    "There is another firewall transaction already in progress. Commit or rollback it before starting a new one.".to_string()
-                ))
+                "There is another firewall transaction already in progress. Commit or \
+                rollback it before starting a new one."
+                    .to_string(),
+            ))
         }
     }
 

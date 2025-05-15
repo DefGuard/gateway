@@ -28,10 +28,6 @@ impl FirewallManagementApi for FirewallApi {
         Ok(())
     }
 
-    fn add_rule(&mut self, _rule: FirewallRule) -> Result<(), FirewallError> {
-        Ok(())
-    }
-
     fn begin(&mut self) -> Result<(), FirewallError> {
         Ok(())
     }

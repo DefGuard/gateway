@@ -150,6 +150,7 @@ impl PacketFilterRule {
         }
     }
 
+    /// Expand `FirewallRule` into a set of `PacketFilterRule`s.
     pub(crate) fn from_firewall_rule(mut fr: FirewallRule) -> Vec<Self> {
         let mut rules = Vec::new();
         let action = match fr.verdict {
@@ -197,16 +198,15 @@ impl PacketFilterRule {
             fr.protocols.push(Protocol::Any);
         }
 
-        // Unwrap `FirewallRule` converting it to a set of `PacketFilterRule`s.
         for from in &from_addrs {
             for to in &to_addrs {
                 for to_port in &fr.destination_ports {
                     for proto in &fr.protocols {
                         let rule = Self {
-                            from: from.clone(),
+                            from: *from,
                             from_port: Port::Any,
-                            to: to.clone(),
-                            to_port: to_port.clone(),
+                            to: *to,
+                            to_port: *to_port,
                             action,
                             direction: Direction::InOut,
                             quick: false,
@@ -214,7 +214,7 @@ impl PacketFilterRule {
                             log: 0,
                             keep_state: State::Normal,
                             interface: None,
-                            proto: proto.clone(),
+                            proto: *proto,
                             // For stateful connections, the default is flags S/SA.
                             tcp_flags: TH_SYN,
                             tcp_flags_set: TH_SYN | TH_ACK,

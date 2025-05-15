@@ -107,7 +107,7 @@ impl proto::gateway::gateway_service_server::GatewayService for GatewayServer {
 
         let mut stream = request.into_inner();
         while let Some(peer_stats) = stream.message().await? {
-            eprintln!("STATS {:?}", peer_stats);
+            eprintln!("STATS {peer_stats:?}");
         }
         Ok(Response::new(()))
     }

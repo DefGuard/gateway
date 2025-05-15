@@ -116,10 +116,7 @@ pub(crate) enum Protocol {
 impl Protocol {
     #[must_use]
     pub(crate) fn supports_ports(&self) -> bool {
-        match self {
-            Protocol::Tcp | Protocol::Udp => true,
-            _ => false,
-        }
+        matches!(self, Protocol::Tcp | Protocol::Udp)
     }
 }
 
@@ -276,6 +273,8 @@ pub enum FirewallError {
     IpAddrRange(#[from] IpAddrRangeError),
     #[error("Io error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("Errno:{0}")]
+    Errno(#[from] nix::errno::Errno),
     #[error("Type conversion error: {0}")]
     TypeConversionError(String),
     #[error("Out of memory: {0}")]

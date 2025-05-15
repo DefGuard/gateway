@@ -482,7 +482,7 @@ impl Rule {
         }
     }
 
-    pub fn from_rule(pf_rule: &PacketFilterRule) -> Self {
+    pub fn from_pf_rule(pf_rule: &PacketFilterRule) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
         let self_ptr = uninit.as_mut_ptr();
 
@@ -736,6 +736,9 @@ ioctl_readwrite!(pf_begin, b'D', 81, IocTrans);
 
 // DIOCXCOMMIT
 ioctl_readwrite!(pf_commit, b'D', 82, IocTrans);
+
+// DIOCXROLLBACK
+ioctl_readwrite!(pf_rollback, b'D', 83, IocTrans);
 
 // DIOCXEND
 // Required by OpenBSD to release the ticket obtained by the DIOCGETRULES command.
