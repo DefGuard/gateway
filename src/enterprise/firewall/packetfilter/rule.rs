@@ -151,7 +151,7 @@ impl PacketFilterRule {
     }
 
     /// Expand `FirewallRule` into a set of `PacketFilterRule`s.
-    pub(crate) fn from_firewall_rule(mut fr: FirewallRule) -> Vec<Self> {
+    pub(crate) fn from_firewall_rule(ifname: &str, mut fr: FirewallRule) -> Vec<Self> {
         let mut rules = Vec::new();
         let action = match fr.verdict {
             Policy::Allow => Action::Pass,
@@ -213,7 +213,7 @@ impl PacketFilterRule {
                             // Disable logging.
                             log: 0,
                             keep_state: State::Normal,
-                            interface: None,
+                            interface: Some(ifname.to_owned()),
                             proto: *proto,
                             // For stateful connections, the default is flags S/SA.
                             tcp_flags: TH_SYN,
@@ -250,7 +250,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule(fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", fr);
         assert_eq!(1, rules.len());
 
         // One address, one port.
@@ -268,7 +268,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule(fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", fr);
         assert_eq!(1, rules.len());
 
         // Two addresses, two ports.
@@ -289,7 +289,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule(fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", fr);
         assert_eq!(4, rules.len());
     }
 }

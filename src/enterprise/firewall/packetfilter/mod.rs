@@ -189,7 +189,7 @@ impl FirewallApi {
         pool_ticket: u32,
         anchor: &str,
     ) -> Result<(), FirewallError> {
-        let rules = PacketFilterRule::from_firewall_rule(rule);
+        let rules = PacketFilterRule::from_firewall_rule(&self.ifname, rule);
 
         for rule in rules {
             let mut ioc = IocRule::with_rule(anchor, Rule::from_pf_rule(&rule));
