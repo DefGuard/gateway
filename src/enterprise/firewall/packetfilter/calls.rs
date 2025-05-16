@@ -306,12 +306,6 @@ pub struct pf_anchor {
     pub owner: [c_char; 64],
 }
 
-/// A packed Operating System description for fingerprinting.
-type pf_osfp_t = c_uint;
-// #define PF_OSFP_ANY	((pf_osfp_t)0)
-// #define PF_OSFP_UNKNOWN	((pf_osfp_t)-1)
-// #define PF_OSFP_NOMATCH	((pf_osfp_t)-2)
-
 #[derive(Debug)]
 #[repr(C)]
 pub struct pf_rule_conn_rate {
@@ -364,7 +358,7 @@ pub struct Rule {
     pub anchor: *mut pf_anchor,
     pub overload_tbl: *mut c_void, // struct pfr_ktable, kernel only
 
-    pub os_fingerprint: pf_osfp_t,
+    pub os_fingerprint: c_uint,
 
     pub rtableid: c_uint,
     #[cfg(target_os = "freebsd")]
@@ -462,26 +456,6 @@ pub struct Rule {
 }
 
 impl Rule {
-    // TODO: expand
-    #[must_use]
-    pub fn new(src: IpNetwork, src_port: Port) -> Self {
-        let mut uninit = MaybeUninit::<Self>::zeroed();
-        let self_ptr = uninit.as_mut_ptr();
-
-        unsafe {
-            (*self_ptr).dst = RuleAddr::new(src, src_port);
-            // Set address family.
-            // TODO: match empty network, then set AF_UNSPEC.
-            // (*self_ptr).af = match src {
-            //     IpNetwork::V4(_) => AF_INET as u8,
-            //     IpNetwork::V6(_) => AF_INET6 as u8,
-            // };
-            (*self_ptr).keep_state = State::Normal;
-
-            uninit.assume_init()
-        }
-    }
-
     pub fn from_pf_rule(pf_rule: &PacketFilterRule) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
         let self_ptr = uninit.as_mut_ptr();
@@ -493,14 +467,24 @@ impl Rule {
             if let Some(to) = pf_rule.to {
                 (*self_ptr).dst = RuleAddr::new(to, pf_rule.to_port);
             }
+            if let Some(interface) = &pf_rule.interface {
+                let len = interface.len().min(IFNAMSIZ - 1);
+                (*self_ptr).ifname[..len].copy_from_slice(&interface.as_bytes()[..len]);
+            }
             if let Some(label) = &pf_rule.label {
                 let len = label.len().min(PF_RULE_LABEL_SIZE - 1);
                 (*self_ptr).label[..len].copy_from_slice(&label.as_bytes()[..len]);
             }
             (*self_ptr).action = pf_rule.action;
             (*self_ptr).direction = pf_rule.direction;
+            (*self_ptr).log = pf_rule.log;
             (*self_ptr).quick = pf_rule.quick;
+
+            (*self_ptr).keep_state = pf_rule.keep_state;
             (*self_ptr).af = pf_rule.address_family();
+            (*self_ptr).proto = pf_rule.proto as u8;
+            (*self_ptr).flags = pf_rule.tcp_flags;
+            (*self_ptr).flagset = pf_rule.tcp_flags_set;
 
             uninit.assume_init()
         }

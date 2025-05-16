@@ -26,13 +26,12 @@ use tonic::{
     Request, Status, Streaming,
 };
 
-#[cfg(target_os = "linux")]
-use crate::enterprise::firewall::api::FirewallManagementApi;
-#[cfg(any(target_os = "linux", test))]
-use crate::enterprise::firewall::FirewallRule;
 use crate::{
     config::Config,
-    enterprise::firewall::{api::FirewallApi, FirewallConfig},
+    enterprise::firewall::{
+        api::{FirewallApi, FirewallManagementApi},
+        FirewallConfig, FirewallRule,
+    },
     error::GatewayError,
     execute_command, mask,
     proto::gateway::{
@@ -260,7 +259,6 @@ impl Gateway {
     }
 
     /// Checks whether the firewall config changed
-    #[cfg(any(target_os = "linux", test))]
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
@@ -271,7 +269,6 @@ impl Gateway {
     }
 
     /// Checks whether the firewall rules have changed.
-    #[cfg(any(target_os = "linux", test))]
     fn have_firewall_rules_changed(&self, new_rules: &[FirewallRule]) -> bool {
         debug!("Checking if Defguard ACL rules have changed");
         if let Some(current_config) = &self.firewall_config {
@@ -309,7 +306,6 @@ impl Gateway {
     ///   should be temporary.
     ///
     /// TODO: Reduce cloning here
-    #[cfg(target_os = "linux")]
     fn process_firewall_changes(
         &mut self,
         fw_config: Option<&FirewallConfig>,
@@ -386,17 +382,14 @@ impl Gateway {
             debug!("Received configuration is identical to the current one. Skipping interface reconfiguration.");
         }
 
-        #[cfg(target_os = "linux")]
-        {
-            let new_firewall_configuration =
-                if let Some(firewall_config) = new_configuration.firewall_config {
-                    Some(FirewallConfig::from_proto(firewall_config)?)
-                } else {
-                    None
-                };
+        let new_firewall_configuration =
+            if let Some(firewall_config) = new_configuration.firewall_config {
+                Some(FirewallConfig::from_proto(firewall_config)?)
+            } else {
+                None
+            };
 
-            self.process_firewall_changes(new_firewall_configuration.as_ref())?;
-        }
+        self.process_firewall_changes(new_firewall_configuration.as_ref())?;
 
         Ok(())
     }
@@ -517,27 +510,33 @@ impl Gateway {
                                 }
                             };
                         }
-                        #[cfg(target_os = "linux")]
                         Some(update::Update::FirewallConfig(config)) => {
                             debug!("Applying received firewall configuration: {config:?}");
                             let config_str = format!("{:?}", config);
                             match FirewallConfig::from_proto(config) {
                                 Ok(new_firewall_config) => {
-                                    debug!("Parsed the received firewall configuration: {new_firewall_config:?}, processing it and applying changes");
+                                    debug!(
+                                        "Parsed the received firewall configuration: \
+                                        {new_firewall_config:?}, processing it and applying \
+                                        changes"
+                                    );
                                     if let Err(err) =
                                         self.process_firewall_changes(Some(&new_firewall_config))
                                     {
-                                        error!("Failed to process received firewall configuration: {err}");
+                                        error!(
+                                            "Failed to process received firewall configuration: \
+                                            {err}"
+                                        );
                                     }
                                 }
                                 Err(err) => {
                                     error!(
-                                        "Failed to parse received firewall configuration: {err}. Configuration: {config_str}"
+                                        "Failed to parse received firewall configuration: {err}. \
+                                        Configuration: {config_str}"
                                     );
                                 }
                             }
                         }
-                        #[cfg(target_os = "linux")]
                         Some(update::Update::DisableFirewall(_)) => {
                             debug!("Disabling firewall configuration");
                             if let Err(err) = self.process_firewall_changes(None) {

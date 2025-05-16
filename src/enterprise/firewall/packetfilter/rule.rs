@@ -141,9 +141,9 @@ pub struct PacketFilterRule {
 }
 
 impl PacketFilterRule {
-    /// Determine address family based on `from` field.
+    /// Determine address family based on `to` field.
     pub(crate) fn address_family(&self) -> AddressFamily {
-        match self.from {
+        match self.to {
             None => AddressFamily::Unspec,
             Some(IpNetwork::V4(_)) => AddressFamily::Inet,
             Some(IpNetwork::V6(_)) => AddressFamily::Inet6,
