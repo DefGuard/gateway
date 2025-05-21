@@ -1,13 +1,19 @@
+//! Range of IP addresses.
+//!
+//! Encapsulates a range of IP addresses, which can be iterated.
+//! For the time being, `RangeInclusive<IpAddr>` can't be used, because `IpAddr` does not implement
+//! `Step` trait.
+
 use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    ops::Range,
+    ops::RangeInclusive,
 };
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum IpAddrRange {
-    V4(Range<Ipv4Addr>),
-    V6(Range<Ipv6Addr>),
+    V4(RangeInclusive<Ipv4Addr>),
+    V6(RangeInclusive<Ipv6Addr>),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -31,8 +37,8 @@ impl IpAddrRange {
             Err(IpAddrRangeError::WrongOrder)
         } else {
             match (start, end) {
-                (IpAddr::V4(start), IpAddr::V4(end)) => Ok(Self::V4(Range { start, end })),
-                (IpAddr::V6(start), IpAddr::V6(end)) => Ok(Self::V6(Range { start, end })),
+                (IpAddr::V4(start), IpAddr::V4(end)) => Ok(Self::V4(start..=end)),
+                (IpAddr::V6(start), IpAddr::V6(end)) => Ok(Self::V6(start..=end)),
                 _ => Err(IpAddrRangeError::MixedTypes),
             }
         }
@@ -90,27 +96,16 @@ mod tests {
     fn test_range() {
         let start = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let end = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 3));
-        let range = Range { start, end };
+        let range = start..=end;
 
-        let a = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2));
-        assert!(range.contains(&a));
+        let addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2));
+        assert!(range.contains(&addr));
 
-        let a = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 5));
-        assert!(!range.contains(&a));
+        let addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 5));
+        assert!(!range.contains(&addr));
 
-        // As of Rust 1.86, `IpAddr` does not implement `Step`.
+        // As of Rust 1.87.0, `IpAddr` does not implement `Step`.
         // assert_eq!(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 5)), range.next());
-    }
-
-    #[test]
-    fn test_v4() {
-        let start = Ipv4Addr::LOCALHOST;
-        let end = Ipv4Addr::new(127, 0, 0, 3);
-        let mut range = Range { start, end };
-
-        assert_eq!(Some(Ipv4Addr::new(127, 0, 0, 1)), range.next());
-        assert_eq!(Some(Ipv4Addr::new(127, 0, 0, 2)), range.next());
-        assert_eq!(None, range.next());
     }
 
     #[test]
@@ -119,14 +114,15 @@ mod tests {
         let end = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 3));
         let mut range = IpAddrRange::new(start, end).unwrap();
 
-        let a = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2));
-        assert!(range.contains(&a));
+        let addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2));
+        assert!(range.contains(&addr));
 
-        let a = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 5));
-        assert!(!range.contains(&a));
+        let addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 5));
+        assert!(!range.contains(&addr));
 
         assert_eq!(Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))), range.next());
         assert_eq!(Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2))), range.next());
+        assert_eq!(Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 3))), range.next());
         assert_eq!(None, range.next());
     }
 }
