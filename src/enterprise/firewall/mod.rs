@@ -7,7 +7,7 @@ mod nftables;
 #[cfg(any(target_os = "freebsd", target_os = "macos"))]
 mod packetfilter;
 
-use std::{net::IpAddr, str::FromStr};
+use std::{fmt, net::IpAddr, str::FromStr};
 
 use ipnetwork::IpNetwork;
 use iprange::{IpAddrRange, IpAddrRangeError};
@@ -102,6 +102,16 @@ impl Port {
     }
 }
 
+impl fmt::Display for Port {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Port::Any => Ok(()), // nothing here
+            Port::Single(port) => write!(f, "port = {port}"),
+            Port::Range(from, to) => write!(f, "port = {{{from}..{to}}}"),
+        }
+    }
+}
+
 /// As defined in `netinet/in.h`.
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(u8)]
@@ -115,7 +125,7 @@ pub(crate) enum Protocol {
 
 impl Protocol {
     #[must_use]
-    pub(crate) fn supports_ports(&self) -> bool {
+    pub(crate) fn supports_ports(self) -> bool {
         matches!(self, Protocol::Tcp | Protocol::Udp)
     }
 }
@@ -128,10 +138,24 @@ impl Protocol {
             proto::enterprise::firewall::Protocol::Tcp => Ok(Self::Tcp),
             proto::enterprise::firewall::Protocol::Udp => Ok(Self::Udp),
             proto::enterprise::firewall::Protocol::Icmp => Ok(Self::Icmp),
+            // TODO: IcmpV6
             proto::enterprise::firewall::Protocol::Invalid => {
                 Err(FirewallError::UnsupportedProtocol(proto as u8))
             }
         }
+    }
+}
+
+impl fmt::Display for Protocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let protocol = match self {
+            Self::Any => "any",
+            Self::Icmp => "icmp",
+            Self::Tcp => "tcp",
+            Self::Udp => "udp",
+            Self::IcmpV6 => "icmp6",
+        };
+        write!(f, "{protocol}")
     }
 }
 
@@ -162,14 +186,6 @@ impl Policy {
     }
 }
 
-// struct AddressIter<'a>(&'a [Address]);
-
-// impl<'a> Iterator for AddressIter<'a> {
-//     type Item = IpNetwork;
-
-//     fn next(&mut self) -> Option<Self::Item> {}
-// }
-
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FirewallRule {
     pub comment: Option<String>,
@@ -182,12 +198,6 @@ pub(crate) struct FirewallRule {
     /// Whether a rule uses IPv4 (true) or IPv6 (false)
     pub ipv4: bool, // FIXME: is that really needed?
 }
-
-// impl FirewallRule {
-//     pub fn iter_source_addrs(&self) -> AddressIter {
-//         AddressIter(self.destination_addrs.as_slice())
-//     }
-// }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FirewallConfig {
@@ -273,6 +283,7 @@ pub enum FirewallError {
     IpAddrRange(#[from] IpAddrRangeError),
     #[error("Io error: {0}")]
     Io(#[from] std::io::Error),
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     #[error("Errno:{0}")]
     Errno(#[from] nix::errno::Errno),
     #[error("Type conversion error: {0}")]

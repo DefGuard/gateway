@@ -512,7 +512,7 @@ impl Gateway {
                         }
                         Some(update::Update::FirewallConfig(config)) => {
                             debug!("Applying received firewall configuration: {config:?}");
-                            let config_str = format!("{:?}", config);
+                            let config_str = format!("{config:?}");
                             match FirewallConfig::from_proto(config) {
                                 Ok(new_firewall_config) => {
                                     debug!(
@@ -537,7 +537,7 @@ impl Gateway {
                                 }
                             }
                         }
-                        Some(update::Update::DisableFirewall(_)) => {
+                        Some(update::Update::DisableFirewall(())) => {
                             debug!("Disabling firewall configuration");
                             if let Err(err) = self.process_firewall_changes(None) {
                                 error!("Failed to disable firewall configuration: {err}");
@@ -963,12 +963,12 @@ mod tests {
         let config5 = FirewallConfig {
             rules: vec![FirewallRule {
                 comment: None,
-                destination_addrs: vec![],
-                destination_ports: vec![],
+                destination_addrs: Vec::new(),
+                destination_ports: Vec::new(),
                 id: 0,
                 verdict: Policy::Allow,
-                protocols: vec![],
-                source_addrs: vec![],
+                protocols: Vec::new(),
+                source_addrs: Vec::new(),
                 ipv4: false,
             }],
             default_policy: Policy::Allow,

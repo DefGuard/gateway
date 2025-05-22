@@ -13,6 +13,8 @@ pub struct FirewallApi {
     pub(crate) ifname: String,
     #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     pub(crate) file: File,
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    pub(crate) default_policy: Policy,
     #[cfg(target_os = "linux")]
     pub(crate) batch: Option<Batch>,
 }
@@ -23,6 +25,8 @@ impl FirewallApi {
             ifname: ifname.into(),
             #[cfg(any(target_os = "freebsd", target_os = "macos"))]
             file: OpenOptions::new().read(true).write(true).open(DEV_PF)?,
+            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+            default_policy: Policy::Deny,
             #[cfg(target_os = "linux")]
             batch: None,
         })

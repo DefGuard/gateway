@@ -54,9 +54,7 @@ impl From<IpNetwork> for AddrMask {
 #[repr(C)]
 struct AddrWrap {
     v: AddrMask,
-    // pub v: pf_addr_wrap_v,
     // unused in this crate
-    // pub p: pf_addr_wrap_p,
     p: u64,
     r#type: AddrType,
     iflags: c_uchar,
@@ -516,7 +514,6 @@ pub(crate) enum RuleFlag {
     // ...
 }
 
-// 1024 bytes
 pub(crate) const MAXPATHLEN: usize = libc::PATH_MAX as usize;
 
 /// Equivalent to `struct pfioc_rule`.
@@ -639,12 +636,18 @@ impl IocTrans {
 }
 
 // DIOCSTART
+// Start the packet filter.
 ioctl_none!(pf_start, b'D', 1);
 
 // DIOCSTOP
+// Stop the	packet filter.
 ioctl_none!(pf_stop, b'D', 2);
 
 // DIOCADDRULE
+// Add rule at the end of the inactive ruleset. This call requires a ticket obtained through
+// a preceding DIOCXBEGIN call and a pool_ticket obtained through a DIOCBEGINADDRS call.
+// DIOCADDADDR must	also be	called if any pool addresses are required. The optional anchor name
+// indicates the anchor in which to append the rule. `nr` and `action` are ignored.
 ioctl_readwrite!(pf_add_rule, b'D', 4, IocRule);
 
 // DIOCGETRULES

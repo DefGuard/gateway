@@ -34,36 +34,39 @@ use super::{
     FirewallError, FirewallRule, Policy,
 };
 
-const ANCHOR_PREFIX: &str = "defguard.";
+const ANCHOR_PREFIX: &str = "defguard/";
 
 impl FirewallApi {
+    /// Construct anchor name based on prefix and network interface name.
     fn anchor(&self) -> String {
         ANCHOR_PREFIX.to_owned() + &self.ifname
     }
 
+    /// Return raw file descriptor to Packet Filter device.
     fn fd(&self) -> RawFd {
         self.file.as_raw_fd()
     }
 
-    /// Add fireall `rules`.
+    /// Add a single firewall `rule`.
     fn add_rule(
         &mut self,
-        rule: FirewallRule,
+        rule: &mut FirewallRule,
         ticket: u32,
         pool_ticket: u32,
         anchor: &str,
     ) -> Result<(), FirewallError> {
         warn!("add_rule {rule:?}");
         let rules = PacketFilterRule::from_firewall_rule(&self.ifname, rule);
-        warn!("--> rules {rules:?}");
 
         for rule in rules {
+            warn!("--> {rule}");
             let mut ioc = IocRule::with_rule(anchor, Rule::from_pf_rule(&rule));
             ioc.action = Change::None;
             ioc.ticket = ticket;
             ioc.pool_ticket = pool_ticket;
-            unsafe {
-                pf_add_rule(self.fd(), &mut ioc)?;
+            if let Err(err) = unsafe { pf_add_rule(self.fd(), &mut ioc) } {
+                error!("Packet filter rule {rule} can't be added.");
+                return Err(err.into());
             }
         }
 
@@ -86,10 +89,11 @@ impl FirewallManagementApi for FirewallApi {
         Ok(())
     }
 
-    /// Add fireall `rules`.
+    /// Add firewall `rules`.
     fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError> {
         let anchor = &self.anchor();
         // Begin transaction.
+        debug!("Begin pf transaction.");
         let element = IocTransElement::new(RuleSet::Filter, anchor);
         let mut elements = [element];
         let mut ioc_trans = IocTrans::new(elements.as_mut_slice());
@@ -101,8 +105,11 @@ impl FirewallManagementApi for FirewallApi {
         let ticket = elements[0].ticket;
         let pool_ticket = get_pool_ticket(self.fd(), anchor);
 
-        for rule in rules {
-            if let Err(err) = self.add_rule(rule, ticket, pool_ticket, anchor) {
+        for mut rule in rules {
+            if let Err(err) = self.add_rule(&mut rule, ticket, pool_ticket, anchor) {
+                error!("Firewall rule {} can't be added.", &rule.id);
+                debug!("Rollback pf transaction.");
+                // Rule cannot be added, so rollback.
                 unsafe {
                     pf_rollback(self.fd(), &mut ioc_trans)?;
                     return Err(FirewallError::TransactionFailed(err.to_string()));
@@ -110,6 +117,8 @@ impl FirewallManagementApi for FirewallApi {
             }
         }
 
+        // Commit transaction.
+        debug!("Commit pf transaction.");
         unsafe {
             pf_commit(self.file.as_raw_fd(), &mut ioc_trans).unwrap();
         }
@@ -119,6 +128,7 @@ impl FirewallManagementApi for FirewallApi {
 
     /// Set default firewall policy.
     fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError> {
+        self.default_policy = policy;
         Ok(())
     }
 

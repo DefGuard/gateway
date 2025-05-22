@@ -1,3 +1,5 @@
+use std::fmt;
+
 use ipnetwork::IpNetwork;
 use libc::{AF_INET, AF_INET6, AF_UNSPEC};
 
@@ -35,9 +37,28 @@ pub enum Action {
     // PF_NONAT64 = 14,
 }
 
+impl fmt::Display for Action {
+    /// Display `Action` as pf.conf keyword.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let action = match self {
+            Self::Pass => "pass",
+            Self::Drop => "block drop",
+            Self::Scrub => "scrub",
+            Self::NoScrub => "block scrub",
+            Self::Nat => "nat",
+            Self::NoNat => "block nat",
+            Self::BiNat => "binat",
+            Self::NoBiNat => "block binat",
+            Self::Redirect => "rdr",
+            Self::NoRedirect => "block rdr",
+        };
+        write!(f, "{action}")
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
-pub(crate) enum AddressFamily {
+pub(super) enum AddressFamily {
     Unspec = AF_UNSPEC as u8,
     Inet = AF_INET as u8,
     Inet6 = AF_INET6 as u8,
@@ -53,6 +74,18 @@ pub enum Direction {
     In,
     /// PF_OUT = 2
     Out,
+}
+
+impl fmt::Display for Direction {
+    /// Display `Direction` as pf.conf keyword.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let direction = match self {
+            Self::InOut => "",
+            Self::In => "in",
+            Self::Out => "out",
+        };
+        write!(f, "{direction}")
+    }
 }
 
 const PF_LOG: u8 = 0x01;
@@ -118,31 +151,31 @@ const TH_ECE: u8 = 0x40;
 const TH_CWR: u8 = 0x80;
 
 #[derive(Debug)]
-pub struct PacketFilterRule {
+pub(super) struct PacketFilterRule {
     /// Source address; `Option::None` means "any".
-    pub(crate) from: Option<IpNetwork>,
+    pub(super) from: Option<IpNetwork>,
     /// Source port; 0 means "any".
-    pub(crate) from_port: Port,
+    pub(super) from_port: Port,
     /// Destination address; `Option::None` means "any".
-    pub(crate) to: Option<IpNetwork>,
+    pub(super) to: Option<IpNetwork>,
     /// Destination port; 0 means "any".
-    pub(crate) to_port: Port,
-    pub(crate) action: Action,
-    pub(crate) direction: Direction,
-    pub(crate) quick: bool,
+    pub(super) to_port: Port,
+    pub(super) action: Action,
+    pub(super) direction: Direction,
+    pub(super) quick: bool,
     /// See `LogFlags`.
-    pub(crate) log: u8,
-    pub(crate) keep_state: State,
-    pub(crate) interface: Option<String>,
-    pub(crate) proto: Protocol,
-    pub(crate) tcp_flags: u8,
-    pub(crate) tcp_flags_set: u8,
-    pub(crate) label: Option<String>,
+    pub(super) log: u8,
+    pub(super) keep_state: State,
+    pub(super) interface: Option<String>,
+    pub(super) proto: Protocol,
+    pub(super) tcp_flags: u8,
+    pub(super) tcp_flags_set: u8,
+    pub(super) label: Option<String>,
 }
 
 impl PacketFilterRule {
     /// Determine address family based on `to` field.
-    pub(crate) fn address_family(&self) -> AddressFamily {
+    pub(super) fn address_family(&self) -> AddressFamily {
         match self.to {
             None => AddressFamily::Unspec,
             Some(IpNetwork::V4(_)) => AddressFamily::Inet,
@@ -151,7 +184,7 @@ impl PacketFilterRule {
     }
 
     /// Expand `FirewallRule` into a set of `PacketFilterRule`s.
-    pub(crate) fn from_firewall_rule(ifname: &str, mut fr: FirewallRule) -> Vec<Self> {
+    pub(super) fn from_firewall_rule(ifname: &str, fr: &mut FirewallRule) -> Vec<Self> {
         let mut rules = Vec::new();
         let action = match fr.verdict {
             Policy::Allow => Action::Pass,
@@ -162,11 +195,11 @@ impl PacketFilterRule {
         if fr.source_addrs.is_empty() {
             from_addrs.push(None);
         } else {
-            for src in fr.source_addrs {
+            for src in &fr.source_addrs {
                 match src {
-                    Address::Network(net) => from_addrs.push(Some(net)),
+                    Address::Network(net) => from_addrs.push(Some(*net)),
                     Address::Range(range) => {
-                        for addr in range {
+                        for addr in range.clone() {
                             from_addrs.push(Some(IpNetwork::from(addr)));
                         }
                     }
@@ -178,11 +211,11 @@ impl PacketFilterRule {
         if fr.destination_addrs.is_empty() {
             to_addrs.push(None);
         } else {
-            for src in fr.destination_addrs {
+            for src in &fr.destination_addrs {
                 match src {
-                    Address::Network(net) => to_addrs.push(Some(net)),
+                    Address::Network(net) => to_addrs.push(Some(*net)),
                     Address::Range(range) => {
-                        for addr in range {
+                        for addr in range.clone() {
                             to_addrs.push(Some(IpNetwork::from(addr)));
                         }
                     }
@@ -230,6 +263,39 @@ impl PacketFilterRule {
     }
 }
 
+impl fmt::Display for PacketFilterRule {
+    // Display `PacketFilterRule` in similar format to rules in pf.conf.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.action, self.direction)?;
+        // TODO: log
+        if self.quick {
+            write!(f, " quick")?;
+        }
+        if let Some(interface) = &self.interface {
+            write!(f, " on {interface}")?;
+        }
+        write!(f, " from")?;
+        if let Some(from) = self.from {
+            write!(f, " {from}")?;
+        } else {
+            write!(f, " any")?;
+        }
+        write!(f, " {} to", self.from_port)?;
+        if let Some(to) = self.to {
+            write!(f, " {to}")?;
+        } else {
+            write!(f, " any")?;
+        }
+        write!(f, " {}", self.to_port)?;
+        // TODO: tcp_flags/tcp_flags_set, keep_state
+        if let Some(label) = &self.label {
+            write!(f, " label \"{label}\"")?;
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr};
@@ -239,7 +305,7 @@ mod tests {
     #[test]
     fn unroll_firewall_rule() {
         // Empty rule
-        let fr = FirewallRule {
+        let mut fr = FirewallRule {
             comment: None,
             destination_addrs: Vec::new(),
             destination_ports: Vec::new(),
@@ -250,14 +316,15 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &mut fr);
         assert_eq!(1, rules.len());
+        assert_eq!(rules[0].to_string(), "pass  on lo0 from any  to any ");
 
         // One address, one port.
         let addr1 = Address::Network(
             IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)), 24).unwrap(),
         );
-        let fr = FirewallRule {
+        let mut fr = FirewallRule {
             comment: None,
             destination_addrs: vec![addr1],
             destination_ports: vec![Port::Single(1138)],
@@ -268,8 +335,12 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &mut fr);
         assert_eq!(1, rules.len());
+        assert_eq!(
+            rules[0].to_string(),
+            "pass  on lo0 from any  to 192.168.1.10/24 port = 1138"
+        );
 
         // Two addresses, two ports.
         let addr1 = Address::Network(
@@ -278,7 +349,7 @@ mod tests {
         let addr2 = Address::Network(
             IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)), 24).unwrap(),
         );
-        let fr = FirewallRule {
+        let mut fr = FirewallRule {
             comment: None,
             destination_addrs: vec![addr1, addr2],
             destination_ports: vec![Port::Single(1138), Port::Single(42)],
@@ -289,7 +360,23 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &mut fr);
         assert_eq!(4, rules.len());
+        assert_eq!(
+            rules[0].to_string(),
+            "pass  on lo0 from any  to 192.168.1.10/24 port = 1138"
+        );
+        assert_eq!(
+            rules[1].to_string(),
+            "pass  on lo0 from any  to 192.168.1.10/24 port = 42"
+        );
+        assert_eq!(
+            rules[2].to_string(),
+            "pass  on lo0 from any  to 192.168.1.20/24 port = 1138"
+        );
+        assert_eq!(
+            rules[3].to_string(),
+            "pass  on lo0 from any  to 192.168.1.20/24 port = 42"
+        );
     }
 }

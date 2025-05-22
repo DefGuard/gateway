@@ -3,7 +3,6 @@ use std::str::FromStr;
 use std::{
     ffi::{CStr, CString},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    ops::Range,
 };
 
 use ipnetwork::IpNetwork;
@@ -109,11 +108,11 @@ fn add_address_to_set(set: *mut nftnl_sys::nftnl_set, ip: &Address) -> Result<()
             }
         }
         Address::Range(addr_range) => match addr_range {
-            IpAddrRange::V4(Range { start, end }) => {
-                add_to_set(set, start, Some(end))?;
+            IpAddrRange::V4(ipv4_range) => {
+                add_to_set(set, ipv4_range.start(), Some(ipv4_range.end()))?;
             }
-            IpAddrRange::V6(Range { start, end }) => {
-                add_to_set(set, start, Some(end))?;
+            IpAddrRange::V6(ipv6_range) => {
+                add_to_set(set, ipv6_range.start(), Some(ipv6_range.end()))?;
             }
         },
     }
