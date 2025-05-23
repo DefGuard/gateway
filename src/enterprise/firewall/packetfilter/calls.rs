@@ -6,7 +6,7 @@ use std::{
 };
 
 use ipnetwork::IpNetwork;
-use libc::{pid_t, sa_family_t, uid_t, IFNAMSIZ};
+use libc::{pid_t, uid_t, IFNAMSIZ};
 use nix::{ioctl_none, ioctl_readwrite};
 
 use super::rule::{Action, AddressFamily, Direction, PacketFilterRule, RuleSet, State};
@@ -195,7 +195,7 @@ pub(super) struct Pool {
     port_op: PortOp,
     opts: c_uchar,
     #[cfg(target_os = "macos")]
-    af: sa_family_t,
+    af: AddressFamily, // sa_family_t,
 }
 
 #[derive(Debug)]
@@ -350,7 +350,7 @@ pub(super) struct Rule {
 
     os_fingerprint: c_uint,
 
-    rtableid: c_uint,
+    rtableid: c_int,
     #[cfg(target_os = "freebsd")]
     timeout: [c_uint; 20],
     #[cfg(target_os = "macos")]
@@ -424,7 +424,7 @@ pub(super) struct Rule {
     set_prio: [c_uchar; 2],
 
     #[cfg(target_os = "freebsd")]
-    divert: (pf_addr, u16),
+    divert: (Addr, u16),
 
     #[cfg(target_os = "freebsd")]
     u_states_cur: u64,
@@ -465,6 +465,10 @@ impl Rule {
                 let len = label.len().min(PF_RULE_LABEL_SIZE - 1);
                 (*self_ptr).label[..len].copy_from_slice(&label.as_bytes()[..len]);
             }
+
+            // Don't use routing tables.
+            (*self_ptr).rtableid = -1;
+
             (*self_ptr).action = pf_rule.action;
             (*self_ptr).direction = pf_rule.direction;
             (*self_ptr).log = pf_rule.log;
@@ -750,7 +754,7 @@ mod tests {
 
         assert_eq!(align_of::<IocRule>(), 8);
         #[cfg(target_os = "freebsd")]
-        assert_eq!(size_of::<IocRule>(), 3104);
+        assert_eq!(size_of::<IocRule>(), 3040);
         #[cfg(target_os = "macos")]
         assert_eq!(size_of::<IocRule>(), 3104);
     }

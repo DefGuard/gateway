@@ -1,7 +1,7 @@
 use std::fmt;
 
 use ipnetwork::IpNetwork;
-use libc::{AF_INET, AF_INET6, AF_UNSPEC};
+use libc::{dirfd, AF_INET, AF_INET6, AF_UNSPEC};
 
 use super::{FirewallRule, Port};
 use crate::enterprise::firewall::{Address, Policy, Protocol};
@@ -90,11 +90,11 @@ impl fmt::Display for Direction {
 
 const PF_LOG: u8 = 0x01;
 const PF_LOG_ALL: u8 = 0x02;
-const PF_LOG_SOCKET_LOOKUP: u8 = 0x04;
-#[cfg(target_os = "freebsd")]
-const PF_LOG_FORCE: u8 = 0x08;
-#[cfg(target_os = "freebsd")]
-const PF_LOG_MATCHES: u8 = 0x10;
+// const PF_LOG_SOCKET_LOOKUP: u8 = 0x04;
+// #[cfg(target_os = "freebsd")]
+// const PF_LOG_FORCE: u8 = 0x08;
+// #[cfg(target_os = "freebsd")]
+// const PF_LOG_MATCHES: u8 = 0x10;
 
 /// Equivalent to `PF_RULESET_...`.
 #[derive(Clone, Copy, Debug)]
@@ -163,7 +163,7 @@ pub(super) struct PacketFilterRule {
     pub(super) action: Action,
     pub(super) direction: Direction,
     pub(super) quick: bool,
-    /// See `LogFlags`.
+    /// See `PF_LOG`.
     pub(super) log: u8,
     pub(super) keep_state: State,
     pub(super) interface: Option<String>,
@@ -174,6 +174,31 @@ pub(super) struct PacketFilterRule {
 }
 
 impl PacketFilterRule {
+    /// Default rule for policy.
+    #[must_use]
+    pub(super) fn for_policy(policy: Policy, ifname: &str) -> Self {
+        let action = match policy {
+            Policy::Allow => Action::Pass,
+            Policy::Deny => Action::Drop,
+        };
+        Self {
+            from: None,
+            from_port: Port::Any,
+            to: None,
+            to_port: Port::Any,
+            action,
+            direction: Direction::In,
+            quick: false,
+            log: 0,
+            keep_state: State::None,
+            interface: Some(ifname.to_owned()),
+            proto: Protocol::Any,
+            tcp_flags: 0,
+            tcp_flags_set: 0,
+            label: None,
+        }
+    }
+
     /// Determine address family based on `to` field.
     pub(super) fn address_family(&self) -> AddressFamily {
         match self.to {
@@ -241,8 +266,9 @@ impl PacketFilterRule {
                             to: *to,
                             to_port: *to_port,
                             action,
-                            direction: Direction::InOut,
-                            quick: false,
+                            direction: Direction::In,
+                            // Enable quick to match NFTables behaviour.
+                            quick: true,
                             // Disable logging.
                             log: 0,
                             keep_state: State::Normal,
@@ -318,7 +344,10 @@ mod tests {
 
         let rules = PacketFilterRule::from_firewall_rule("lo0", &mut fr);
         assert_eq!(1, rules.len());
-        assert_eq!(rules[0].to_string(), "pass  on lo0 from any  to any ");
+        assert_eq!(
+            rules[0].to_string(),
+            "pass in quick on lo0 from any  to any "
+        );
 
         // One address, one port.
         let addr1 = Address::Network(
@@ -339,7 +368,7 @@ mod tests {
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),
-            "pass  on lo0 from any  to 192.168.1.10/24 port = 1138"
+            "pass in quick on lo0 from any  to 192.168.1.10/24 port = 1138"
         );
 
         // Two addresses, two ports.
@@ -364,19 +393,19 @@ mod tests {
         assert_eq!(4, rules.len());
         assert_eq!(
             rules[0].to_string(),
-            "pass  on lo0 from any  to 192.168.1.10/24 port = 1138"
+            "pass in quick on lo0 from any  to 192.168.1.10/24 port = 1138"
         );
         assert_eq!(
             rules[1].to_string(),
-            "pass  on lo0 from any  to 192.168.1.10/24 port = 42"
+            "pass in quick on lo0 from any  to 192.168.1.10/24 port = 42"
         );
         assert_eq!(
             rules[2].to_string(),
-            "pass  on lo0 from any  to 192.168.1.20/24 port = 1138"
+            "pass in quick on lo0 from any  to 192.168.1.20/24 port = 1138"
         );
         assert_eq!(
             rules[3].to_string(),
-            "pass  on lo0 from any  to 192.168.1.20/24 port = 42"
+            "pass in quick on lo0 from any  to 192.168.1.20/24 port = 42"
         );
     }
 }

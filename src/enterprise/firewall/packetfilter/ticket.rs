@@ -7,7 +7,7 @@ use super::{
     rule::Action,
 };
 
-pub fn get_ticket(fd: RawFd, anchor: &str, kind: Action) -> u32 {
+pub(super) fn get_ticket(fd: RawFd, anchor: &str, kind: Action) -> u32 {
     let mut pfioc_rule = IocRule::new(anchor);
 
     pfioc_rule.action = Change::GetTicket;
@@ -27,7 +27,7 @@ pub fn get_ticket(fd: RawFd, anchor: &str, kind: Action) -> u32 {
     pfioc_rule.ticket
 }
 
-pub fn get_pool_ticket(fd: RawFd, anchor: &str) -> u32 {
+pub(super) fn get_pool_ticket(fd: RawFd, anchor: &str) -> u32 {
     let mut ioc = IocPoolAddr::new(anchor);
 
     unsafe {
@@ -37,8 +37,8 @@ pub fn get_pool_ticket(fd: RawFd, anchor: &str) -> u32 {
     ioc.ticket
 }
 
-// Add pool address using the pool ticket previously obtained via `get_pool_ticket()`
-pub fn add_pool_address(fd: RawFd, pool_addr: IpNetwork, pool_ticket: u32) {
+// Add pool address using the pool ticket previously obtained via `get_pool_ticket()`.
+pub(super) fn add_pool_address(fd: RawFd, pool_addr: IpNetwork, pool_ticket: u32) {
     let mut pfioc_pooladdr = unsafe { std::mem::zeroed::<IocPoolAddr>() };
     pfioc_pooladdr.ticket = pool_ticket;
     pfioc_pooladdr.addr = PoolAddr::new(pool_addr, ""); // XXX: ifname

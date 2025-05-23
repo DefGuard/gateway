@@ -423,7 +423,7 @@ impl FirewallRule for FilterRule<'_> {
                 ))
             })?;
             rule.set_comment(comment);
-            debug!("Added comment to nftables expression: {:?}", comment_string);
+            debug!("Added comment to nftables expression: {comment_string:?}");
         } else {
             debug!("No comment provided for nftables expression");
         }

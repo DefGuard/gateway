@@ -47,6 +47,26 @@ impl FirewallApi {
         self.file.as_raw_fd()
     }
 
+    fn add_rule_policy(
+        &mut self,
+        ticket: u32,
+        pool_ticket: u32,
+        anchor: &str,
+    ) -> Result<(), FirewallError> {
+        let rule = PacketFilterRule::for_policy(self.default_policy, &self.ifname);
+        warn!("==> {rule}");
+        let mut ioc = IocRule::with_rule(anchor, Rule::from_pf_rule(&rule));
+        ioc.action = Change::None;
+        ioc.ticket = ticket;
+        ioc.pool_ticket = pool_ticket;
+        if let Err(err) = unsafe { pf_add_rule(self.fd(), &mut ioc) } {
+            error!("Packet filter rule {rule} can't be added.");
+            return Err(err.into());
+        }
+
+        Ok(())
+    }
+
     /// Add a single firewall `rule`.
     fn add_rule(
         &mut self,
@@ -78,9 +98,10 @@ impl FirewallApi {
 impl FirewallManagementApi for FirewallApi {
     fn setup(
         &mut self,
-        _default_policy: Policy,
+        default_policy: Policy,
         _priority: Option<i32>,
     ) -> Result<(), FirewallError> {
+        self.default_policy = default_policy;
         Ok(())
     }
 
@@ -104,6 +125,17 @@ impl FirewallManagementApi for FirewallApi {
 
         let ticket = elements[0].ticket;
         let pool_ticket = get_pool_ticket(self.fd(), anchor);
+
+        // Create first rule from the default policy.
+        if let Err(err) = self.add_rule_policy(ticket, pool_ticket, anchor) {
+            error!("Default policy rule can't be added.");
+            debug!("Rollback pf transaction.");
+            // Rule cannot be added, so rollback.
+            unsafe {
+                pf_rollback(self.fd(), &mut ioc_trans)?;
+                return Err(FirewallError::TransactionFailed(err.to_string()));
+            }
+        }
 
         for mut rule in rules {
             if let Err(err) = self.add_rule(&mut rule, ticket, pool_ticket, anchor) {
