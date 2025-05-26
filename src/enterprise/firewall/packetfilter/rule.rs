@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    fmt,
+    net::{IpAddr, Ipv4Addr},
+};
 
 use ipnetwork::IpNetwork;
 use libc::{dirfd, AF_INET, AF_INET6, AF_UNSPEC};
@@ -132,6 +135,19 @@ pub enum State {
     SynProxy = 3,
 }
 
+impl fmt::Display for State {
+    /// Display `State` as in pf.conf.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let state = match self {
+            Self::None => "no state",
+            Self::Normal => "keep state",
+            Self::Modulate => "modulate state",
+            Self::SynProxy => "synproxy state",
+        };
+        write!(f, "{state}")
+    }
+}
+
 /// TCP flags as defined in `netinet/tcp.h`.
 /// Final: Set on the last segment.
 const TH_FIN: u8 = 0x01;
@@ -165,7 +181,7 @@ pub(super) struct PacketFilterRule {
     pub(super) quick: bool,
     /// See `PF_LOG`.
     pub(super) log: u8,
-    pub(super) keep_state: State,
+    pub(super) state: State,
     pub(super) interface: Option<String>,
     pub(super) proto: Protocol,
     pub(super) tcp_flags: u8,
@@ -190,7 +206,7 @@ impl PacketFilterRule {
             direction: Direction::In,
             quick: false,
             log: 0,
-            keep_state: State::None,
+            state: State::None,
             interface: Some(ifname.to_owned()),
             proto: Protocol::Any,
             tcp_flags: 0,
@@ -199,10 +215,14 @@ impl PacketFilterRule {
         }
     }
 
-    /// Determine address family based on `to` field.
+    /// Determine address family.
     pub(super) fn address_family(&self) -> AddressFamily {
         match self.to {
-            None => AddressFamily::Unspec,
+            None => match self.from {
+                None => AddressFamily::Unspec,
+                Some(IpNetwork::V4(_)) => AddressFamily::Inet,
+                Some(IpNetwork::V6(_)) => AddressFamily::Inet6,
+            },
             Some(IpNetwork::V4(_)) => AddressFamily::Inet,
             Some(IpNetwork::V6(_)) => AddressFamily::Inet6,
         }
@@ -266,12 +286,13 @@ impl PacketFilterRule {
                             to: *to,
                             to_port: *to_port,
                             action,
-                            direction: Direction::In,
+                            direction: Direction::Out,
                             // Enable quick to match NFTables behaviour.
                             quick: true,
                             // Disable logging.
                             log: 0,
-                            keep_state: State::Normal,
+                            // Keeping state is the default.
+                            state: State::Normal,
                             interface: Some(ifname.to_owned()),
                             proto: *proto,
                             // For stateful connections, the default is flags S/SA.
@@ -312,8 +333,8 @@ impl fmt::Display for PacketFilterRule {
         } else {
             write!(f, " any")?;
         }
-        write!(f, " {}", self.to_port)?;
-        // TODO: tcp_flags/tcp_flags_set, keep_state
+        // TODO: tcp_flags/tcp_flags_set
+        write!(f, " {} {}", self.to_port, self.state)?;
         if let Some(label) = &self.label {
             write!(f, " label \"{label}\"")?;
         }
@@ -346,7 +367,7 @@ mod tests {
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),
-            "pass in quick on lo0 from any  to any "
+            "pass out quick on lo0 from any  to any  keep state"
         );
 
         // One address, one port.
@@ -368,7 +389,7 @@ mod tests {
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),
-            "pass in quick on lo0 from any  to 192.168.1.10/24 port = 1138"
+            "pass out quick on lo0 from any  to 192.168.1.10/24 port = 1138 keep state"
         );
 
         // Two addresses, two ports.
@@ -393,19 +414,19 @@ mod tests {
         assert_eq!(4, rules.len());
         assert_eq!(
             rules[0].to_string(),
-            "pass in quick on lo0 from any  to 192.168.1.10/24 port = 1138"
+            "pass out quick on lo0 from any  to 192.168.1.10/24 port = 1138 keep state"
         );
         assert_eq!(
             rules[1].to_string(),
-            "pass in quick on lo0 from any  to 192.168.1.10/24 port = 42"
+            "pass out quick on lo0 from any  to 192.168.1.10/24 port = 42 keep state"
         );
         assert_eq!(
             rules[2].to_string(),
-            "pass in quick on lo0 from any  to 192.168.1.20/24 port = 1138"
+            "pass out quick on lo0 from any  to 192.168.1.20/24 port = 1138 keep state"
         );
         assert_eq!(
             rules[3].to_string(),
-            "pass in quick on lo0 from any  to 192.168.1.20/24 port = 42"
+            "pass out quick on lo0 from any  to 192.168.1.20/24 port = 42 keep state"
         );
     }
 }

@@ -99,11 +99,14 @@ pub(super) struct RuleAddr {
     addr: AddrWrap,
     // macOS: here `union pf_rule_xport` is flattened to its first variant: `struct pf_port_range`.
     port: [c_ushort; 2],
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
     op: PortOp,
     #[cfg(target_os = "macos")]
     _padding: [c_uchar; 3],
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
     neg: c_uchar,
+    #[cfg(target_os = "netbsd")]
+    op: PortOp,
 }
 
 impl RuleAddr {
@@ -136,32 +139,26 @@ impl RuleAddr {
             op,
             #[cfg(target_os = "macos")]
             _padding: [0; 3],
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "netbsd"))]
             neg: 0,
         }
     }
 }
 
-/// TAILQ_ENTRY
+// TAILQ_ENTRY
 #[derive(Debug)]
 #[repr(C)]
-struct pf_rule_list {
-    tqe_next: *mut Rule,
-    tqe_prev: *mut *mut Rule,
-}
-
-#[derive(Debug)]
-#[repr(C)]
-struct pf_pooladdr_list {
-    tqe_next: *mut PoolAddr,
-    tqe_prev: *mut *mut PoolAddr,
+struct List<T> {
+    tqe_next: *mut T,
+    tqe_prev: *mut *mut T,
 }
 
 // Equivalent to `struct pf_pooladdr`.
+#[derive(Debug)]
 #[repr(C)]
 pub struct PoolAddr {
     addr: AddrWrap,
-    entries: pf_pooladdr_list,
+    entries: List<PoolAddr>,
     ifname: [u8; IFNAMSIZ],
     kif: usize, // *mut c_void,
 }
@@ -174,26 +171,41 @@ impl PoolAddr {
         ifname[..len].copy_from_slice(&if_name.as_bytes()[..len]);
         Self {
             addr: AddrWrap::new(ip_network),
-            entries: unsafe { std::mem::zeroed::<pf_pooladdr_list>() },
+            entries: unsafe { std::mem::zeroed::<List<PoolAddr>>() },
             ifname,
             kif: 0,
         }
     }
 }
 
+#[derive(Debug)]
+#[repr(u8)]
+pub(super) enum PoolOpts {
+    /// PF_POOL_NONE = 0
+    None,
+    /// PF_POOL_BITMASK = 1
+    BitMask,
+    /// PF_POOL_RANDOM = 2
+    Random,
+    /// PF_POOL_SRCHASH = 3
+    SrcHash,
+    /// PF_POOL_ROUNDROBIN = 4
+    RoundRobin,
+}
+
 /// Equivalent to `struct pf_pool`.
 #[derive(Debug)]
 #[repr(C)]
 pub(super) struct Pool {
-    list: pf_pooladdr_list,
+    list: List<PoolAddr>,
     cur: *mut c_void,
     key: PoolHashKey,
     counter: Addr,
     tblidx: c_int,
-    proxy_port: [c_ushort; 2],
-    #[cfg(target_os = "macos")]
+    pub(super) proxy_port: [c_ushort; 2],
+    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
     port_op: PortOp,
-    opts: c_uchar,
+    pub(super) opts: PoolOpts,
     #[cfg(target_os = "macos")]
     af: AddressFamily, // sa_family_t,
 }
@@ -225,11 +237,12 @@ enum PortOp {
 
 impl Pool {
     #[must_use]
-    pub fn new(port: u16) -> Self {
+    pub fn new(from_port: u16, to_port: u16) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
         let self_ptr = uninit.as_mut_ptr();
         unsafe {
-            (*self_ptr).proxy_port[0] = port;
+            (*self_ptr).proxy_port[0] = from_port;
+            (*self_ptr).proxy_port[1] = to_port;
         }
 
         unsafe { uninit.assume_init() }
@@ -330,8 +343,8 @@ pub(super) struct Rule {
     match_tagname: [c_uchar; 64],
     overload_tblname: [c_uchar; 32],
 
-    entries: pf_rule_list,
-    rpool: Pool,
+    entries: List<Rule>,
+    pub(super) rpool: Pool,
 
     evaluations: c_long,
     packets: [c_ulong; 2],
@@ -351,14 +364,14 @@ pub(super) struct Rule {
     os_fingerprint: c_uint,
 
     rtableid: c_int,
-    #[cfg(target_os = "freebsd")]
+    #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
     timeout: [c_uint; 20],
     #[cfg(target_os = "macos")]
     timeout: [c_uint; 26],
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
     states: c_uint,
     max_states: c_uint,
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
     src_nodes: c_uint,
     max_src_nodes: c_uint,
     max_src_states: c_uint,
@@ -467,15 +480,27 @@ impl Rule {
             }
 
             // Don't use routing tables.
-            (*self_ptr).rtableid = -1;
+            #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
+            {
+                (*self_ptr).rtableid = -1;
+            }
+            #[cfg(target_os = "macos")]
+            {
+                (*self_ptr).rtableid = 0;
+            }
 
             (*self_ptr).action = pf_rule.action;
             (*self_ptr).direction = pf_rule.direction;
             (*self_ptr).log = pf_rule.log;
             (*self_ptr).quick = pf_rule.quick;
 
-            (*self_ptr).keep_state = pf_rule.keep_state;
-            (*self_ptr).af = pf_rule.address_family();
+            (*self_ptr).keep_state = pf_rule.state;
+            let af = pf_rule.address_family();
+            (*self_ptr).af = af;
+            #[cfg(target_os = "macos")]
+            {
+                (*self_ptr).rpool.af = af;
+            }
             (*self_ptr).proto = pf_rule.proto as u8;
             (*self_ptr).flags = pf_rule.tcp_flags;
             (*self_ptr).flagset = pf_rule.tcp_flags_set;
@@ -567,14 +592,14 @@ impl IocRule {
 #[repr(C)]
 pub(super) struct IocPoolAddr {
     action: Change,
-    pub ticket: c_uint,
+    pub(super) ticket: c_uint,
     nr: c_uint,
     r_num: c_uint,
     r_action: c_uchar,
     r_last: c_uchar,
     af: c_uchar,
     anchor: [c_uchar; MAXPATHLEN],
-    pub addr: PoolAddr,
+    addr: PoolAddr,
 }
 
 impl IocPoolAddr {
@@ -598,7 +623,7 @@ impl IocPoolAddr {
 pub(super) struct IocTransElement {
     rs_num: RuleSet,
     anchor: [c_uchar; MAXPATHLEN],
-    pub ticket: c_uint,
+    pub(super) ticket: c_uint,
 }
 
 impl IocTransElement {
@@ -607,7 +632,7 @@ impl IocTransElement {
         let mut uninit = MaybeUninit::<Self>::zeroed();
         let self_ptr = uninit.as_mut_ptr();
 
-        // Set `RuleSet` and copy anchor name.
+        // Copy anchor name.
         let len = anchor.len().min(MAXPATHLEN - 1);
         unsafe {
             (*self_ptr).rs_num = ruleset;
@@ -621,9 +646,9 @@ impl IocTransElement {
 /// Equivalent to `struct pfioc_trans`.
 #[repr(C)]
 pub(super) struct IocTrans {
-    /// number of elements
+    /// Number of elements.
     size: c_int,
-    /// size of each element in bytes
+    /// Size of each element in bytes.
     esize: c_int,
     array: *mut IocTransElement,
 }
@@ -644,13 +669,13 @@ impl IocTrans {
 ioctl_none!(pf_start, b'D', 1);
 
 // DIOCSTOP
-// Stop the	packet filter.
+// Stop the packet filter.
 ioctl_none!(pf_stop, b'D', 2);
 
 // DIOCADDRULE
 // Add rule at the end of the inactive ruleset. This call requires a ticket obtained through
 // a preceding DIOCXBEGIN call and a pool_ticket obtained through a DIOCBEGINADDRS call.
-// DIOCADDADDR must	also be	called if any pool addresses are required. The optional anchor name
+// DIOCADDADDR must also be called if any pool addresses are required. The optional anchor name
 // indicates the anchor in which to append the rule. `nr` and `action` are ignored.
 ioctl_readwrite!(pf_add_rule, b'D', 4, IocRule);
 
@@ -686,19 +711,19 @@ ioctl_readwrite!(pf_delete_rule, b'D', 28, IocRule);
 // ioctl_readwrite!(pf_kill_states, b'D', 41, pfioc_state_kill);
 
 // DIOCBEGINADDRS
-// #[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "netbsd"))]
+// Clear the buffer address pool and get a ticket for subsequent DIOCADDADDR, DIOCADDRULE, and
+// DIOCCHANGERULE calls.
 ioctl_readwrite!(pf_begin_addrs, b'D', 51, IocPoolAddr);
 
 // DIOCADDADDR
-// #[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "netbsd"))]
+// Add the pool address `addr` to the buffer address pool to be used in the following DIOCADDRULE
+// or DIOCCHANGERULE call. All other members of the structure are ignored.
 ioctl_readwrite!(pf_add_addr, b'D', 52, IocPoolAddr);
 
 // DIOCGETRULESETS
-// #[cfg(any(target_os = "freebsd", target_os = "openbsd"))]
 // ioctl_readwrite!(pf_get_rulesets, b'D', 58, PFRuleset);
 
 // DIOCGETRULESET
-// #[cfg(any(target_os = "freebsd", target_os = "openbsd"))]
 // ioctl_readwrite!(pf_get_ruleset, b'D', 59, PFRuleset);
 
 // DIOCXBEGIN
@@ -709,11 +734,6 @@ ioctl_readwrite!(pf_commit, b'D', 82, IocTrans);
 
 // DIOCXROLLBACK
 ioctl_readwrite!(pf_rollback, b'D', 83, IocTrans);
-
-// DIOCXEND
-// Required by OpenBSD to release the ticket obtained by the DIOCGETRULES command.
-// #[cfg(target_os = "openbsd")]
-// ioctl_readwrite!(pf_end_trans, b'D', 100, c_int);
 
 #[cfg(test)]
 mod tests {
@@ -751,12 +771,16 @@ mod tests {
         assert_eq!(size_of::<RuleAddr>(), 56);
         #[cfg(target_os = "macos")]
         assert_eq!(size_of::<RuleAddr>(), 64);
+        #[cfg(target_os = "netbsd")]
+        assert_eq!(size_of::<RuleAddr>(), 56);
 
         assert_eq!(align_of::<IocRule>(), 8);
         #[cfg(target_os = "freebsd")]
         assert_eq!(size_of::<IocRule>(), 3040);
         #[cfg(target_os = "macos")]
         assert_eq!(size_of::<IocRule>(), 3104);
+        #[cfg(target_os = "netbsd")]
+        assert_eq!(size_of::<IocRule>(), 2976);
     }
 
     #[test]

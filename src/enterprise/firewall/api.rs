@@ -1,4 +1,4 @@
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+#[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 use std::fs::{File, OpenOptions};
 
 #[cfg(target_os = "linux")]
@@ -6,14 +6,14 @@ use nftnl::Batch;
 
 use super::{FirewallError, FirewallRule, Policy};
 
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+#[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 const DEV_PF: &str = "/dev/pf";
 
 pub struct FirewallApi {
     pub(crate) ifname: String,
-    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
     pub(crate) file: File,
-    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
     pub(crate) default_policy: Policy,
     #[cfg(target_os = "linux")]
     pub(crate) batch: Option<Batch>,
@@ -23,9 +23,9 @@ impl FirewallApi {
     pub fn new<S: Into<String>>(ifname: S) -> Result<Self, FirewallError> {
         Ok(Self {
             ifname: ifname.into(),
-            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+            #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
             file: OpenOptions::new().read(true).write(true).open(DEV_PF)?,
-            #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+            #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
             default_policy: Policy::Deny,
             #[cfg(target_os = "linux")]
             batch: None,

@@ -56,7 +56,6 @@ impl FirewallApi {
         let rule = PacketFilterRule::for_policy(self.default_policy, &self.ifname);
         warn!("==> {rule}");
         let mut ioc = IocRule::with_rule(anchor, Rule::from_pf_rule(&rule));
-        ioc.action = Change::None;
         ioc.ticket = ticket;
         ioc.pool_ticket = pool_ticket;
         if let Err(err) = unsafe { pf_add_rule(self.fd(), &mut ioc) } {
@@ -115,8 +114,7 @@ impl FirewallManagementApi for FirewallApi {
         let anchor = &self.anchor();
         // Begin transaction.
         debug!("Begin pf transaction.");
-        let element = IocTransElement::new(RuleSet::Filter, anchor);
-        let mut elements = [element];
+        let mut elements = [IocTransElement::new(RuleSet::Filter, anchor)];
         let mut ioc_trans = IocTrans::new(elements.as_mut_slice());
         // This will create an anchor if it doesn't exist.
         unsafe {
@@ -124,7 +122,7 @@ impl FirewallManagementApi for FirewallApi {
         }
 
         let ticket = elements[0].ticket;
-        let pool_ticket = get_pool_ticket(self.fd(), anchor);
+        let pool_ticket = get_pool_ticket(self.fd(), anchor)?;
 
         // Create first rule from the default policy.
         if let Err(err) = self.add_rule_policy(ticket, pool_ticket, anchor) {

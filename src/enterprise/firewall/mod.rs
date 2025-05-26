@@ -4,7 +4,7 @@ mod dummy;
 mod iprange;
 #[cfg(all(not(test), target_os = "linux"))]
 mod nftables;
-#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+#[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 mod packetfilter;
 
 use std::{fmt, net::IpAddr, str::FromStr};
@@ -128,9 +128,7 @@ impl Protocol {
     pub(crate) fn supports_ports(self) -> bool {
         matches!(self, Protocol::Tcp | Protocol::Udp)
     }
-}
 
-impl Protocol {
     pub(crate) const fn from_proto(
         proto: proto::enterprise::firewall::Protocol,
     ) -> Result<Self, FirewallError> {
@@ -283,7 +281,7 @@ pub enum FirewallError {
     IpAddrRange(#[from] IpAddrRangeError),
     #[error("Io error: {0}")]
     Io(#[from] std::io::Error),
-    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
     #[error("Errno:{0}")]
     Errno(#[from] nix::errno::Errno),
     #[error("Type conversion error: {0}")]

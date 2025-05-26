@@ -615,7 +615,7 @@ impl Gateway {
 mod tests {
     use std::net::Ipv4Addr;
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
     use defguard_wireguard_rs::Kernel;
     #[cfg(target_os = "macos")]
     use defguard_wireguard_rs::Userspace;
@@ -654,7 +654,7 @@ mod tests {
             .map(|peer| (peer.pubkey.clone(), peer))
             .collect();
 
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "netbsd"))]
         let wgapi = WGApi::<Userspace>::new("wg0".into()).unwrap();
         #[cfg(not(target_os = "macos"))]
         let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
