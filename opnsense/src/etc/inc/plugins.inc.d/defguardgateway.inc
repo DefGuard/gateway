@@ -59,3 +59,22 @@ function defguardgateway_devices()
 
     return $devices;
 }
+
+function defguardgateway_enabled()
+{
+    global $config;
+
+    return isset($config['OPNsense']['defguardgateway']['general']['Enabled']) &&
+    $config['OPNsense']['defguardgateway']['general']['Enabled'] == 1;
+}
+
+function defguardgateway_firewall($fw)
+{
+    if (!defguardgateway_enabled()) {
+        return;
+    }
+
+    $fw->registerAnchor('defguard/*', 'nat');
+    $fw->registerAnchor('defguard/*', 'rdr');
+    $fw->registerAnchor('defguard/*', 'fw');
+}

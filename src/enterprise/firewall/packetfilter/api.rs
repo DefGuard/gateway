@@ -80,7 +80,7 @@ impl FirewallManagementApi for FirewallApi {
     }
 
     /// Set masquerade status.
-    fn set_masquerade_status(&mut self, enabled: bool) -> Result<(), FirewallError> {
+    fn set_masquerade_status(&mut self, _enabled: bool) -> Result<(), FirewallError> {
         Ok(())
     }
 

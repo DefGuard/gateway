@@ -25,12 +25,12 @@ use self::calls::{pf_add_rule, Change, IocRule, Rule};
 use super::{api::FirewallApi, FirewallError, FirewallRule};
 use crate::enterprise::firewall::Port;
 
-const ANCHOR_PREFIX: &str = "defguard/";
+const ANCHOR_PREFIX: &str = "defguard";
 
 impl FirewallApi {
     /// Construct anchor name based on prefix and network interface name.
     fn anchor(&self) -> String {
-        ANCHOR_PREFIX.to_owned() + &self.ifname
+        ANCHOR_PREFIX.to_owned() // + &self.ifname
     }
 
     /// Return raw file descriptor to Packet Filter device.

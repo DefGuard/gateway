@@ -1,7 +1,5 @@
 use std::os::fd::RawFd;
 
-use ipnetwork::IpNetwork;
-
 use super::{
     calls::{pf_add_addr, pf_begin_addrs, pf_change_rule, Change, IocPoolAddr, IocRule, PoolAddr},
     rule::Action,
