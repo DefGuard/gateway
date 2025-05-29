@@ -1,10 +1,7 @@
-use std::{
-    fmt,
-    net::{IpAddr, Ipv4Addr},
-};
+use std::fmt;
 
 use ipnetwork::IpNetwork;
-use libc::{dirfd, AF_INET, AF_INET6, AF_UNSPEC};
+use libc::{AF_INET, AF_INET6, AF_UNSPEC};
 
 use super::{FirewallRule, Port};
 use crate::enterprise::firewall::{Address, Policy, Protocol};

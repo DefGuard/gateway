@@ -31,12 +31,12 @@ pub(super) fn get_pool_ticket(fd: RawFd, anchor: &str) -> Result<u32, FirewallEr
     Ok(ioc.ticket)
 }
 
-// Add pool address using the pool ticket previously obtained via `get_pool_ticket()`.
-// pub(super) fn add_pool_address(fd: RawFd, pool_addr: IpNetwork, pool_ticket: u32) {
-//     let mut pfioc_pooladdr = unsafe { std::mem::zeroed::<IocPoolAddr>() };
-//     pfioc_pooladdr.ticket = pool_ticket;
-//     pfioc_pooladdr.addr = PoolAddr::new(pool_addr, ""); // XXX: ifname
-//     unsafe {
-//         pf_add_addr(fd, &mut pfioc_pooladdr).unwrap();
-//     }
-// }
+/// Add pool address using the pool ticket previously obtained via `get_pool_ticket()`
+pub fn add_pool_address(fd: RawFd, ticket: u32, ifname: &str) -> Result<(), FirewallError> {
+    let mut pfioc_pooladdr = IocPoolAddr::with_pool_addr(PoolAddr::with_interface(ifname), ticket);
+    unsafe {
+        pf_add_addr(fd, &mut pfioc_pooladdr)?;
+    }
+
+    Ok(())
+}

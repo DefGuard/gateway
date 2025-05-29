@@ -2,7 +2,9 @@
 
 use std::{
     ffi::{c_char, c_int, c_long, c_uchar, c_uint, c_ulong, c_ushort, c_void},
-    mem::{size_of, MaybeUninit},
+    fmt,
+    mem::{size_of, zeroed, MaybeUninit},
+    ptr,
 };
 
 use ipnetwork::IpNetwork;
@@ -18,7 +20,7 @@ type Addr = [u8; 16]; // Do not use u128 for the sake of alignment.
 type PoolHashKey = [u8; 16];
 
 /// Equivalent to `struct pf_addr_wrap_addr_mask`.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 struct AddrMask {
     addr: Addr,
@@ -48,16 +50,31 @@ impl From<IpNetwork> for AddrMask {
     }
 }
 
+union VTarget {
+    a: AddrMask,
+    ifname: [u8; IFNAMSIZ],
+    // tblname: [u8; 32],
+    // rtlabelname: [u8; 32],
+    // rtlabel: c_uint,
+}
+
+// const PFI_AFLAG_NETWORK: u8 = 1;
+// const PFI_AFLAG_BROADCAST: u8 = 2;
+// const PFI_AFLAG_PEER: u8 = 4;
+// const PFI_AFLAG_MODEMASK: u8 = 7;
+// const PFI_AFLAG_NOALIAS: u8 = 8;
+
 /// Equivalent to `struct pf_addr_wrap`.
 /// Only the `v` part of the union, as `p` is not used in this crate.
-#[derive(Debug)]
 #[repr(C)]
 struct AddrWrap {
-    v: AddrMask,
-    // unused in this crate
+    v: VTarget,
+    // Unused in this crate.
     p: u64,
+    // Determines type of field `v`.
     r#type: AddrType,
-    iflags: c_uchar,
+    // See PFI_AFLAG
+    iflags: u8,
 }
 
 #[derive(Debug)]
@@ -71,7 +88,7 @@ pub enum AddrType {
     DynIftl,
     // PF_ADDR_TABLE = 3,
     Table,
-    // Below differs on macOS and FreeBSD.
+    // Values below differ on macOS and FreeBSD.
     // PF_ADDR_RTLABEL = 4,
     // RtLabel,
     // // PF_ADDR_URPFFAILED = 5,
@@ -82,13 +99,50 @@ pub enum AddrType {
 
 impl AddrWrap {
     #[must_use]
-    pub fn new(ip_network: IpNetwork) -> Self {
+    fn with_network(ip_network: IpNetwork) -> Self {
         Self {
-            v: ip_network.into(),
+            v: VTarget {
+                a: ip_network.into(),
+            },
             p: 0,
             r#type: AddrType::AddrMask,
             iflags: 0,
         }
+    }
+
+    #[must_use]
+    fn with_interface(ifname: &str) -> Self {
+        let mut uninit = MaybeUninit::<Self>::zeroed();
+        let self_ptr = uninit.as_mut_ptr();
+        let len = ifname.len().min(IFNAMSIZ - 1);
+        unsafe {
+            (*self_ptr).v.ifname[..len].copy_from_slice(&ifname.as_bytes()[..len]);
+            // Probably, this is needed only for pfctl to omit displaying number of bits.
+            // FIXME: Fill all bytes for IPv6.
+            (*self_ptr).v.a.mask[..4].fill(255);
+            (*self_ptr).r#type = AddrType::DynIftl;
+        }
+
+        unsafe { uninit.assume_init() }
+    }
+}
+
+impl fmt::Debug for AddrWrap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = f.debug_struct("AddrWrap");
+        match self.r#type {
+            AddrType::AddrMask => {
+                debug.field("v.a", unsafe { &self.v.a });
+            }
+            AddrType::DynIftl => {
+                debug.field("v.ifname", unsafe { &self.v.ifname });
+            }
+            _ => (),
+        }
+        debug.field("p", &self.p);
+        debug.field("type", &self.r#type);
+        debug.field("iflags", &self.iflags);
+        debug.finish()
     }
 }
 
@@ -112,7 +166,7 @@ pub(super) struct RuleAddr {
 impl RuleAddr {
     #[must_use]
     pub(super) fn new(ip_network: IpNetwork, port: Port) -> Self {
-        let addr = AddrWrap::new(ip_network);
+        let addr = AddrWrap::with_network(ip_network);
         let from_port;
         let to_port;
         let op;
@@ -145,34 +199,54 @@ impl RuleAddr {
     }
 }
 
-// TAILQ_ENTRY
 #[derive(Debug)]
 #[repr(C)]
-struct List<T> {
+struct TailQueue<T> {
+    tqh_first: *mut T,
+    tqh_last: *mut *mut T,
+}
+
+impl<T> TailQueue<T> {
+    fn init(&mut self) {
+        self.tqh_first = ptr::null_mut();
+        self.tqh_last = &mut self.tqh_first;
+    }
+}
+
+#[derive(Debug)]
+#[repr(C)]
+struct TailQueueEntry<T> {
     tqe_next: *mut T,
     tqe_prev: *mut *mut T,
 }
 
-// Equivalent to `struct pf_pooladdr`.
+/// Equivalent to `struct pf_pooladdr`.
 #[derive(Debug)]
 #[repr(C)]
 pub struct PoolAddr {
     addr: AddrWrap,
-    entries: List<PoolAddr>,
+    entries: TailQueueEntry<Self>,
     ifname: [u8; IFNAMSIZ],
     kif: usize, // *mut c_void,
 }
 
 impl PoolAddr {
     #[must_use]
-    pub fn new(ip_network: IpNetwork, if_name: &str) -> Self {
-        let mut ifname = [0; IFNAMSIZ];
-        let len = if_name.len().min(IFNAMSIZ - 1);
-        ifname[..len].copy_from_slice(&if_name.as_bytes()[..len]);
+    pub fn with_network(ip_network: IpNetwork) -> Self {
         Self {
-            addr: AddrWrap::new(ip_network),
-            entries: unsafe { std::mem::zeroed::<List<PoolAddr>>() },
-            ifname,
+            addr: AddrWrap::with_network(ip_network),
+            entries: unsafe { zeroed::<TailQueueEntry<Self>>() },
+            ifname: [0; IFNAMSIZ],
+            kif: 0,
+        }
+    }
+
+    #[must_use]
+    pub fn with_interface(ifname: &str) -> Self {
+        Self {
+            addr: AddrWrap::with_interface(ifname),
+            entries: unsafe { zeroed::<TailQueueEntry<Self>>() },
+            ifname: [0; IFNAMSIZ],
             kif: 0,
         }
     }
@@ -197,8 +271,8 @@ pub(super) enum PoolOpts {
 #[derive(Debug)]
 #[repr(C)]
 pub(super) struct Pool {
-    list: List<PoolAddr>,
-    cur: *mut c_void,
+    list: TailQueue<PoolAddr>,
+    cur: *mut PoolAddr,
     key: PoolHashKey,
     counter: Addr,
     tblidx: c_int,
@@ -207,7 +281,7 @@ pub(super) struct Pool {
     port_op: PortOp,
     pub(super) opts: PoolOpts,
     #[cfg(target_os = "macos")]
-    af: AddressFamily, // sa_family_t,
+    af: AddressFamily,
 }
 
 #[derive(Debug)]
@@ -237,7 +311,7 @@ enum PortOp {
 
 impl Pool {
     #[must_use]
-    pub fn new(from_port: u16, to_port: u16) -> Self {
+    pub(super) fn new(from_port: u16, to_port: u16) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
         let self_ptr = uninit.as_mut_ptr();
         unsafe {
@@ -247,13 +321,31 @@ impl Pool {
 
         unsafe { uninit.assume_init() }
     }
+
+    /// Insert `PoolAddr` at the end of the list. Take ownership of the given `PoolAddr`.
+    pub(super) fn insert_pool_addr(&mut self, mut pool_addr: PoolAddr) {
+        // TODO: Traverse tail queue; for now assume empty tail queue.
+        if !self.list.tqh_first.is_null() {
+            panic!("Expected one entry in PoolAddr TailQueue.");
+        }
+        self.list.tqh_first = &mut pool_addr;
+        self.list.tqh_last = &mut pool_addr.entries.tqe_next;
+        pool_addr.entries.tqe_next = ptr::null_mut();
+        pool_addr.entries.tqe_prev = &mut self.list.tqh_first;
+    }
 }
 
-#[repr(C)]
-struct pf_anchor_global {
-    rbe_left: *mut pf_anchor,
-    rbe_right: *mut pf_anchor,
-    rbe_parent: *mut pf_anchor,
+impl Drop for Pool {
+    // `Pool` owns the list of `PoolAddr`, so drop them here.
+    fn drop(&mut self) {
+        let mut next = self.list.tqh_first;
+        while !next.is_null() {
+            unsafe {
+                next = (*next).entries.tqe_next;
+                ptr::drop_in_place(self.list.tqh_first);
+            }
+        }
+    }
 }
 
 #[repr(C)]
@@ -264,14 +356,8 @@ struct pf_anchor_node {
 }
 
 #[repr(C)]
-struct pf_rulequeue {
-    tqh_first: *mut Rule,
-    tqh_last: *mut *mut Rule,
-}
-
-#[repr(C)]
 struct pf_ruleset_rule {
-    ptr: *mut pf_rulequeue,
+    ptr: *mut TailQueue<Rule>,
     ptr_array: *mut *mut Rule,
     rcount: c_uint,
     rsize: c_uint,
@@ -281,7 +367,7 @@ struct pf_ruleset_rule {
 
 #[repr(C)]
 struct pf_ruleset_rules {
-    queues: [pf_rulequeue; 2],
+    queues: [TailQueue<Rule>; 2],
     active: pf_ruleset_rule,
     inactive: pf_ruleset_rule,
 }
@@ -297,7 +383,7 @@ struct pf_ruleset {
 
 #[repr(C)]
 struct pf_anchor {
-    entry_global: pf_anchor_global,
+    entry_global: pf_anchor_node,
     entry_node: pf_anchor_node,
     parent: *mut pf_anchor,
     children: pf_anchor_node,
@@ -343,7 +429,7 @@ pub(super) struct Rule {
     match_tagname: [c_uchar; 64],
     overload_tblname: [c_uchar; 32],
 
-    entries: List<Rule>,
+    entries: TailQueueEntry<Self>,
     pub(super) rpool: Pool,
 
     evaluations: c_long,
@@ -414,7 +500,7 @@ pub(super) struct Rule {
     natpass: c_uchar,
 
     keep_state: State,
-    af: AddressFamily, // sa_family_t
+    af: AddressFamily,
     proto: c_uchar,
     r#type: c_uchar,
     code: c_uchar,
@@ -504,6 +590,8 @@ impl Rule {
             (*self_ptr).proto = pf_rule.proto as u8;
             (*self_ptr).flags = pf_rule.tcp_flags;
             (*self_ptr).flagset = pf_rule.tcp_flags_set;
+
+            (*self_ptr).rpool.list.init();
 
             uninit.assume_init()
         }
@@ -604,7 +692,7 @@ pub(super) struct IocPoolAddr {
 
 impl IocPoolAddr {
     #[must_use]
-    pub fn new(anchor: &str) -> Self {
+    pub(super) fn new(anchor: &str) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
         let self_ptr = uninit.as_mut_ptr();
 
@@ -612,6 +700,18 @@ impl IocPoolAddr {
         let len = anchor.len().min(MAXPATHLEN - 1);
         unsafe {
             (*self_ptr).anchor[..len].copy_from_slice(&anchor.as_bytes()[..len]);
+        }
+
+        unsafe { uninit.assume_init() }
+    }
+
+    #[must_use]
+    pub(super) fn with_pool_addr(addr: PoolAddr, ticket: c_uint) -> Self {
+        let mut uninit = MaybeUninit::<Self>::zeroed();
+        let self_ptr = uninit.as_mut_ptr();
+        unsafe {
+            (*self_ptr).ticket = ticket;
+            (*self_ptr).addr = addr;
         }
 
         unsafe { uninit.assume_init() }
@@ -720,6 +820,19 @@ ioctl_readwrite!(pf_begin_addrs, b'D', 51, IocPoolAddr);
 // or DIOCCHANGERULE call. All other members of the structure are ignored.
 ioctl_readwrite!(pf_add_addr, b'D', 52, IocPoolAddr);
 
+// DIOCGETADDRS
+// Get a ticket for subsequent DIOCGETADDR calls and the number nr of pool addresses in the rule
+// specified with r_action, r_num, and anchor.
+ioctl_readwrite!(pf_get_addrs, b'D', 53, IocPoolAddr);
+
+// DIOCGETADDR
+// Get the pool address addr by its number nr from the rule specified with r_action, r_num, and
+// anchor using the ticket obtained through a preceding DIOCGETADDRS call.
+ioctl_readwrite!(pf_get_addr, b'D', 54, IocPoolAddr);
+
+// DIOCCHANGEADDR
+// ioctl_readwrite!(pf_change_addr, b'D', 55, IocPoolAddr);
+
 // DIOCGETRULESETS
 // ioctl_readwrite!(pf_get_rulesets, b'D', 58, PFRuleset);
 
@@ -784,27 +897,27 @@ mod tests {
     }
 
     #[test]
-    fn check_addr_wrap() {
+    fn check_addr_mask() {
         let ipnetv4 = IpNetwork::V4(Ipv4Network::new(Ipv4Addr::LOCALHOST, 8).unwrap());
 
-        let addr_wrap = AddrWrap::new(ipnetv4);
+        let addr_mask = AddrMask::from(ipnetv4);
         assert_eq!(
-            addr_wrap.v.addr,
+            addr_mask.addr,
             [127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
         assert_eq!(
-            addr_wrap.v.mask,
+            addr_mask.mask,
             [255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
 
         let ipv6 = IpNetwork::V6(Ipv6Network::new(Ipv6Addr::LOCALHOST, 32).unwrap());
-        let addr_wrap = AddrWrap::new(ipv6);
+        let addr_wrap = AddrMask::from(ipv6);
         assert_eq!(
-            addr_wrap.v.addr,
+            addr_wrap.addr,
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
         );
         assert_eq!(
-            addr_wrap.v.mask,
+            addr_wrap.mask,
             [255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
     }
