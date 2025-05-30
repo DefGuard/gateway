@@ -3,7 +3,6 @@ use std::os::fd::AsRawFd;
 use super::{
     calls::{pf_begin, pf_commit, pf_rollback, IocTrans, IocTransElement},
     rule::RuleSet,
-    ticket::get_pool_ticket,
     FirewallRule,
 };
 use crate::enterprise::firewall::{
@@ -39,7 +38,7 @@ impl FirewallManagementApi for FirewallApi {
         }
 
         let ticket = elements[0].ticket;
-        let pool_ticket = get_pool_ticket(self.fd(), anchor)?;
+        let pool_ticket = self.get_pool_ticket(anchor)?;
 
         // Create first rule from the default policy.
         if let Err(err) = self.add_rule_policy(ticket, pool_ticket, anchor) {

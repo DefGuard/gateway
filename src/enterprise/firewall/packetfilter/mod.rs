@@ -15,10 +15,10 @@
 
 mod calls;
 mod rule;
-mod ticket;
 
 use std::os::fd::{AsRawFd, RawFd};
 
+use calls::{pf_begin_addrs, IocPoolAddr};
 use rule::PacketFilterRule;
 
 use self::calls::{pf_add_rule, Change, IocRule, Rule};
@@ -36,6 +36,16 @@ impl FirewallApi {
     /// Return raw file descriptor to Packet Filter device.
     fn fd(&self) -> RawFd {
         self.file.as_raw_fd()
+    }
+
+    fn get_pool_ticket(&self, anchor: &str) -> Result<u32, FirewallError> {
+        let mut ioc = IocPoolAddr::new(anchor);
+
+        unsafe {
+            pf_begin_addrs(self.fd(), &mut ioc)?;
+        }
+
+        Ok(ioc.ticket)
     }
 
     fn add_rule_policy(
@@ -64,7 +74,7 @@ impl FirewallApi {
         pool_ticket: u32,
         anchor: &str,
     ) -> Result<(), FirewallError> {
-        warn!("add_rule {rule:?}");
+        debug!("add_rule {rule:?}");
         let rules = PacketFilterRule::from_firewall_rule(&self.ifname, rule);
 
         for rule in rules {
