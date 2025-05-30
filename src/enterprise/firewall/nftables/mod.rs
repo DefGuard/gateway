@@ -19,6 +19,7 @@ pub fn get_set_id() -> u32 {
     SET_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 enum State {
     #[default]

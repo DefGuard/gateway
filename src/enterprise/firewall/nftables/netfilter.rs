@@ -546,7 +546,7 @@ impl FirewallRule for NatRule {
 // }
 
 /// Sets up the default chains for the firewall
-pub(crate) fn init_firewall(
+pub(super) fn init_firewall(
     initial_policy: Policy,
     defguard_fwd_chain_priority: Option<i32>,
     batch: &mut Batch,
@@ -570,7 +570,7 @@ pub(crate) fn init_firewall(
     Ok(())
 }
 
-pub(crate) fn drop_table(batch: &mut Batch, ifname: &str) -> Result<(), FirewallError> {
+pub(super) fn drop_table(batch: &mut Batch, ifname: &str) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
     batch.add(&table, nftnl::MsgType::Del);
@@ -578,7 +578,7 @@ pub(crate) fn drop_table(batch: &mut Batch, ifname: &str) -> Result<(), Firewall
     Ok(())
 }
 
-pub(crate) fn drop_chain(
+pub(super) fn drop_chain(
     chain: &Chains,
     batch: &mut Batch,
     ifname: &str,
@@ -592,7 +592,7 @@ pub(crate) fn drop_chain(
 }
 
 /// Applies masquerade on the specified interface for the outgoing packets
-pub(crate) fn set_masq(
+pub(super) fn set_masq(
     ifname: &str,
     enabled: bool,
     batch: &mut Batch,
@@ -644,7 +644,7 @@ pub(crate) fn set_masq(
 //     Ok(())
 // }
 
-pub(crate) fn allow_established_traffic(
+pub(super) fn allow_established_traffic(
     batch: &mut Batch,
     ifname: &str,
 ) -> Result<(), FirewallError> {
@@ -667,7 +667,7 @@ pub(crate) fn allow_established_traffic(
     Ok(())
 }
 
-pub(crate) fn ignore_unrelated_traffic(
+pub(super) fn ignore_unrelated_traffic(
     batch: &mut Batch,
     ifname: &str,
 ) -> Result<(), FirewallError> {
@@ -691,7 +691,8 @@ pub(crate) fn ignore_unrelated_traffic(
     Ok(())
 }
 
-pub enum Tables {
+#[allow(dead_code)]
+enum Tables {
     Filter(ProtoFamily),
     Nat(ProtoFamily),
     Defguard(ProtoFamily),
@@ -719,7 +720,7 @@ impl Tables {
     }
 }
 
-pub enum Chains {
+pub(super) enum Chains {
     Forward,
     Postrouting,
 }

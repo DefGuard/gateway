@@ -56,9 +56,10 @@ impl Address {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub(crate) enum Port {
-    Any, // currently it is handled with empty Vec<Port>
+    Any,
     Single(u16),
     Range(u16, u16),
 }
@@ -113,6 +114,7 @@ impl fmt::Display for Port {
 }
 
 /// As defined in `netinet/in.h`.
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(u8)]
 pub(crate) enum Protocol {
@@ -120,7 +122,6 @@ pub(crate) enum Protocol {
     Icmp = libc::IPPROTO_ICMP as u8,
     Tcp = libc::IPPROTO_TCP as u8,
     Udp = libc::IPPROTO_UDP as u8,
-    #[allow(dead_code)]
     IcmpV6 = libc::IPPROTO_ICMPV6 as u8,
 }
 
