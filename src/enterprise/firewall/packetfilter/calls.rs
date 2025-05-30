@@ -77,6 +77,7 @@ struct AddrWrap {
     iflags: u8,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 #[repr(u8)]
 pub enum AddrType {
@@ -110,6 +111,7 @@ impl AddrWrap {
         }
     }
 
+    #[allow(dead_code)]
     #[must_use]
     fn with_interface(ifname: &str) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
@@ -231,6 +233,7 @@ pub struct PoolAddr {
 }
 
 impl PoolAddr {
+    #[allow(dead_code)]
     #[must_use]
     pub fn with_network(ip_network: IpNetwork) -> Self {
         Self {
@@ -241,6 +244,7 @@ impl PoolAddr {
         }
     }
 
+    #[allow(dead_code)]
     #[must_use]
     pub fn with_interface(ifname: &str) -> Self {
         Self {
@@ -252,6 +256,7 @@ impl PoolAddr {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 #[repr(u8)]
 pub(super) enum PoolOpts {
@@ -284,6 +289,7 @@ pub(super) struct Pool {
     af: AddressFamily,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 #[repr(u8)]
 enum PortOp {
@@ -309,6 +315,7 @@ enum PortOp {
     Range = 9, // ((p >= a1) && (p <= a2))
 }
 
+#[allow(dead_code)]
 impl Pool {
     #[must_use]
     pub(super) fn new(from_port: u16, to_port: u16) -> Self {
@@ -599,6 +606,7 @@ impl Rule {
 }
 
 /// Equivalent to PF_CHANGE_... enum.
+#[allow(dead_code)]
 #[repr(u32)]
 pub(crate) enum Change {
     // PF_CHANGE_NONE = 0
@@ -618,6 +626,7 @@ pub(crate) enum Change {
 }
 
 /// Rule flags, equivalent to PFRULE_...
+#[allow(dead_code)]
 #[repr(u32)]
 pub(crate) enum RuleFlag {
     Drop = 0,
@@ -646,20 +655,6 @@ pub(super) struct IocRule {
 }
 
 impl IocRule {
-    #[must_use]
-    pub(super) fn new(anchor: &str) -> Self {
-        let mut uninit = MaybeUninit::<Self>::zeroed();
-        let self_ptr = uninit.as_mut_ptr();
-
-        // Copy anchor name.
-        let len = anchor.len().min(MAXPATHLEN - 1);
-        unsafe {
-            (*self_ptr).anchor[..len].copy_from_slice(&anchor.as_bytes()[..len]);
-        }
-
-        unsafe { uninit.assume_init() }
-    }
-
     #[must_use]
     pub(super) fn with_rule(anchor: &str, rule: Rule) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
@@ -705,6 +700,7 @@ impl IocPoolAddr {
         unsafe { uninit.assume_init() }
     }
 
+    #[allow(dead_code)]
     #[must_use]
     pub(super) fn with_pool_addr(addr: PoolAddr, ticket: c_uint) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();

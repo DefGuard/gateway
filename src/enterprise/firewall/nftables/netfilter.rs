@@ -625,24 +625,24 @@ pub(crate) fn set_masq(
     Ok(())
 }
 
-pub(crate) fn set_default_policy(
-    policy: Policy,
-    batch: &mut Batch,
-    ifname: &str,
-) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
-    batch.add(&table, nftnl::MsgType::Add);
+// pub(super) fn set_default_policy(
+//     policy: Policy,
+//     batch: &mut Batch,
+//     ifname: &str,
+// ) -> Result<(), FirewallError> {
+//     let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
+//     batch.add(&table, nftnl::MsgType::Add);
 
-    let mut forward_chain = Chains::Forward.to_chain(&table);
-    forward_chain.set_policy(if policy == Policy::Allow {
-        nftnl::Policy::Accept
-    } else {
-        nftnl::Policy::Drop
-    });
-    batch.add(&forward_chain, nftnl::MsgType::Add);
+//     let mut forward_chain = Chains::Forward.to_chain(&table);
+//     forward_chain.set_policy(if policy == Policy::Allow {
+//         nftnl::Policy::Accept
+//     } else {
+//         nftnl::Policy::Drop
+//     });
+//     batch.add(&forward_chain, nftnl::MsgType::Add);
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 pub(crate) fn allow_established_traffic(
     batch: &mut Batch,
@@ -741,7 +741,7 @@ impl Chains {
     }
 }
 
-pub(crate) fn apply_filter_rules(
+pub(super) fn apply_filter_rules(
     rules: Vec<FilterRule>,
     batch: &mut Batch,
     ifname: &str,

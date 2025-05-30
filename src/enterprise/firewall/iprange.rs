@@ -31,6 +31,7 @@ impl fmt::Display for IpAddrRangeError {
     }
 }
 
+#[allow(dead_code)]
 impl IpAddrRange {
     pub fn new(start: IpAddr, end: IpAddr) -> Result<Self, IpAddrRangeError> {
         if start > end {

@@ -120,10 +120,12 @@ pub(crate) enum Protocol {
     Icmp = libc::IPPROTO_ICMP as u8,
     Tcp = libc::IPPROTO_TCP as u8,
     Udp = libc::IPPROTO_UDP as u8,
+    #[allow(dead_code)]
     IcmpV6 = libc::IPPROTO_ICMPV6 as u8,
 }
 
 impl Protocol {
+    #[cfg(target_os = "linux")]
     #[must_use]
     pub(crate) fn supports_ports(self) -> bool {
         matches!(self, Protocol::Tcp | Protocol::Udp)

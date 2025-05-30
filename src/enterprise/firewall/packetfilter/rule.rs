@@ -7,6 +7,7 @@ use super::{FirewallRule, Port};
 use crate::enterprise::firewall::{Address, Policy, Protocol};
 
 /// Packet filter rule action.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum Action {
@@ -56,6 +57,7 @@ impl fmt::Display for Action {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub(super) enum AddressFamily {
@@ -65,6 +67,7 @@ pub(super) enum AddressFamily {
 }
 
 /// Packet filter rule direction.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum Direction {
@@ -89,7 +92,7 @@ impl fmt::Display for Direction {
 }
 
 const PF_LOG: u8 = 0x01;
-const PF_LOG_ALL: u8 = 0x02;
+// const PF_LOG_ALL: u8 = 0x02;
 // const PF_LOG_SOCKET_LOOKUP: u8 = 0x04;
 // #[cfg(target_os = "freebsd")]
 // const PF_LOG_FORCE: u8 = 0x08;
@@ -97,6 +100,7 @@ const PF_LOG_ALL: u8 = 0x02;
 // const PF_LOG_MATCHES: u8 = 0x10;
 
 /// Equivalent to `PF_RULESET_...`.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 #[repr(i32)]
 pub enum RuleSet {
@@ -119,6 +123,7 @@ pub enum RuleSet {
 }
 
 // Equivalent to `PF_STATE_...`.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
 pub enum State {
@@ -147,20 +152,26 @@ impl fmt::Display for State {
 
 /// TCP flags as defined in `netinet/tcp.h`.
 /// Final: Set on the last segment.
+#[allow(dead_code)]
 const TH_FIN: u8 = 0x01;
 /// Synchronization: New conn with dst port.
 const TH_SYN: u8 = 0x02;
 /// Reset: Announce to peer conn terminated.
+#[allow(dead_code)]
 const TH_RST: u8 = 0x04;
 /// Push: Immediately send, don't buffer seg.
+#[allow(dead_code)]
 const TH_PUSH: u8 = 0x08;
 /// Acknowledge: Part of connection establish.
 const TH_ACK: u8 = 0x10;
 /// Urgent: send special marked segment now.
+#[allow(dead_code)]
 const TH_URG: u8 = 0x20;
 /// ECN Echo.
+#[allow(dead_code)]
 const TH_ECE: u8 = 0x40;
 /// Congestion Window Reduced.
+#[allow(dead_code)]
 const TH_CWR: u8 = 0x80;
 
 #[derive(Debug)]

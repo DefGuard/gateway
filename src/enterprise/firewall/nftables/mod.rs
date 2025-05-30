@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use netfilter::{
     allow_established_traffic, apply_filter_rules, drop_table, ignore_unrelated_traffic,
-    init_firewall, send_batch, set_default_policy, set_masq,
+    init_firewall, send_batch, set_masq,
 };
 use nftnl::Batch;
 
@@ -20,7 +20,7 @@ pub fn get_set_id() -> u32 {
 }
 
 #[derive(Debug, Default)]
-pub enum State {
+enum State {
     #[default]
     Established,
     Invalid,
@@ -29,25 +29,25 @@ pub enum State {
 }
 
 #[derive(Debug, Default)]
-pub struct FilterRule<'a> {
-    pub src_ips: &'a [Address],
-    pub dest_ips: &'a [Address],
-    pub src_ports: &'a [Port],
-    pub dest_ports: &'a [Port],
-    pub protocols: Vec<Protocol>,
-    pub oifname: Option<String>,
-    pub iifname: Option<String>,
-    pub action: Policy,
-    pub states: Vec<State>,
-    pub counter: bool,
+struct FilterRule<'a> {
+    src_ips: &'a [Address],
+    dest_ips: &'a [Address],
+    // src_ports: &'a [Port],
+    dest_ports: &'a [Port],
+    protocols: Vec<Protocol>,
+    oifname: Option<String>,
+    iifname: Option<String>,
+    action: Policy,
+    states: Vec<State>,
+    counter: bool,
     // The ID of the associated Defguard rule.
     // The filter rules may not always be a 1:1 representation of the Defguard rules, so
     // this value helps to keep track of them.
-    pub defguard_rule_id: i64,
-    pub v4: bool,
-    pub comment: Option<String>,
-    pub negated_oifname: bool,
-    pub negated_iifname: bool,
+    defguard_rule_id: i64,
+    v4: bool,
+    comment: Option<String>,
+    negated_oifname: bool,
+    negated_iifname: bool,
 }
 
 impl FirewallApi {
@@ -193,17 +193,17 @@ impl FirewallManagementApi for FirewallApi {
         Ok(())
     }
 
-    /// Allows for changing the default policy of the firewall.
-    fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError> {
-        debug!("Setting default firewall policy to: {policy:?}");
-        if let Some(batch) = &mut self.batch {
-            set_default_policy(policy, batch, &self.ifname)?;
-        } else {
-            return Err(FirewallError::TransactionNotStarted);
-        }
-        debug!("Set firewall default policy to {policy:?}");
-        Ok(())
-    }
+    // Allows for changing the default policy of the firewall.
+    // fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError> {
+    //     debug!("Setting default firewall policy to: {policy:?}");
+    //     if let Some(batch) = &mut self.batch {
+    //         set_default_policy(policy, batch, &self.ifname)?;
+    //     } else {
+    //         return Err(FirewallError::TransactionNotStarted);
+    //     }
+    //     debug!("Set firewall default policy to {policy:?}");
+    //     Ok(())
+    // }
 
     /// Allows for changing the masquerade status of the firewall.
     fn set_masquerade_status(&mut self, enabled: bool) -> Result<(), FirewallError> {
@@ -240,11 +240,6 @@ impl FirewallManagementApi for FirewallApi {
                     .to_string(),
             ))
         }
-    }
-
-    fn rollback(&mut self) {
-        self.batch = None;
-        debug!("Firewall transaction has been rolled back.")
     }
 
     /// Apply whole firewall configuration and send it in one go to the kernel.

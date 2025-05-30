@@ -212,9 +212,9 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 
 [[package]]
 name = "cc"
-version = "1.2.24"
+version = "1.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16595d3be041c03b09d08d0858631facccee9221e579704070e6e9e4915d3bc7"
+checksum = "d0fc897dc1e865cc67c0e05a836d9d3f1df3cbe442aa4a9473b18e12624a4951"
 dependencies = [
  "jobserver",
  "libc",
@@ -406,6 +406,7 @@ dependencies = [
 [[package]]
 name = "defguard_wireguard_rs"
 version = "0.7.3"
+source = "git+https://github.com/DefGuard/wireguard-rs.git?rev=v0.7.3#69f1ff7064240f5f2ddbab242db0e8271733bf46"
 dependencies = [
  "base64",
  "libc",

@@ -72,12 +72,6 @@ impl FirewallManagementApi for FirewallApi {
         Ok(())
     }
 
-    /// Set default firewall policy.
-    fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError> {
-        self.default_policy = policy;
-        Ok(())
-    }
-
     /// Set masquerade status.
     fn set_masquerade_status(&mut self, _enabled: bool) -> Result<(), FirewallError> {
         Ok(())
@@ -93,10 +87,5 @@ impl FirewallManagementApi for FirewallApi {
     fn commit(&mut self) -> Result<(), FirewallError> {
         // TODO: remove this no-op.
         Ok(())
-    }
-
-    /// Rollback rule transaction.
-    fn rollback(&mut self) {
-        // TODO: remove this no-op.
     }
 }

@@ -44,9 +44,6 @@ pub(crate) trait FirewallManagementApi {
     /// Add fireall `rules`.
     fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError>;
 
-    /// Set default firewall policy.
-    fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError>;
-
     /// Set masquerade status.
     fn set_masquerade_status(&mut self, enabled: bool) -> Result<(), FirewallError>;
 
@@ -55,7 +52,4 @@ pub(crate) trait FirewallManagementApi {
 
     /// Commit rule transaction.
     fn commit(&mut self) -> Result<(), FirewallError>;
-
-    /// Rollback rule transaction.
-    fn rollback(&mut self);
 }
