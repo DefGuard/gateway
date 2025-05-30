@@ -9,6 +9,7 @@ use super::{FirewallError, FirewallRule, Policy};
 #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 const DEV_PF: &str = "/dev/pf";
 
+#[allow(dead_code)]
 pub struct FirewallApi {
     pub(crate) ifname: String,
     #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
