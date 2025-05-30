@@ -74,7 +74,7 @@ function defguardgateway_firewall($fw)
         return;
     }
 
-    $fw->registerAnchor('defguard/*', 'nat');
-    $fw->registerAnchor('defguard/*', 'rdr');
-    $fw->registerAnchor('defguard/*', 'fw');
+    // $fw->registerAnchor('defguard/*', 'nat', 1, 'head');
+    // $fw->registerAnchor('defguard/*', 'rdr', 1, 'head');
+    $fw->registerAnchor('defguard/*', 'fw', 1, 'head', true);
 }

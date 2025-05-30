@@ -190,9 +190,9 @@ impl PacketFilterRule {
     /// Default rule for policy.
     #[must_use]
     pub(super) fn for_policy(policy: Policy, ifname: &str) -> Self {
-        let action = match policy {
-            Policy::Allow => Action::Pass,
-            Policy::Deny => Action::Drop,
+        let (action, state) = match policy {
+            Policy::Allow => (Action::Pass, State::Normal),
+            Policy::Deny => (Action::Drop, State::None),
         };
         Self {
             from: None,
@@ -202,12 +202,12 @@ impl PacketFilterRule {
             action,
             direction: Direction::In,
             quick: false,
-            log: 0,
-            state: State::None,
+            log: PF_LOG,
+            state,
             interface: Some(ifname.to_owned()),
             proto: Protocol::Any,
-            tcp_flags: 0,
-            tcp_flags_set: 0,
+            tcp_flags: TH_SYN,
+            tcp_flags_set: TH_SYN | TH_ACK,
             label: None,
         }
     }
@@ -228,9 +228,9 @@ impl PacketFilterRule {
     /// Expand `FirewallRule` into a set of `PacketFilterRule`s.
     pub(super) fn from_firewall_rule(ifname: &str, fr: &mut FirewallRule) -> Vec<Self> {
         let mut rules = Vec::new();
-        let action = match fr.verdict {
-            Policy::Allow => Action::Pass,
-            Policy::Deny => Action::Drop,
+        let (action, state) = match fr.verdict {
+            Policy::Allow => (Action::Pass, State::Normal),
+            Policy::Deny => (Action::Drop, State::None),
         };
 
         let mut from_addrs = Vec::new();
@@ -283,13 +283,11 @@ impl PacketFilterRule {
                             to: *to,
                             to_port: *to_port,
                             action,
-                            direction: Direction::Out,
+                            direction: Direction::In,
                             // Enable quick to match NFTables behaviour.
                             quick: true,
-                            // Disable logging.
-                            log: 0,
-                            // Keeping state is the default.
-                            state: State::Normal,
+                            log: PF_LOG,
+                            state,
                             interface: Some(ifname.to_owned()),
                             proto: *proto,
                             // For stateful connections, the default is flags S/SA.

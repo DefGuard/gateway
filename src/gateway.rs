@@ -445,15 +445,16 @@ impl Gateway {
     ) -> Result<GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>, GatewayError>
     {
         debug!("Preparing gRPC client configuration");
+        let tls = ClientTlsConfig::new();
         // Use CA if provided, otherwise load certificates from system.
         let tls = if let Some(ca) = &config.grpc_ca {
             let ca = read_to_string(ca).map_err(|err| {
                 error!("Failed to read CA file: {err}");
                 GatewayError::InvalidCaFile
             })?;
-            ClientTlsConfig::new().ca_certificate(Certificate::from_pem(ca))
+            tls.ca_certificate(Certificate::from_pem(ca))
         } else {
-            ClientTlsConfig::new().with_native_roots()
+            tls.with_enabled_roots()
         };
         let endpoint = Endpoint::from_shared(config.grpc_url.clone())?
             .http2_keep_alive_interval(TEN_SECS)

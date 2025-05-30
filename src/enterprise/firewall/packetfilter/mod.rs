@@ -25,12 +25,12 @@ use self::calls::{pf_add_rule, Change, IocRule, Rule};
 use super::{api::FirewallApi, FirewallError, FirewallRule};
 use crate::enterprise::firewall::Port;
 
-const ANCHOR_PREFIX: &str = "defguard";
+const ANCHOR_PREFIX: &str = "defguard/";
 
 impl FirewallApi {
     /// Construct anchor name based on prefix and network interface name.
     fn anchor(&self) -> String {
-        ANCHOR_PREFIX.to_owned() // + &self.ifname
+        ANCHOR_PREFIX.to_owned() + &self.ifname
     }
 
     /// Return raw file descriptor to Packet Filter device.
@@ -45,7 +45,6 @@ impl FirewallApi {
         anchor: &str,
     ) -> Result<(), FirewallError> {
         let rule = PacketFilterRule::for_policy(self.default_policy, &self.ifname);
-        warn!("==> {rule}");
         let mut ioc = IocRule::with_rule(anchor, Rule::from_pf_rule(&rule));
         ioc.ticket = ticket;
         ioc.pool_ticket = pool_ticket;
@@ -69,7 +68,6 @@ impl FirewallApi {
         let rules = PacketFilterRule::from_firewall_rule(&self.ifname, rule);
 
         for rule in rules {
-            warn!("--> {rule}");
             let mut ioc = IocRule::with_rule(anchor, Rule::from_pf_rule(&rule));
             ioc.action = Change::None;
             ioc.ticket = ticket;
