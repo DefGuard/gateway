@@ -373,7 +373,7 @@ mod tests {
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),
-            "pass out quick on lo0 from any  to any  keep state"
+            "pass in quick on lo0 from any  to any  keep state"
         );
 
         // One address, one port.
@@ -395,7 +395,7 @@ mod tests {
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),
-            "pass out quick on lo0 from any  to 192.168.1.10/24 port = 1138 keep state"
+            "pass in quick on lo0 from any  to 192.168.1.10/24 port = 1138 keep state"
         );
 
         // Two addresses, two ports.
@@ -420,19 +420,19 @@ mod tests {
         assert_eq!(4, rules.len());
         assert_eq!(
             rules[0].to_string(),
-            "pass out quick on lo0 from any  to 192.168.1.10/24 port = 1138 keep state"
+            "pass in quick on lo0 from any  to 192.168.1.10/24 port = 1138 keep state"
         );
         assert_eq!(
             rules[1].to_string(),
-            "pass out quick on lo0 from any  to 192.168.1.10/24 port = 42 keep state"
+            "pass in quick on lo0 from any  to 192.168.1.10/24 port = 42 keep state"
         );
         assert_eq!(
             rules[2].to_string(),
-            "pass out quick on lo0 from any  to 192.168.1.20/24 port = 1138 keep state"
+            "pass in quick on lo0 from any  to 192.168.1.20/24 port = 1138 keep state"
         );
         assert_eq!(
             rules[3].to_string(),
-            "pass out quick on lo0 from any  to 192.168.1.20/24 port = 42 keep state"
+            "pass in quick on lo0 from any  to 192.168.1.20/24 port = 42 keep state"
         );
     }
 }
