@@ -17,15 +17,15 @@ prost = "0.13"
 serde = { version = "1.0", features = ["derive"] }
 syslog = "7.0"
 thiserror = "2.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tokio-stream = { version = "0.1", features = [] }
+toml = { version = "0.8", default-features = false, features = ["parse"] }
 tonic = { version = "0.12", default-features = false, features = [
     "codegen",
     "gzip",
     "prost",
     "tls-native-roots",
 ] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
-tokio-stream = { version = "0.1", features = [] }
-toml = { version = "0.8", default-features = false, features = ["parse"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "1a1147271f43b9d7182a114bb056a5224c35d38f" }
@@ -36,6 +36,11 @@ nix = { version = "0.30", default-features = false, features = ["ioctl"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
+tonic = { version = "0.12", default-features = false, features = [
+    "codegen",
+    "prost",
+    "transport",
+] }
 x25519-dalek = { version = "2.0", features = ["getrandom", "static_secrets"] }
 
 [build-dependencies]

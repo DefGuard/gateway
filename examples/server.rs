@@ -66,20 +66,15 @@ impl From<&HostConfig> for proto::gateway::Configuration {
                 .host
                 .private_key
                 .as_ref()
-                .map(|key| key.to_string())
+                .map(ToString::to_string)
                 .unwrap_or_default(),
             addresses: host_config
                 .addresses
                 .iter()
-                .map(|addr| addr.to_string())
+                .map(ToString::to_string)
                 .collect(),
-            port: host_config.host.listen_port as u32,
-            peers: host_config
-                .host
-                .peers
-                .values()
-                .map(|peer| peer.into())
-                .collect(),
+            port: u32::from(host_config.host.listen_port),
+            peers: host_config.host.peers.values().map(Into::into).collect(),
             firewall_config: None,
         }
     }
@@ -265,7 +260,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let clients = Arc::new(Mutex::new(HashMap::new()));
     tokio::select! {
         _ = grpc(config_rx, clients.clone()) => eprintln!("gRPC completed"),
-        _ = cli(config_tx, clients) => eprintln!("CLI completed")
+        () = cli(config_tx, clients) => eprintln!("CLI completed")
     };
 
     Ok(())
