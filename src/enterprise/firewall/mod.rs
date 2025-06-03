@@ -1,29 +1,31 @@
-use std::{net::IpAddr, str::FromStr};
+pub mod api;
+#[cfg(test)]
+mod dummy;
+mod iprange;
+#[cfg(all(not(test), target_os = "linux"))]
+mod nftables;
+#[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
+mod packetfilter;
+
+use std::{fmt, net::IpAddr, str::FromStr};
 
 use ipnetwork::IpNetwork;
+use iprange::{IpAddrRange, IpAddrRangeError};
 use thiserror::Error;
 
 use crate::proto;
 
-pub mod api;
-#[cfg(all(not(test), target_os = "linux"))]
-pub mod linux;
-
-#[cfg(any(test, not(target_os = "linux")))]
-pub mod dummy;
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Address {
-    Ip(IpAddr),
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Address {
     Network(IpNetwork),
-    Range(IpAddr, IpAddr),
+    Range(IpAddrRange),
 }
 
 impl Address {
     pub fn from_proto(ip: &proto::enterprise::firewall::IpAddress) -> Result<Self, FirewallError> {
         match &ip.address {
             Some(proto::enterprise::firewall::ip_address::Address::Ip(ip)) => {
-                Ok(Self::Ip(IpAddr::from_str(ip).map_err(|err| {
+                Ok(Self::Network(IpNetwork::from_str(ip).map_err(|err| {
                     FirewallError::TypeConversionError(format!("Invalid IP format: {err}"))
                 })?))
             }
@@ -44,9 +46,9 @@ impl Address {
                         "Invalid IP range: start IP ({start}) is greater than end IP ({end})",
                     )));
                 }
-                Ok(Self::Range(start, end))
+                Ok(Self::Range(IpAddrRange::new(start, end)?))
             }
-            _ => Err(FirewallError::TypeConversionError(format!(
+            None => Err(FirewallError::TypeConversionError(format!(
                 "Invalid IP address type. Must be one of Ip, IpSubnet, IpRange. Instead got {:?}",
                 ip.address
             ))),
@@ -54,8 +56,10 @@ impl Address {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Port {
+#[allow(dead_code)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub(crate) enum Port {
+    Any,
     Single(u16),
     Range(u16, u16),
 }
@@ -99,26 +103,65 @@ impl Port {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Protocol(pub u8);
-
-// Protocols that have the concept of ports
-pub const PORT_PROTOCOLS: [Protocol; 2] = [
-    // TCP
-    Protocol(6),
-    // UDP
-    Protocol(17),
-];
-
-impl Protocol {
-    #[must_use]
-    pub fn supports_ports(&self) -> bool {
-        PORT_PROTOCOLS.contains(self)
+impl fmt::Display for Port {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Port::Any => Ok(()), // nothing here
+            Port::Single(port) => write!(f, "port = {port}"),
+            Port::Range(from, to) => write!(f, "port = {{{from}..{to}}}"),
+        }
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum Policy {
+/// As defined in `netinet/in.h`.
+#[allow(dead_code)]
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[repr(u8)]
+pub(crate) enum Protocol {
+    Any = libc::IPPROTO_IP as u8,
+    Icmp = libc::IPPROTO_ICMP as u8,
+    Tcp = libc::IPPROTO_TCP as u8,
+    Udp = libc::IPPROTO_UDP as u8,
+    IcmpV6 = libc::IPPROTO_ICMPV6 as u8,
+}
+
+#[allow(dead_code)]
+impl Protocol {
+    #[must_use]
+    pub(crate) fn supports_ports(self) -> bool {
+        matches!(self, Protocol::Tcp | Protocol::Udp)
+    }
+
+    pub(crate) const fn from_proto(
+        proto: proto::enterprise::firewall::Protocol,
+    ) -> Result<Self, FirewallError> {
+        match proto {
+            proto::enterprise::firewall::Protocol::Tcp => Ok(Self::Tcp),
+            proto::enterprise::firewall::Protocol::Udp => Ok(Self::Udp),
+            proto::enterprise::firewall::Protocol::Icmp => Ok(Self::Icmp),
+            // TODO: IcmpV6
+            proto::enterprise::firewall::Protocol::Invalid => {
+                Err(FirewallError::UnsupportedProtocol(proto as u8))
+            }
+        }
+    }
+}
+
+impl fmt::Display for Protocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let protocol = match self {
+            Self::Any => "any",
+            Self::Icmp => "icmp",
+            Self::Tcp => "tcp",
+            Self::Udp => "udp",
+            Self::IcmpV6 => "icmp6",
+        };
+        write!(f, "{protocol}")
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(crate) enum Policy {
     #[default]
     Allow,
     Deny,
@@ -144,8 +187,8 @@ impl Policy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FirewallRule {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FirewallRule {
     pub comment: Option<String>,
     pub destination_addrs: Vec<Address>,
     pub destination_ports: Vec<Port>,
@@ -154,11 +197,11 @@ pub struct FirewallRule {
     pub protocols: Vec<Protocol>,
     pub source_addrs: Vec<Address>,
     /// Whether a rule uses IPv4 (true) or IPv6 (false)
-    pub ipv4: bool,
+    pub ipv4: bool, // FIXME: is that really needed?
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FirewallConfig {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FirewallConfig {
     pub rules: Vec<FirewallRule>,
     pub default_policy: Policy,
 }
@@ -237,17 +280,28 @@ impl FirewallConfig {
 
 #[derive(Debug, Error)]
 pub enum FirewallError {
+    #[error("IP address range: {0}")]
+    IpAddrRange(#[from] IpAddrRangeError),
+    #[error("Io error: {0}")]
+    Io(#[from] std::io::Error),
+    #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
+    #[error("Errno:{0}")]
+    Errno(#[from] nix::errno::Errno),
     #[error("Type conversion error: {0}")]
     TypeConversionError(String),
     #[error("Out of memory: {0}")]
     OutOfMemory(String),
     #[error("Unsupported protocol: {0}")]
     UnsupportedProtocol(u8),
+    #[cfg(target_os = "linux")]
     #[error("Netlink error: {0}")]
     NetlinkError(String),
     #[error("Invalid configuration: {0}")]
     InvalidConfiguration(String),
-    #[error("Firewall transaction not started. Start the firewall transaction first in order to interact with the firewall API.")]
+    #[error(
+        "Firewall transaction not started. Start the firewall transaction first in order to \
+        interact with the firewall API."
+    )]
     TransactionNotStarted,
     #[error("Firewall transaction failed: {0}")]
     TransactionFailed(String),
