@@ -4,7 +4,7 @@ use std::fs::{File, OpenOptions};
 #[cfg(target_os = "linux")]
 use nftnl::Batch;
 
-use super::{FirewallError, FirewallRule, Policy};
+use super::{FirewallError, FirewallRule, Policy, SnatBinding};
 
 #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 const DEV_PF: &str = "/dev/pf";
@@ -44,6 +44,9 @@ pub(crate) trait FirewallManagementApi {
 
     /// Add fireall `rules`.
     fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError>;
+
+    /// Add SNAT firewall rules
+    fn add_snat_bindings(&mut self, snat_bindings: Vec<SnatBinding>) -> Result<(), FirewallError>;
 
     /// Set masquerade status.
     fn set_masquerade_status(&mut self, enabled: bool) -> Result<(), FirewallError>;

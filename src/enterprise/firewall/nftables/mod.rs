@@ -10,7 +10,7 @@ use nftnl::Batch;
 
 use super::{
     api::{FirewallApi, FirewallManagementApi},
-    Address, FirewallError, FirewallRule, Policy, Port, Protocol,
+    Address, FirewallError, FirewallRule, Policy, Port, Protocol, SnatBinding,
 };
 
 static SET_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -225,6 +225,10 @@ impl FirewallManagementApi for FirewallApi {
         }
         debug!("Applied all Defguard ACL rules");
         Ok(())
+    }
+
+    fn add_snat_bindings(&mut self, snat_bindings: Vec<SnatBinding>) -> Result<(), FirewallError> {
+        unimplemented!()
     }
 
     fn begin(&mut self) -> Result<(), FirewallError> {
