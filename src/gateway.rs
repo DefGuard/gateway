@@ -595,7 +595,7 @@ impl Gateway {
             );
         } else {
             #[cfg(target_os = "linux")]
-            if self.config.masquerade {
+            if !self.config.disable_firewall_management && self.config.masquerade {
                 self.firewall_api.begin()?;
                 self.firewall_api.set_masquerade_status(true)?;
                 self.firewall_api.commit()?;
