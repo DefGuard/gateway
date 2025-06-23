@@ -1,14 +1,13 @@
 #[cfg(test)]
 use std::str::FromStr;
 use std::{
-    ffi::CString,
+    ffi::{CStr, CString},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 use ipnetwork::IpNetwork;
 #[cfg(test)]
 use ipnetwork::{Ipv4Network, Ipv6Network};
-use mnl::mnl_sys::libc::{self};
 use nftnl::{
     expr::{Expression, InterfaceName},
     nft_expr, nftnl_sys,
@@ -17,14 +16,14 @@ use nftnl::{
 };
 
 use super::{get_set_id, Address, FilterRule, Policy, Port, Protocol, State};
-use crate::enterprise::firewall::FirewallError;
+use crate::enterprise::firewall::{iprange::IpAddrRange, FirewallError};
 
 const FILTER_TABLE: &str = "filter";
 const NAT_TABLE: &str = "nat";
-const DEFGUARD_TABLE: &str = "DEFGUARD-{IFNAME}";
+const DEFGUARD_TABLE: &str = "DEFGUARD-";
 const POSTROUTING_CHAIN: &str = "POSTROUTING";
 const FORWARD_CHAIN: &str = "FORWARD";
-const ANON_SET_NAME: &str = "__set%d";
+const ANON_SET_NAME: &CStr = c"__set%d";
 const LOOPBACK_IFACE: &str = "lo";
 
 const POSTROUTING_PRIORITY: i32 = 100;
@@ -54,10 +53,10 @@ impl State {
 
 impl Protocol {
     pub(crate) fn as_port_payload_expr(&self) -> Result<&impl Expression, FirewallError> {
-        match self.0.into() {
-            libc::IPPROTO_TCP => Ok(&nft_expr!(payload tcp dport)),
-            libc::IPPROTO_UDP => Ok(&nft_expr!(payload udp dport)),
-            _ => Err(FirewallError::UnsupportedProtocol(self.0)),
+        match self {
+            Self::Tcp => Ok(&nft_expr!(payload tcp dport)),
+            Self::Udp => Ok(&nft_expr!(payload udp dport)),
+            _ => Err(FirewallError::UnsupportedProtocol(*self as u8)),
         }
     }
 }
@@ -76,7 +75,7 @@ impl SetKey for Protocol {
     const TYPE: u32 = 12;
 
     fn data(&self) -> Box<[u8]> {
-        Box::new([self.0])
+        Box::new([*self as u8])
     }
 }
 
@@ -90,28 +89,6 @@ pub trait FirewallRule {
 
 fn add_address_to_set(set: *mut nftnl_sys::nftnl_set, ip: &Address) -> Result<(), FirewallError> {
     match ip {
-        Address::Ip(ip) => match ip {
-            IpAddr::V4(ip) => {
-                add_to_set(set, ip, Some(ip))?;
-            }
-            IpAddr::V6(ip) => {
-                add_to_set(set, ip, Some(ip))?;
-            }
-        },
-        Address::Range(start, end) => match (start, end) {
-            (IpAddr::V4(start), IpAddr::V4(end)) => {
-                add_to_set(set, start, Some(end))?;
-            }
-            (IpAddr::V6(start), IpAddr::V6(end)) => {
-                add_to_set(set, start, Some(end))?;
-            }
-            _ => {
-                return Err(FirewallError::InvalidConfiguration(format!(
-                    "Expected both addresses to be of the same type, got {:?} and {:?}",
-                    start, end
-                )))
-            }
-        },
         Address::Network(network) => {
             let upper_bound = max_address(network);
             let net = network.network();
@@ -124,12 +101,20 @@ fn add_address_to_set(set: *mut nftnl_sys::nftnl_set, ip: &Address) -> Result<()
                 }
                 _ => {
                     return Err(FirewallError::InvalidConfiguration(format!(
-                        "Expected both addresses to be of the same type, got {:?} and {:?}",
-                        net, upper_bound
+                        "Expected both addresses to be of the same type, got {net:?} and \
+                        {upper_bound:?}",
                     )))
                 }
             }
         }
+        Address::Range(addr_range) => match addr_range {
+            IpAddrRange::V4(ipv4_range) => {
+                add_to_set(set, ipv4_range.start(), Some(ipv4_range.end()))?;
+            }
+            IpAddrRange::V6(ipv6_range) => {
+                add_to_set(set, ipv6_range.start(), Some(ipv6_range.end()))?;
+            }
+        },
     }
 
     Ok(())
@@ -137,6 +122,9 @@ fn add_address_to_set(set: *mut nftnl_sys::nftnl_set, ip: &Address) -> Result<()
 
 fn add_port_to_set(set: *mut nftnl_sys::nftnl_set, port: &Port) -> Result<(), FirewallError> {
     match port {
+        Port::Any => {
+            // nothing to do
+        }
         Port::Single(port) => {
             let inet_service = InetService(*port);
             add_to_set(set, &inet_service, Some(&inet_service))?;
@@ -167,15 +155,16 @@ impl FirewallRule for FilterRule<'_> {
         batch: &mut Batch,
     ) -> Result<Rule<'a>, FirewallError> {
         let mut rule = Rule::new(chain);
-        debug!("Converting {:?} to nftables expression", self);
+        debug!("Converting {self:?} to nftables expression");
         // Debug purposes only
         let mut matches = Vec::new();
 
         if !self.dest_ports.is_empty() && self.protocols.len() > 1 {
-            return Err(FirewallError::InvalidConfiguration(
-                    format!("Cannot specify multiple protocols with destination ports, specified protocols: {:?}, destination ports: {:?}, Defguard Rule ID: {}",
-                    self.protocols, self.dest_ports, self.defguard_rule_id)
-            ));
+            return Err(FirewallError::InvalidConfiguration(format!(
+                "Cannot specify multiple protocols with destination ports, specified \
+                protocols: {:?}, destination ports: {:?}, Defguard Rule ID: {}",
+                self.protocols, self.dest_ports, self.defguard_rule_id
+            )));
         }
 
         // TODO: Reduce code duplication here
@@ -323,14 +312,15 @@ impl FirewallRule for FilterRule<'_> {
                         });
 
                         rule.add_expr(&nft_expr!(meta l4proto));
-                        rule.add_expr(&nft_expr!(cmp == protocol.0));
+                        rule.add_expr(&nft_expr!(cmp == *protocol as u8));
                         rule.add_expr(protocol.as_port_payload_expr()?);
                         rule.add_expr(&nft_expr!(lookup & set));
                     }
                 }
 
                 debug!(
-                    "Added single protocol ({:?}) match and destination ports match to nftables expression: {:?}",
+                    "Added single protocol ({:?}) match and destination ports match to nftables \
+                    expression: {:?}",
                     self.protocols, self.dest_ports
                 );
                 matches.push(format!(
@@ -352,9 +342,9 @@ impl FirewallRule for FilterRule<'_> {
                     rule.add_expr(&nft_expr!(payload ipv6 nextheader));
                 }
 
-                rule.add_expr(&nft_expr!(cmp == protocol.0));
-                debug!("Added protocol match to rule: {:?}", protocol);
-                matches.push(format!("SINGLE PROTOCOL: {:?}", protocol));
+                rule.add_expr(&nft_expr!(cmp == *protocol as u8));
+                debug!("Added protocol match to rule: {protocol:?}");
+                matches.push(format!("SINGLE PROTOCOL: {protocol:?}"));
             }
         }
 
@@ -367,8 +357,8 @@ impl FirewallRule for FilterRule<'_> {
             } else {
                 rule.add_expr(&nft_expr!(cmp == exact));
             }
-            debug!("Added input interface match to rule: {:?}", iifname);
-            matches.push(format!("INPUT INTERFACE: {:?}", iifname));
+            debug!("Added input interface match to rule: {iifname:?}");
+            matches.push(format!("INPUT INTERFACE: {iifname:?}"));
         }
 
         if let Some(oifname) = &self.oifname {
@@ -380,8 +370,8 @@ impl FirewallRule for FilterRule<'_> {
             } else {
                 rule.add_expr(&nft_expr!(cmp == exact));
             }
-            debug!("Added output interface match to rule: {:?}", oifname);
-            matches.push(format!("OUTPUT INTERFACE: {:?}", oifname));
+            debug!("Added output interface match to rule: {oifname:?}");
+            matches.push(format!("OUTPUT INTERFACE: {oifname:?}"));
         }
 
         if !self.states.is_empty() {
@@ -418,10 +408,7 @@ impl FirewallRule for FilterRule<'_> {
 
         // comment <comment>
         if let Some(comment_string) = &self.comment {
-            debug!(
-                "Adding comment to nftables expression: {:?}",
-                comment_string
-            );
+            debug!("Adding comment to nftables expression: {comment_string:?}");
             // Since we are interoping with C, truncate the string to 255 *bytes* (not UTF-8 characters)
             // 256 is the maximum length of a comment string in nftables, leave 1 byte for the null terminator
             let maybe_truncated_str = if comment_string.len() > 255 {
@@ -436,13 +423,13 @@ impl FirewallRule for FilterRule<'_> {
                 ))
             })?;
             rule.set_comment(comment);
-            debug!("Added comment to nftables expression: {:?}", comment_string);
+            debug!("Added comment to nftables expression: {comment_string:?}");
         } else {
             debug!("No comment provided for nftables expression");
         }
 
         let matches = matches.join(" AND ");
-        debug!("Created nftables rule with matches: {:?}", matches);
+        debug!("Created nftables rule with matches: {matches:?}");
 
         Ok(rule)
     }
@@ -559,8 +546,8 @@ impl FirewallRule for NatRule {
 // }
 
 /// Sets up the default chains for the firewall
-pub(crate) fn init_firewall(
-    initial_policy: Option<Policy>,
+pub(super) fn init_firewall(
+    initial_policy: Policy,
     defguard_fwd_chain_priority: Option<i32>,
     batch: &mut Batch,
     ifname: &str,
@@ -576,14 +563,14 @@ pub(crate) fn init_firewall(
         nftnl::Hook::Forward,
         defguard_fwd_chain_priority.unwrap_or(FORWARD_PRIORITY),
     );
-    fw_chain.set_policy(initial_policy.unwrap_or(Policy::Allow).into());
+    fw_chain.set_policy(initial_policy.into());
     fw_chain.set_type(nftnl::ChainType::Filter);
     batch.add(&fw_chain, nftnl::MsgType::Add);
 
     Ok(())
 }
 
-pub(crate) fn drop_table(batch: &mut Batch, ifname: &str) -> Result<(), FirewallError> {
+pub(super) fn drop_table(batch: &mut Batch, ifname: &str) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
     batch.add(&table, nftnl::MsgType::Del);
@@ -591,7 +578,7 @@ pub(crate) fn drop_table(batch: &mut Batch, ifname: &str) -> Result<(), Firewall
     Ok(())
 }
 
-pub(crate) fn drop_chain(
+pub(super) fn drop_chain(
     chain: &Chains,
     batch: &mut Batch,
     ifname: &str,
@@ -605,7 +592,7 @@ pub(crate) fn drop_chain(
 }
 
 /// Applies masquerade on the specified interface for the outgoing packets
-pub(crate) fn set_masq(
+pub(super) fn set_masq(
     ifname: &str,
     enabled: bool,
     batch: &mut Batch,
@@ -638,26 +625,26 @@ pub(crate) fn set_masq(
     Ok(())
 }
 
-pub(crate) fn set_default_policy(
-    policy: Policy,
-    batch: &mut Batch,
-    ifname: &str,
-) -> Result<(), FirewallError> {
-    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
-    batch.add(&table, nftnl::MsgType::Add);
+// pub(super) fn set_default_policy(
+//     policy: Policy,
+//     batch: &mut Batch,
+//     ifname: &str,
+// ) -> Result<(), FirewallError> {
+//     let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
+//     batch.add(&table, nftnl::MsgType::Add);
 
-    let mut forward_chain = Chains::Forward.to_chain(&table);
-    forward_chain.set_policy(if policy == Policy::Allow {
-        nftnl::Policy::Accept
-    } else {
-        nftnl::Policy::Drop
-    });
-    batch.add(&forward_chain, nftnl::MsgType::Add);
+//     let mut forward_chain = Chains::Forward.to_chain(&table);
+//     forward_chain.set_policy(if policy == Policy::Allow {
+//         nftnl::Policy::Accept
+//     } else {
+//         nftnl::Policy::Drop
+//     });
+//     batch.add(&forward_chain, nftnl::MsgType::Add);
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-pub(crate) fn allow_established_traffic(
+pub(super) fn allow_established_traffic(
     batch: &mut Batch,
     ifname: &str,
 ) -> Result<(), FirewallError> {
@@ -680,7 +667,7 @@ pub(crate) fn allow_established_traffic(
     Ok(())
 }
 
-pub(crate) fn ignore_unrelated_traffic(
+pub(super) fn ignore_unrelated_traffic(
     batch: &mut Batch,
     ifname: &str,
 ) -> Result<(), FirewallError> {
@@ -704,7 +691,8 @@ pub(crate) fn ignore_unrelated_traffic(
     Ok(())
 }
 
-pub enum Tables {
+#[allow(dead_code)]
+enum Tables {
     Filter(ProtoFamily),
     Nat(ProtoFamily),
     Defguard(ProtoFamily),
@@ -724,7 +712,7 @@ impl Tables {
                 *family,
             ),
             Self::Defguard(family) => Table::new(
-                &CString::new(DEFGUARD_TABLE.replace("{IFNAME}", ifname))
+                &CString::new(DEFGUARD_TABLE.to_owned() + ifname)
                     .expect("Failed to create CString from DEFGUARD_TABLE constant."),
                 *family,
             ),
@@ -732,7 +720,7 @@ impl Tables {
     }
 }
 
-pub enum Chains {
+pub(super) enum Chains {
     Forward,
     Postrouting,
 }
@@ -754,7 +742,7 @@ impl Chains {
     }
 }
 
-pub(crate) fn apply_filter_rules(
+pub(super) fn apply_filter_rules(
     rules: Vec<FilterRule>,
     batch: &mut Batch,
     ifname: &str,
@@ -828,16 +816,16 @@ fn socket_recv<'a>(
 fn max_address(network: &IpNetwork) -> IpAddr {
     match network {
         IpNetwork::V4(network) => {
-            let ip_u32 = u32::from(network.ip());
-            let mask_u32 = u32::from(network.mask());
+            let addr = network.ip().to_bits();
+            let mask = network.mask().to_bits();
 
-            IpAddr::V4(Ipv4Addr::from(ip_u32 | !mask_u32))
+            IpAddr::V4(Ipv4Addr::from(addr | !mask))
         }
         IpNetwork::V6(network) => {
-            let ip_u128 = u128::from(network.ip());
-            let mask_u128 = u128::from(network.mask());
+            let addr = network.ip().to_bits();
+            let mask = network.mask().to_bits();
 
-            IpAddr::V6(Ipv6Addr::from(ip_u128 | !mask_u128))
+            IpAddr::V6(Ipv6Addr::from(addr | !mask))
         }
     }
 }
@@ -850,13 +838,7 @@ fn new_anon_set<T>(
 where
     T: SetKey,
 {
-    let set = Set::<T>::new(
-        &CString::new(ANON_SET_NAME)
-            .expect("Failed to create CString from ANON_SET_NAME constant."),
-        get_set_id(),
-        table,
-        family,
-    );
+    let set = Set::<T>::new(ANON_SET_NAME, get_set_id(), table, family);
 
     if interval_set {
         unsafe {

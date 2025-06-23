@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Emitter::default().add_instructions(&git2)?.emit()?;
 
     // compiling protos using path on build time
-    let mut config = prost_build::Config::new();
+    let mut config = tonic_build::Config::new();
     // enable optional fields
     config.protoc_arg("--experimental_allow_proto3_optional");
     tonic_build::configure().compile_protos_with_config(

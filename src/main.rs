@@ -4,7 +4,7 @@ use defguard_gateway::{
     config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
     execute_command, gateway::Gateway, init_syslog, server::run_server,
 };
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
 use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
 use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
@@ -39,18 +39,18 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     let ifname = config.ifname.clone();
-    let firewall_api = FirewallApi::new(&ifname);
+    let firewall_api = FirewallApi::new(&ifname)?;
 
     let mut gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
         Gateway::new(config.clone(), wgapi, firewall_api)?
     } else {
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
         {
             let wgapi = WGApi::<Kernel>::new(ifname)?;
             Gateway::new(config.clone(), wgapi, firewall_api)?
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "netbsd"))]
         {
             eprintln!("Gateway only supports userspace WireGuard for macOS");
             return Ok(());
