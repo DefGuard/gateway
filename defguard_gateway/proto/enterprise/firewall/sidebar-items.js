@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["FirewallPolicy","IpVersion","Protocol"],"mod":["ip_address","port"],"struct":["FirewallConfig","FirewallRule","IpAddress","IpRange","Port","PortRange"]};
