@@ -92,5 +92,5 @@ impl FirewallApi {
     }
 }
 
-#[cfg(not(test))]
+// #[cfg(not(test))]
 mod api;

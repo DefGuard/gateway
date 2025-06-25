@@ -9,7 +9,7 @@ use ipnetwork::IpNetwork;
 #[cfg(test)]
 use ipnetwork::{Ipv4Network, Ipv6Network};
 use nftnl::{
-    expr::{Expression, InterfaceName},
+    expr::{Expression, Immediate, InterfaceName, Nat, NatType, Register},
     nft_expr, nftnl_sys,
     set::{Set, SetKey},
     Batch, Chain, FinalizedBatch, ProtoFamily, Rule, Table,
@@ -435,18 +435,14 @@ impl FirewallRule for FilterRule<'_> {
     }
 }
 
-#[derive(Debug, Default)]
-struct NatRule {
-    src_ip: Option<IpAddr>,
-    dest_ip: Option<IpAddr>,
-    oifname: Option<String>,
-    iifname: Option<String>,
+#[derive(Debug)]
+struct MasqueradeRule {
+    oifname: String,
     negated_oifname: bool,
-    negated_iifname: bool,
     counter: bool,
 }
 
-impl FirewallRule for NatRule {
+impl FirewallRule for MasqueradeRule {
     fn to_chain_rule<'a>(
         &self,
         chain: &'a Chain,
@@ -454,42 +450,12 @@ impl FirewallRule for NatRule {
     ) -> Result<Rule<'a>, FirewallError> {
         let mut rule = Rule::new(chain);
 
-        if let Some(src_ip) = self.src_ip {
-            if src_ip.is_ipv4() {
-                rule.add_expr(&nft_expr!(payload ipv4 saddr));
-            } else {
-                rule.add_expr(&nft_expr!(payload ipv6 saddr));
-            }
-            rule.add_expr(&nft_expr!(cmp == src_ip));
-        }
-
-        if let Some(dest_ip) = self.dest_ip {
-            if dest_ip.is_ipv4() {
-                rule.add_expr(&nft_expr!(payload ipv4 daddr));
-            } else {
-                rule.add_expr(&nft_expr!(payload ipv6 daddr));
-            }
-            rule.add_expr(&nft_expr!(cmp == dest_ip));
-        }
-
-        if let Some(iifname) = &self.iifname {
-            rule.add_expr(&nft_expr!(meta iifname));
-            let exact = InterfaceName::Exact(CString::new(iifname.as_str()).unwrap());
-            if self.negated_iifname {
-                rule.add_expr(&nft_expr!(cmp != exact));
-            } else {
-                rule.add_expr(&nft_expr!(cmp == exact));
-            }
-        }
-
-        if let Some(oifname) = &self.oifname {
-            rule.add_expr(&nft_expr!(meta oifname));
-            let exact = InterfaceName::Exact(CString::new(oifname.as_str()).unwrap());
-            if self.negated_oifname {
-                rule.add_expr(&nft_expr!(cmp != exact));
-            } else {
-                rule.add_expr(&nft_expr!(cmp == exact));
-            }
+        rule.add_expr(&nft_expr!(meta oifname));
+        let exact = InterfaceName::Exact(CString::new(self.oifname.as_str()).unwrap());
+        if self.negated_oifname {
+            rule.add_expr(&nft_expr!(cmp != exact));
+        } else {
+            rule.add_expr(&nft_expr!(cmp == exact));
         }
 
         if self.counter {
@@ -497,6 +463,103 @@ impl FirewallRule for NatRule {
         }
 
         rule.add_expr(&nft_expr!(masquerade));
+
+        Ok(rule)
+    }
+}
+
+#[derive(Debug)]
+struct SnatRule<'a> {
+    src_ips: &'a [Address],
+    public_ip: &'a IpAddr,
+    oifname: String,
+    negated_oifname: bool,
+    counter: bool,
+    ipv4: bool,
+}
+
+impl FirewallRule for SnatRule<'_> {
+    fn to_chain_rule<'a>(
+        &self,
+        chain: &'a Chain,
+        batch: &mut Batch,
+    ) -> Result<Rule<'a>, FirewallError> {
+        let mut rule = Rule::new(chain);
+
+        if !self.src_ips.is_empty() {
+            if self.ipv4 {
+                let set = new_anon_set::<Ipv4Addr>(chain.get_table(), ProtoFamily::Inet, true)?;
+                batch.add(&set, nftnl::MsgType::Add);
+
+                for ip in self.src_ips {
+                    add_address_to_set(set.as_ptr(), ip)?;
+                }
+
+                // ip saddr {x.x.x.x, x.x.x.x}
+                set.elems_iter().for_each(|elem| {
+                    batch.add(&elem, nftnl::MsgType::Add);
+                });
+
+                rule.add_expr(&nft_expr!(meta nfproto));
+                rule.add_expr(&nft_expr!(cmp == libc::NFPROTO_IPV4 as u8));
+                rule.add_expr(&nft_expr!(payload ipv4 saddr));
+
+                rule.add_expr(&nft_expr!(lookup & set));
+            } else {
+                let set = new_anon_set::<Ipv6Addr>(chain.get_table(), ProtoFamily::Inet, true)?;
+                batch.add(&set, nftnl::MsgType::Add);
+
+                for ip in self.src_ips {
+                    add_address_to_set(set.as_ptr(), ip)?;
+                }
+
+                // ip6 saddr {x.x.x.x, x.x.x.x}
+                set.elems_iter().for_each(|elem| {
+                    batch.add(&elem, nftnl::MsgType::Add);
+                });
+
+                rule.add_expr(&nft_expr!(meta nfproto));
+                rule.add_expr(&nft_expr!(cmp == libc::NFPROTO_IPV6 as u8));
+                rule.add_expr(&nft_expr!(payload ipv6 saddr));
+
+                rule.add_expr(&nft_expr!(lookup & set));
+            }
+            debug!(
+                "Added source IP addresses match to nftables expression: {:?}",
+                self.src_ips
+            );
+        }
+
+        rule.add_expr(&nft_expr!(meta oifname));
+        let exact = InterfaceName::Exact(CString::new(self.oifname.as_str()).unwrap());
+        if self.negated_oifname {
+            rule.add_expr(&nft_expr!(cmp != exact));
+        } else {
+            rule.add_expr(&nft_expr!(cmp == exact));
+        }
+
+        if self.counter {
+            rule.add_expr(&nft_expr!(counter));
+        }
+
+        let public_ip_bytes = match self.public_ip {
+            IpAddr::V4(ipv4_addr) => ipv4_addr.octets().to_vec(),
+            IpAddr::V6(ipv6_addr) => ipv6_addr.octets().to_vec(),
+        };
+        rule.add_expr(&Immediate::new(public_ip_bytes, Register::Reg1));
+        let family = if self.ipv4 {
+            ProtoFamily::Ipv4
+        } else {
+            ProtoFamily::Ipv6
+        };
+        let snat_expr = Nat {
+            nat_type: NatType::SNat,
+            family,
+            ip_register: Register::Reg1,
+            port_register: None,
+        };
+
+        rule.add_expr(&snat_expr);
 
         Ok(rule)
     }
@@ -613,17 +676,24 @@ pub(super) fn set_nat_rules(
 
     // add SNAT bindings
     for binding in snat_bindings {
-        let snat_rule = todo!();
+        let snat_rule = SnatRule {
+            oifname: LOOPBACK_IFACE.to_string(),
+            negated_oifname: true,
+            counter: true,
+            src_ips: &binding.source_addrs,
+            public_ip: &binding.public_ip,
+            ipv4: binding.ipv4,
+        }
+        .to_chain_rule(&nat_chain, batch)?;
 
-        // batch.add(&snat_rule, nftnl::MsgType::Add);
+        batch.add(&snat_rule, nftnl::MsgType::Add);
     }
 
     // add MASQUERADE rule
-    let masquerade_rule = NatRule {
-        oifname: Some(LOOPBACK_IFACE.to_string()),
+    let masquerade_rule = MasqueradeRule {
+        oifname: LOOPBACK_IFACE.to_string(),
         negated_oifname: true,
         counter: true,
-        ..Default::default()
     }
     .to_chain_rule(&nat_chain, batch)?;
 

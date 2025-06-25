@@ -835,11 +835,13 @@ mod tests {
         let config1 = FirewallConfig {
             rules: vec![rule1.clone(), rule2.clone()],
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         let config_empty = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         #[cfg(target_os = "macos")]
@@ -899,16 +901,19 @@ mod tests {
         let config1 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         let config2 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Deny,
+            snat_bindings: vec![],
         };
 
         let config3 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         #[cfg(target_os = "macos")]
@@ -954,6 +959,7 @@ mod tests {
                 ipv4: true,
             }],
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
         gateway.firewall_config = Some(config1);
         assert!(gateway.has_firewall_config_changed(&config4));
@@ -971,6 +977,7 @@ mod tests {
                 ipv4: false,
             }],
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
         gateway.firewall_config = Some(config4);
         assert!(gateway.has_firewall_config_changed(&config5));

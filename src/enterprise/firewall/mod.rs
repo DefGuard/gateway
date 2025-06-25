@@ -1,8 +1,8 @@
 pub mod api;
-#[cfg(test)]
-mod dummy;
+// #[cfg(test)]
+// mod dummy;
 mod iprange;
-#[cfg(all(not(test), target_os = "linux"))]
+#[cfg(target_os = "linux")]
 mod nftables;
 #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 mod packetfilter;
@@ -206,6 +206,8 @@ pub(crate) struct SnatBinding {
     pub source_addrs: Vec<Address>,
     pub public_ip: IpAddr,
     pub comment: Option<String>,
+    /// Whether a rule uses IPv4 (true) or IPv6 (false)
+    pub ipv4: bool, // FIXME: is that really needed?
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -302,6 +304,8 @@ impl FirewallConfig {
                 source_addrs,
                 public_ip,
                 comment: binding.comment,
+                // we assume source IPs have already been filtered and are compatible with chosen public IP
+                ipv4: public_ip.is_ipv4(),
             };
 
             debug!("Parsed received proto SNAT binding as: {snat_binding:?}");
