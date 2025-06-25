@@ -72,8 +72,12 @@ impl FirewallManagementApi for FirewallApi {
         Ok(())
     }
 
-    /// Set masquerade status.
-    fn set_masquerade_status(&mut self, _enabled: bool) -> Result<(), FirewallError> {
+    /// Setup Network Address Translation using POSTROUTING chain rules
+    fn setup_nat(
+        &mut self,
+        masquerade_enabled: bool,
+        snat_bindings: &[SnatBinding],
+    ) -> Result<(), FirewallError> {
         Ok(())
     }
 

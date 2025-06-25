@@ -16,7 +16,7 @@ use nftnl::{
 };
 
 use super::{get_set_id, Address, FilterRule, Policy, Port, Protocol, State};
-use crate::enterprise::firewall::{iprange::IpAddrRange, FirewallError};
+use crate::enterprise::firewall::{iprange::IpAddrRange, FirewallError, SnatBinding};
 
 const FILTER_TABLE: &str = "filter";
 const NAT_TABLE: &str = "nat";
@@ -591,24 +591,35 @@ pub(super) fn drop_chain(
     Ok(())
 }
 
-/// Applies masquerade on the specified interface for the outgoing packets
-pub(super) fn set_masq(
-    ifname: &str,
-    enabled: bool,
+/// Applies NAT rules on the specified interface for the outgoing packets
+pub(super) fn set_nat_rules(
     batch: &mut Batch,
+    ifname: &str,
+    masquerade_enabled: bool,
+    snat_bindings: &[SnatBinding],
 ) -> Result<(), FirewallError> {
+    // cleanup existing POSTROUTING chain rules
     let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
     batch.add(&table, nftnl::MsgType::Add);
 
     drop_chain(&Chains::Postrouting, batch, ifname)?;
 
+    // initialize new POSTROUTING chain
     let mut nat_chain = Chains::Postrouting.to_chain(&table);
     nat_chain.set_hook(nftnl::Hook::PostRouting, POSTROUTING_PRIORITY);
     nat_chain.set_policy(nftnl::Policy::Accept);
     nat_chain.set_type(nftnl::ChainType::Nat);
     batch.add(&nat_chain, nftnl::MsgType::Add);
 
-    let nat_rule = NatRule {
+    // add SNAT bindings
+    for binding in snat_bindings {
+        let snat_rule = todo!();
+
+        // batch.add(&snat_rule, nftnl::MsgType::Add);
+    }
+
+    // add MASQUERADE rule
+    let masquerade_rule = NatRule {
         oifname: Some(LOOPBACK_IFACE.to_string()),
         negated_oifname: true,
         counter: true,
@@ -616,10 +627,10 @@ pub(super) fn set_masq(
     }
     .to_chain_rule(&nat_chain, batch)?;
 
-    if enabled {
-        batch.add(&nat_rule, nftnl::MsgType::Add);
+    if masquerade_enabled {
+        batch.add(&masquerade_rule, nftnl::MsgType::Add);
     } else {
-        batch.add(&nat_rule, nftnl::MsgType::Del);
+        batch.add(&masquerade_rule, nftnl::MsgType::Del);
     }
 
     Ok(())

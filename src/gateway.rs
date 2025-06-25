@@ -260,6 +260,7 @@ impl Gateway {
 
     /// Checks whether the firewall config changed
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
+        // TODO: check SNAT bindings
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
                 || self.have_firewall_rules_changed(&new_fw_config.rules);
@@ -317,9 +318,8 @@ impl Gateway {
                 self.firewall_api.begin()?;
                 self.firewall_api
                     .setup(fw_config.default_policy, self.config.fw_priority)?;
-                if self.config.masquerade {
-                    self.firewall_api.set_masquerade_status(true)?;
-                }
+                self.firewall_api
+                    .setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
                 self.firewall_api.add_rules(fw_config.rules.clone())?;
                 self.firewall_api.commit()?;
                 self.firewall_config = Some(fw_config.clone());
@@ -331,9 +331,7 @@ impl Gateway {
             debug!("Received firewall configuration is empty, cleaning up firewall rules...");
             self.firewall_api.begin()?;
             self.firewall_api.cleanup()?;
-            if self.config.masquerade {
-                self.firewall_api.set_masquerade_status(true)?;
-            }
+            self.firewall_api.setup_nat(self.config.masquerade, &[])?;
             self.firewall_api.commit()?;
             self.firewall_config = None;
             debug!("Cleaned up firewall rules");
@@ -582,7 +580,7 @@ impl Gateway {
             #[cfg(target_os = "linux")]
             if self.config.masquerade {
                 self.firewall_api.begin()?;
-                self.firewall_api.set_masquerade_status(true)?;
+                self.firewall_api.setup_nat(self.config.masquerade, &[])?;
                 self.firewall_api.commit()?;
             }
         }

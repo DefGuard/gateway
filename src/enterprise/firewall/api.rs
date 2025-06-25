@@ -42,14 +42,15 @@ pub(crate) trait FirewallManagementApi {
     /// Clean up the firewall rules.
     fn cleanup(&mut self) -> Result<(), FirewallError>;
 
-    /// Add fireall `rules`.
+    /// Add firewall rules.
     fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError>;
 
-    /// Add SNAT firewall rules
-    fn add_snat_bindings(&mut self, snat_bindings: Vec<SnatBinding>) -> Result<(), FirewallError>;
-
-    /// Set masquerade status.
-    fn set_masquerade_status(&mut self, enabled: bool) -> Result<(), FirewallError>;
+    /// Setup Network Address Translation using POSTROUTING chain rules
+    fn setup_nat(
+        &mut self,
+        masquerade_enabled: bool,
+        snat_bindings: &[SnatBinding],
+    ) -> Result<(), FirewallError>;
 
     /// Begin rule transaction.
     fn begin(&mut self) -> Result<(), FirewallError>;
