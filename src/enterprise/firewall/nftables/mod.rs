@@ -4,13 +4,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use netfilter::{
     allow_established_traffic, apply_filter_rules, drop_table, ignore_unrelated_traffic,
-    init_firewall, send_batch, set_masq,
+    init_firewall, send_batch, set_nat_rules,
 };
 use nftnl::Batch;
 
 use super::{
     api::{FirewallApi, FirewallManagementApi},
-    Address, FirewallError, FirewallRule, Policy, Port, Protocol,
+    Address, FirewallError, FirewallRule, Policy, Port, Protocol, SnatBinding,
 };
 
 static SET_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -194,27 +194,20 @@ impl FirewallManagementApi for FirewallApi {
         Ok(())
     }
 
-    // Allows for changing the default policy of the firewall.
-    // fn set_firewall_default_policy(&mut self, policy: Policy) -> Result<(), FirewallError> {
-    //     debug!("Setting default firewall policy to: {policy:?}");
-    //     if let Some(batch) = &mut self.batch {
-    //         set_default_policy(policy, batch, &self.ifname)?;
-    //     } else {
-    //         return Err(FirewallError::TransactionNotStarted);
-    //     }
-    //     debug!("Set firewall default policy to {policy:?}");
-    //     Ok(())
-    // }
+    fn setup_nat(
+        &mut self,
+        masquerade_enabled: bool,
+        snat_bindings: &[SnatBinding],
+    ) -> Result<(), FirewallError> {
+        debug!("Setting up POSTROUTING chain rules with masquerade status: {masquerade_enabled} and SNAT bindings: {snat_bindings:?}");
 
-    /// Allows for changing the masquerade status of the firewall.
-    fn set_masquerade_status(&mut self, enabled: bool) -> Result<(), FirewallError> {
-        debug!("Setting masquerade status to: {enabled:?}");
         if let Some(batch) = &mut self.batch {
-            set_masq(&self.ifname, enabled, batch)?;
+            set_nat_rules(batch, &self.ifname, masquerade_enabled, snat_bindings)?;
         } else {
             return Err(FirewallError::TransactionNotStarted);
         }
-        debug!("Set masquerade status to: {enabled:?}");
+
+        debug!("Finished POSTROUTING chain rules setup");
         Ok(())
     }
 
