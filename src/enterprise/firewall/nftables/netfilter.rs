@@ -542,15 +542,16 @@ impl FirewallRule for SnatRule<'_> {
             rule.add_expr(&nft_expr!(counter));
         }
 
-        let public_ip_bytes = match self.public_ip {
-            IpAddr::V4(ipv4_addr) => ipv4_addr.octets().to_vec(),
-            IpAddr::V6(ipv6_addr) => ipv6_addr.octets().to_vec(),
-        };
-        rule.add_expr(&Immediate::new(public_ip_bytes, Register::Reg1));
-        let family = if self.ipv4 {
-            ProtoFamily::Ipv4
-        } else {
-            ProtoFamily::Ipv6
+        // determine if public IP is IPv4 or IPv6 and store the address in a register
+        let family = match self.public_ip {
+            IpAddr::V4(ipv4_addr) => {
+                rule.add_expr(&Immediate::new(*ipv4_addr, Register::Reg1));
+                ProtoFamily::Ipv4
+            }
+            IpAddr::V6(ipv6_addr) => {
+                rule.add_expr(&Immediate::new(*ipv6_addr, Register::Reg1));
+                ProtoFamily::Ipv6
+            }
         };
         let snat_expr = Nat {
             nat_type: NatType::SNat,
@@ -682,7 +683,7 @@ pub(super) fn set_nat_rules(
             counter: true,
             src_ips: &binding.source_addrs,
             public_ip: &binding.public_ip,
-            ipv4: binding.ipv4,
+            ipv4: binding.public_ip.is_ipv4(),
         }
         .to_chain_rule(&nat_chain, batch)?;
 
