@@ -148,6 +148,26 @@ fn add_protocol_to_set(
     Ok(())
 }
 
+fn add_rule_comment(rule: &mut Rule, comment: &str) -> Result<(), FirewallError> {
+    debug!("Adding comment to nftables expression: {comment:?}");
+    // Since we are interoping with C, truncate the string to 255 *bytes* (not UTF-8 characters)
+    // 256 is the maximum length of a comment string in nftables, leave 1 byte for the null terminator
+    let maybe_truncated_str = if comment.len() > 255 {
+        warn!("Comment string {comment} is too long, truncating to 255 bytes");
+        &comment[..=255]
+    } else {
+        comment
+    };
+    let comment = &CString::new(maybe_truncated_str).map_err(|e| {
+        FirewallError::NetlinkError(format!(
+            "Failed to create CString from string {comment}. Error: {e:?}"
+        ))
+    })?;
+    rule.set_comment(comment);
+    debug!("Added comment to nftables expression: {comment:?}");
+    Ok(())
+}
+
 impl FirewallRule for FilterRule<'_> {
     fn to_chain_rule<'a>(
         &self,
@@ -408,22 +428,7 @@ impl FirewallRule for FilterRule<'_> {
 
         // comment <comment>
         if let Some(comment_string) = &self.comment {
-            debug!("Adding comment to nftables expression: {comment_string:?}");
-            // Since we are interoping with C, truncate the string to 255 *bytes* (not UTF-8 characters)
-            // 256 is the maximum length of a comment string in nftables, leave 1 byte for the null terminator
-            let maybe_truncated_str = if comment_string.len() > 255 {
-                warn!("Comment string {comment_string} is too long, truncating to 255 bytes");
-                &comment_string[..=255]
-            } else {
-                comment_string.as_str()
-            };
-            let comment = &CString::new(maybe_truncated_str).map_err(|e| {
-                FirewallError::NetlinkError(format!(
-                    "Failed to create CString from string {comment_string}. Error: {e:?}"
-                ))
-            })?;
-            rule.set_comment(comment);
-            debug!("Added comment to nftables expression: {comment_string:?}");
+            add_rule_comment(&mut rule, comment_string)?;
         } else {
             debug!("No comment provided for nftables expression");
         }
@@ -476,6 +481,7 @@ struct SnatRule<'a> {
     negated_oifname: bool,
     counter: bool,
     ipv4: bool,
+    comment: Option<String>,
 }
 
 impl FirewallRule for SnatRule<'_> {
@@ -561,6 +567,13 @@ impl FirewallRule for SnatRule<'_> {
         };
 
         rule.add_expr(&snat_expr);
+
+        // comment <comment>
+        if let Some(comment_string) = &self.comment {
+            add_rule_comment(&mut rule, comment_string)?;
+        } else {
+            debug!("No comment provided for nftables expression");
+        }
 
         Ok(rule)
     }
@@ -684,6 +697,7 @@ pub(super) fn set_nat_rules(
             src_ips: &binding.source_addrs,
             public_ip: &binding.public_ip,
             ipv4: binding.public_ip.is_ipv4(),
+            comment: binding.comment.clone(),
         }
         .to_chain_rule(&nat_chain, batch)?;
 
