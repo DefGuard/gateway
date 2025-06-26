@@ -1,6 +1,4 @@
 pub mod api;
-// #[cfg(test)]
-// mod dummy;
 mod iprange;
 #[cfg(target_os = "linux")]
 mod nftables;
