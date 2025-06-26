@@ -30,7 +30,7 @@ use crate::{
     config::Config,
     enterprise::firewall::{
         api::{FirewallApi, FirewallManagementApi},
-        FirewallConfig, FirewallRule,
+        FirewallConfig, FirewallRule, SnatBinding,
     },
     error::GatewayError,
     execute_command, mask,
@@ -260,10 +260,10 @@ impl Gateway {
 
     /// Checks whether the firewall config changed
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
-        // TODO: check SNAT bindings
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
-                || self.have_firewall_rules_changed(&new_fw_config.rules);
+                || self.have_firewall_rules_changed(&new_fw_config.rules)
+                || self.have_snat_bindings_changed(&new_fw_config.snat_bindings);
         }
 
         true
@@ -297,6 +297,38 @@ impl Gateway {
             false
         } else {
             debug!("There are new Defguard ACL rules in the new configuration, but we don't have any in the current one. Rules have changed.");
+            true
+        }
+    }
+
+    /// Checks whether SNAT bindings have changed.
+    fn have_snat_bindings_changed(&self, new_bindings: &[SnatBinding]) -> bool {
+        debug!("Checking if SNAT bindings have changed");
+        if let Some(current_config) = &self.firewall_config {
+            let current_bindings = &current_config.snat_bindings;
+            if current_bindings.len() != new_bindings.len() {
+                debug!("Number of SNAT bindings is different, so the bindings have changed");
+                return true;
+            }
+
+            for binding in new_bindings {
+                if !current_bindings.contains(binding) {
+                    debug!("Found a new SNAT binding: {binding:?}. Bindings have changed.");
+                    return true;
+                }
+            }
+
+            for binding in current_bindings {
+                if !new_bindings.contains(binding) {
+                    debug!("Found a removed SNAT binding: {binding:?}. Bindings have changed.");
+                    return true;
+                }
+            }
+
+            debug!("SNAT bindings are the same. Bindings have not changed. My bindings: {current_bindings:?}, new bindings: {new_bindings:?}");
+            false
+        } else {
+            debug!("There are new SNAT bindings in the new configuration, but we don't have any in the current one. Bindings have changed.");
             true
         }
     }
