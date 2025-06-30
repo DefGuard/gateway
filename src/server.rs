@@ -21,13 +21,20 @@ async fn healthcheck<'a>(
     }
 }
 
-pub async fn run_server(http_port: u16, connected: Arc<AtomicBool>) -> Result<(), GatewayError> {
+pub async fn run_server(
+    http_port: u16,
+    http_bind_address: Option<IpAddr>,
+    connected: Arc<AtomicBool>,
+) -> Result<(), GatewayError> {
     let app = Router::new()
         .route("/health", get(healthcheck))
         .layer(Extension(connected));
 
     // run server
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), http_port);
+    let addr = SocketAddr::new(
+        http_bind_address.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+        http_port,
+    );
     let listener = TcpListener::bind(&addr).await?;
     info!("Health check listening on {addr}");
     serve(listener, app.into_make_service())
