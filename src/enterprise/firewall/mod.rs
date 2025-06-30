@@ -269,7 +269,7 @@ impl FirewallConfig {
                     Address::Network(IpNetwork::V6(
                         Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 0).unwrap(),
                     ))
-                })
+                });
             }
             let firewall_rule = FirewallRule {
                 id: rule.id,
