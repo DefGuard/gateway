@@ -5,9 +5,13 @@ mod nftables;
 #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 mod packetfilter;
 
-use std::{fmt, net::IpAddr, str::FromStr};
+use std::{
+    fmt,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    str::FromStr,
+};
 
-use ipnetwork::IpNetwork;
+use ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
 use iprange::{IpAddrRange, IpAddrRangeError};
 use thiserror::Error;
 
@@ -264,6 +268,18 @@ impl FirewallConfig {
             })?);
 
             let ipv4 = rule.ip_version == proto::enterprise::firewall::IpVersion::Ipv4 as i32;
+            // Add implicit unspecified address to pin it to a specific IP version.
+            if source_addrs.is_empty() {
+                source_addrs.push(if ipv4 {
+                    Address::Network(IpNetwork::V4(
+                        Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0).unwrap(),
+                    ))
+                } else {
+                    Address::Network(IpNetwork::V6(
+                        Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 0).unwrap(),
+                    ))
+                });
+            }
             let firewall_rule = FirewallRule {
                 id: rule.id,
                 source_addrs,
