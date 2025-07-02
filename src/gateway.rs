@@ -30,7 +30,7 @@ use crate::{
     config::Config,
     enterprise::firewall::{
         api::{FirewallApi, FirewallManagementApi},
-        FirewallConfig, FirewallRule,
+        FirewallConfig, FirewallRule, SnatBinding,
     },
     error::GatewayError,
     execute_command, mask,
@@ -262,7 +262,8 @@ impl Gateway {
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
-                || self.have_firewall_rules_changed(&new_fw_config.rules);
+                || self.have_firewall_rules_changed(&new_fw_config.rules)
+                || self.have_snat_bindings_changed(&new_fw_config.snat_bindings);
         }
 
         true
@@ -300,6 +301,38 @@ impl Gateway {
         }
     }
 
+    /// Checks whether SNAT bindings have changed.
+    fn have_snat_bindings_changed(&self, new_bindings: &[SnatBinding]) -> bool {
+        debug!("Checking if SNAT bindings have changed");
+        if let Some(current_config) = &self.firewall_config {
+            let current_bindings = &current_config.snat_bindings;
+            if current_bindings.len() != new_bindings.len() {
+                debug!("Number of SNAT bindings is different, so the bindings have changed");
+                return true;
+            }
+
+            for binding in new_bindings {
+                if !current_bindings.contains(binding) {
+                    debug!("Found a new SNAT binding: {binding:?}. Bindings have changed.");
+                    return true;
+                }
+            }
+
+            for binding in current_bindings {
+                if !new_bindings.contains(binding) {
+                    debug!("Found a removed SNAT binding: {binding:?}. Bindings have changed.");
+                    return true;
+                }
+            }
+
+            debug!("SNAT bindings are the same. Bindings have not changed. My bindings: {current_bindings:?}, new bindings: {new_bindings:?}");
+            false
+        } else {
+            debug!("There are new SNAT bindings in the new configuration, but we don't have any in the current one. Bindings have changed.");
+            true
+        }
+    }
+
     /// Process and apply firewall configuration changes.
     /// - If the main config changed (default policy), reconfigure the whole firewall.
     /// - If only the rules changed, apply the new rules. Currently also reconfigures the whole firewall but that
@@ -317,9 +350,8 @@ impl Gateway {
                 self.firewall_api.begin()?;
                 self.firewall_api
                     .setup(fw_config.default_policy, self.config.fw_priority)?;
-                if self.config.masquerade {
-                    self.firewall_api.set_masquerade_status(true)?;
-                }
+                self.firewall_api
+                    .setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
                 self.firewall_api.add_rules(fw_config.rules.clone())?;
                 self.firewall_api.commit()?;
                 self.firewall_config = Some(fw_config.clone());
@@ -331,9 +363,7 @@ impl Gateway {
             debug!("Received firewall configuration is empty, cleaning up firewall rules...");
             self.firewall_api.begin()?;
             self.firewall_api.cleanup()?;
-            if self.config.masquerade {
-                self.firewall_api.set_masquerade_status(true)?;
-            }
+            self.firewall_api.setup_nat(self.config.masquerade, &[])?;
             self.firewall_api.commit()?;
             self.firewall_config = None;
             debug!("Cleaned up firewall rules");
@@ -597,7 +627,7 @@ impl Gateway {
             #[cfg(target_os = "linux")]
             if !self.config.disable_firewall_management && self.config.masquerade {
                 self.firewall_api.begin()?;
-                self.firewall_api.set_masquerade_status(true)?;
+                self.firewall_api.setup_nat(self.config.masquerade, &[])?;
                 self.firewall_api.commit()?;
             }
         }
@@ -852,11 +882,13 @@ mod tests {
         let config1 = FirewallConfig {
             rules: vec![rule1.clone(), rule2.clone()],
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         let config_empty = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         #[cfg(target_os = "macos")]
@@ -916,16 +948,19 @@ mod tests {
         let config1 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         let config2 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Deny,
+            snat_bindings: vec![],
         };
 
         let config3 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         #[cfg(target_os = "macos")]
@@ -971,6 +1006,7 @@ mod tests {
                 ipv4: true,
             }],
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
         gateway.firewall_config = Some(config1);
         assert!(gateway.has_firewall_config_changed(&config4));
@@ -988,6 +1024,7 @@ mod tests {
                 ipv4: false,
             }],
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
         gateway.firewall_config = Some(config4);
         assert!(gateway.has_firewall_config_changed(&config5));
