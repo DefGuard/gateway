@@ -382,14 +382,19 @@ impl Gateway {
             debug!("Received configuration is identical to the current one. Skipping interface reconfiguration.");
         }
 
-        let new_firewall_configuration =
-            if let Some(firewall_config) = new_configuration.firewall_config {
-                Some(FirewallConfig::from_proto(firewall_config)?)
-            } else {
-                None
-            };
+        // process received firewall config unless firewall management is disabled
+        if !self.config.disable_firewall_management {
+            let new_firewall_configuration =
+                if let Some(firewall_config) = new_configuration.firewall_config {
+                    Some(FirewallConfig::from_proto(firewall_config)?)
+                } else {
+                    None
+                };
 
-        self.process_firewall_changes(new_firewall_configuration.as_ref())?;
+            self.process_firewall_changes(new_firewall_configuration.as_ref())?;
+        } else {
+            debug!("Firewall management is disabled. Skipping updating firewall configuration");
+        }
 
         Ok(())
     }
@@ -512,6 +517,11 @@ impl Gateway {
                             };
                         }
                         Some(update::Update::FirewallConfig(config)) => {
+                            if self.config.disable_firewall_management {
+                                debug!("Received firewall config update, but firewall management is disabled. Skipping processing this update: {config:?}");
+                                continue;
+                            }
+
                             debug!("Applying received firewall configuration: {config:?}");
                             let config_str = format!("{config:?}");
                             match FirewallConfig::from_proto(config) {
@@ -539,6 +549,11 @@ impl Gateway {
                             }
                         }
                         Some(update::Update::DisableFirewall(())) => {
+                            if self.config.disable_firewall_management {
+                                debug!("Received firewall disable request, but firewall management is disabled. Skipping processing this update");
+                                continue;
+                            }
+
                             debug!("Disabling firewall configuration");
                             if let Err(err) = self.process_firewall_changes(None) {
                                 error!("Failed to disable firewall configuration: {err}");
@@ -580,7 +595,7 @@ impl Gateway {
             );
         } else {
             #[cfg(target_os = "linux")]
-            if self.config.masquerade {
+            if !self.config.disable_firewall_management && self.config.masquerade {
                 self.firewall_api.begin()?;
                 self.firewall_api.set_masquerade_status(true)?;
                 self.firewall_api.commit()?;
