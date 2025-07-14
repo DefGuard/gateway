@@ -7,7 +7,7 @@ use super::{
 };
 use crate::enterprise::firewall::{
     api::{FirewallApi, FirewallManagementApi},
-    FirewallError, Policy,
+    FirewallError, Policy, SnatBinding,
 };
 
 impl FirewallManagementApi for FirewallApi {
