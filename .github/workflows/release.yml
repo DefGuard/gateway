@@ -53,7 +53,7 @@ jobs:
 
   build-release:
     name: Release ${{ matrix.build }}
-    # needs: [create-release]
+    needs: [create-release]
     runs-on:
       - self-hosted
       - ${{ matrix.os }}
