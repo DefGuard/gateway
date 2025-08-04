@@ -19,7 +19,10 @@ syslog = "7.0"
 thiserror = "2.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tokio-stream = { version = "0.1", features = [] }
-toml = { version = "0.8", default-features = false, features = ["parse"] }
+toml = { version = "0.9", default-features = false, features = [
+    "parse",
+    "serde",
+] }
 tonic = { version = "0.12", default-features = false, features = [
     "codegen",
     "gzip",

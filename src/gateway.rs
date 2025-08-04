@@ -383,7 +383,9 @@ impl Gateway {
         }
 
         // process received firewall config unless firewall management is disabled
-        if !self.config.disable_firewall_management {
+        if self.config.disable_firewall_management {
+            debug!("Firewall management is disabled. Skipping updating firewall configuration");
+        } else {
             let new_firewall_configuration =
                 if let Some(firewall_config) = new_configuration.firewall_config {
                     Some(FirewallConfig::from_proto(firewall_config)?)
@@ -392,8 +394,6 @@ impl Gateway {
                 };
 
             self.process_firewall_changes(new_firewall_configuration.as_ref())?;
-        } else {
-            debug!("Firewall management is disabled. Skipping updating firewall configuration");
         }
 
         Ok(())
