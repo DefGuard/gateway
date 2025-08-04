@@ -75,8 +75,8 @@ impl FirewallManagementApi for FirewallApi {
     /// Setup Network Address Translation using POSTROUTING chain rules
     fn setup_nat(
         &mut self,
-        masquerade_enabled: bool,
-        snat_bindings: &[SnatBinding],
+        _masquerade_enabled: bool,
+        _snat_bindings: &[SnatBinding],
     ) -> Result<(), FirewallError> {
         Ok(())
     }
