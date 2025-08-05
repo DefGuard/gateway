@@ -1,12 +1,8 @@
-#[cfg(test)]
-use std::str::FromStr;
 use std::{
     ffi::{CStr, CString},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
-#[cfg(test)]
-use ipnetwork::{Ipv4Network, Ipv6Network};
 use nftnl::{
     expr::{Expression, InterfaceName},
     nft_expr, nftnl_sys,

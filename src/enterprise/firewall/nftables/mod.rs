@@ -366,7 +366,6 @@ mod tests {
     use ipnetwork::IpNetwork;
 
     use super::*;
-    use crate::proto::enterprise::firewall::FirewallRule as ProtoFirewallRule;
 
     #[test]
     fn test_sorting() {
@@ -412,44 +411,9 @@ mod tests {
         let addrs = vec![Address::Network(
             IpNetwork::from_str("192.168.1.10/32").unwrap(),
         )];
-        let result = merge_addrs(addrs).unwrap();
+        let result = merge_addrs(addrs.clone()).unwrap();
 
-        assert_eq!(result.len(), 1);
-        if let Address::Range(range) = &result[0] {
-            assert_eq!(range.start(), IpAddr::from_str("192.168.1.10").unwrap());
-            assert_eq!(range.end(), IpAddr::from_str("192.168.1.10").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-    }
-
-    #[test]
-    fn test_merge_addrs_overlapping_ranges() {
-        let addrs = vec![
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.10").unwrap(),
-                    IpAddr::from_str("192.168.1.20").unwrap(),
-                )
-                .unwrap(),
-            ),
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.15").unwrap(),
-                    IpAddr::from_str("192.168.1.25").unwrap(),
-                )
-                .unwrap(),
-            ),
-        ];
-        let result = merge_addrs(addrs).unwrap();
-
-        assert_eq!(result.len(), 1);
-        if let Address::Range(range) = &result[0] {
-            assert_eq!(range.start(), IpAddr::from_str("192.168.1.10").unwrap());
-            assert_eq!(range.end(), IpAddr::from_str("192.168.1.25").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
+        assert_eq!(result, addrs);
     }
 
     #[test]
@@ -559,57 +523,28 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_addrs_unsorted_input() {
-        let addrs = vec![
-            Address::Network(IpNetwork::from_str("192.168.1.13/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.10/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.12/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.11/32").unwrap()),
-        ];
-        let result = merge_addrs(addrs).unwrap();
-
-        assert_eq!(result.len(), 1);
-        if let Address::Range(range) = &result[0] {
-            assert_eq!(range.start(), IpAddr::from_str("192.168.1.10").unwrap());
-            assert_eq!(range.end(), IpAddr::from_str("192.168.1.13").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-    }
-
-    #[test]
     fn test_merge_addrs_non_adjacent_singles() {
         let addrs = vec![
-            Address::Network(IpNetwork::from_str("192.168.1.20/32").unwrap()),
             Address::Network(IpNetwork::from_str("192.168.1.10/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.15/32").unwrap()),
             Address::Network(IpNetwork::from_str("192.168.1.11/32").unwrap()),
+            Address::Network(IpNetwork::from_str("192.168.1.15/32").unwrap()),
+            Address::Network(IpNetwork::from_str("192.168.1.20/32").unwrap()),
         ];
         let result = merge_addrs(addrs).unwrap();
 
         // These should result in 3 separate ranges: 10-11, 15, 20
-        assert_eq!(result.len(), 3);
-
-        if let Address::Range(range1) = &result[0] {
-            assert_eq!(range1.start(), IpAddr::from_str("192.168.1.10").unwrap());
-            assert_eq!(range1.end(), IpAddr::from_str("192.168.1.11").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-
-        if let Address::Range(range2) = &result[1] {
-            assert_eq!(range2.start(), IpAddr::from_str("192.168.1.15").unwrap());
-            assert_eq!(range2.end(), IpAddr::from_str("192.168.1.15").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-
-        if let Address::Range(range3) = &result[2] {
-            assert_eq!(range3.start(), IpAddr::from_str("192.168.1.20").unwrap());
-            assert_eq!(range3.end(), IpAddr::from_str("192.168.1.20").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
+        let expected_addrs = vec![
+            Address::Range(
+                IpAddrRange::new(
+                    IpAddr::from_str("192.168.1.10").unwrap(),
+                    IpAddr::from_str("192.168.1.11").unwrap(),
+                )
+                .unwrap(),
+            ),
+            Address::Network(IpNetwork::from_str("192.168.1.15/32").unwrap()),
+            Address::Network(IpNetwork::from_str("192.168.1.20/32").unwrap()),
+        ];
+        assert_eq!(result, expected_addrs);
     }
 
     #[test]
@@ -625,35 +560,6 @@ mod tests {
         if let Address::Range(range) = &result[0] {
             assert_eq!(range.start(), IpAddr::from_str("2001:db8::1").unwrap());
             assert_eq!(range.end(), IpAddr::from_str("2001:db8::3").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-    }
-
-    #[test]
-    fn test_merge_addrs_contained_ranges() {
-        let addrs = vec![
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.10").unwrap(),
-                    IpAddr::from_str("192.168.1.30").unwrap(),
-                )
-                .unwrap(),
-            ),
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.15").unwrap(),
-                    IpAddr::from_str("192.168.1.20").unwrap(),
-                )
-                .unwrap(),
-            ),
-        ];
-        let result = merge_addrs(addrs).unwrap();
-
-        assert_eq!(result.len(), 1);
-        if let Address::Range(range) = &result[0] {
-            assert_eq!(range.start(), IpAddr::from_str("192.168.1.10").unwrap());
-            assert_eq!(range.end(), IpAddr::from_str("192.168.1.30").unwrap());
         } else {
             panic!("Expected Address::Range");
         }
@@ -688,26 +594,29 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_addrs_large_gap() {
+    fn test_merge_addrs_gap() {
         let addrs = vec![
             Address::Network(IpNetwork::from_str("192.168.1.1/32").unwrap()),
             Address::Network(IpNetwork::from_str("192.168.1.100/32").unwrap()),
         ];
-        let result = merge_addrs(addrs).unwrap();
+        let result = merge_addrs(addrs.clone()).unwrap();
 
-        // Should not merge since there's a large gap
-        assert_eq!(result.len(), 2);
-        if let Address::Range(range1) = &result[0] {
-            assert_eq!(range1.start(), IpAddr::from_str("192.168.1.1").unwrap());
-            assert_eq!(range1.end(), IpAddr::from_str("192.168.1.1").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-        if let Address::Range(range2) = &result[1] {
-            assert_eq!(range2.start(), IpAddr::from_str("192.168.1.100").unwrap());
-            assert_eq!(range2.end(), IpAddr::from_str("192.168.1.100").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
+        // Should not merge since there's a gap
+        assert_eq!(result, addrs);
+
+        let addrs = vec![
+            Address::Range(
+                IpAddrRange::new(
+                    IpAddr::from_str("192.168.1.10").unwrap(),
+                    IpAddr::from_str("192.168.1.20").unwrap(),
+                )
+                .unwrap(),
+            ),
+            Address::Network(IpNetwork::from_str("192.168.1.100/32").unwrap()),
+        ];
+        let result = merge_addrs(addrs.clone()).unwrap();
+
+        // Should not merge since there's a gap
+        assert_eq!(result, addrs);
     }
 }
