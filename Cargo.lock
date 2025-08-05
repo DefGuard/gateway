@@ -407,7 +407,8 @@ dependencies = [
 [[package]]
 name = "defguard_wireguard_rs"
 version = "0.7.5"
-source = "git+https://github.com/DefGuard/wireguard-rs.git?rev=v0.7.5#d090d2249e5bb3d4154f07de098387e2ab69bfdc"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e2d2f56ffaf56903a51b128c6f6730b8b344fab0d0be0f5db0b65dcccbb7334"
 dependencies = [
  "base64",
  "libc",
