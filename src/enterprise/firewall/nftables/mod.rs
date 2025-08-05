@@ -63,10 +63,7 @@ struct FilterRule<'a> {
 /// For example if we use `172.30.0.2/31, 172.30.0.4/31` as `saddr` in a rule,
 /// then 172.30.0.4 will not be matched.
 fn merge_addrs(addrs: Vec<Address>) -> Result<Vec<Address>, IpAddrRangeError> {
-    debug!(
-        "Merging any contiguous subnets and ranges found within address list: {:?}",
-        addrs
-    );
+    debug!("Merging any contiguous subnets and ranges found within address list: {addrs:?}");
 
     if addrs.is_empty() {
         debug!("No addresses provided, returning empty vector.");
