@@ -64,7 +64,7 @@ struct FilterRule<'a> {
 /// then 172.30.0.4 will not be matched.
 fn merge_addrs(addrs: Vec<Address>) -> Result<Vec<Address>, IpAddrRangeError> {
     debug!(
-        "Merging any contiguous subnets found within address list: {:?}",
+        "Merging any contiguous subnets and ranges found within address list: {:?}",
         addrs
     );
 
@@ -115,7 +115,7 @@ fn merge_addrs(addrs: Vec<Address>) -> Result<Vec<Address>, IpAddrRangeError> {
         merged_addrs.push(address)
     }
 
-    debug!("Prepared addresses: {:?}", merged_addrs);
+    debug!("Prepared addresses: {merged_addrs:?}");
 
     Ok(merged_addrs)
 }

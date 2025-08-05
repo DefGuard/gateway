@@ -26,6 +26,8 @@ pub(crate) enum Address {
 }
 
 impl Address {
+    // FIXME: remove after merging nft hotfix into dev
+    #[allow(dead_code)]
     pub fn first(&self) -> IpAddr {
         match self {
             Address::Network(network) => network.ip(),
@@ -33,6 +35,8 @@ impl Address {
         }
     }
 
+    // FIXME: remove after merging nft hotfix into dev
+    #[allow(dead_code)]
     pub fn last(&self) -> IpAddr {
         match self {
             Address::Network(network) => max_address(network),
