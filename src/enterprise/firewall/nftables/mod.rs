@@ -121,26 +121,14 @@ fn merge_addrs(addrs: Vec<Address>) -> Result<Vec<Address>, IpAddrRangeError> {
 fn next_ip(ip: IpAddr) -> IpAddr {
     match ip {
         IpAddr::V4(ipv4) => {
-            let octets = ipv4.octets();
-            let mut num: u32 = ((octets[0] as u32) << 24)
-                | ((octets[1] as u32) << 16)
-                | ((octets[2] as u32) << 8)
-                | octets[3] as u32;
-            num = num.wrapping_add(1);
-            IpAddr::V4(Ipv4Addr::from(num))
+            let ip_u32 = ipv4.to_bits();
+            let next_ip_u32 = ip_u32.wrapping_add(1);
+            IpAddr::V4(Ipv4Addr::from(next_ip_u32))
         }
         IpAddr::V6(ipv6) => {
-            let segments = ipv6.segments();
-            let mut num: u128 = ((segments[0] as u128) << 112)
-                | ((segments[1] as u128) << 96)
-                | ((segments[2] as u128) << 80)
-                | ((segments[3] as u128) << 64)
-                | ((segments[4] as u128) << 48)
-                | ((segments[5] as u128) << 32)
-                | ((segments[6] as u128) << 16)
-                | segments[7] as u128;
-            num = num.wrapping_add(1);
-            IpAddr::V6(Ipv6Addr::from(num))
+            let ip_u128 = ipv6.to_bits();
+            let next_ip_u128 = ip_u128.wrapping_add(1);
+            IpAddr::V6(Ipv6Addr::from(next_ip_u128))
         }
     }
 }
@@ -187,39 +175,27 @@ impl FirewallApi {
             );
             for protocol in rule.protocols.clone() {
                 debug!("Applying rule for protocol: {protocol:?}");
+                let mut filter_rule = FilterRule {
+                    src_ips: &source_addrs,
+                    dest_ips: &dest_addrs,
+                    protocols: vec![protocol],
+                    action: rule.verdict,
+                    counter: true,
+                    defguard_rule_id: rule.id,
+                    v4: rule.ipv4,
+                    comment: rule.comment.clone(),
+                    ..Default::default()
+                };
                 if protocol.supports_ports() {
                     debug!("Protocol supports ports, rule.");
-                    let rule = FilterRule {
-                        src_ips: &source_addrs,
-                        dest_ips: &dest_addrs,
-                        dest_ports: &rule.destination_ports,
-                        protocols: vec![protocol],
-                        action: rule.verdict,
-                        counter: true,
-                        defguard_rule_id: rule.id,
-                        v4: rule.ipv4,
-                        comment: rule.comment.clone(),
-                        ..Default::default()
-                    };
-                    filter_rules.push(rule);
+                    filter_rule.dest_ports = &rule.destination_ports;
                 } else {
                     debug!(
                         "Protocol does not support ports, applying nftables rule and ignoring \
                         destination ports."
                     );
-                    let rule = FilterRule {
-                        src_ips: &source_addrs,
-                        dest_ips: &dest_addrs,
-                        protocols: vec![protocol],
-                        action: rule.verdict,
-                        counter: true,
-                        defguard_rule_id: rule.id,
-                        v4: rule.ipv4,
-                        comment: rule.comment.clone(),
-                        ..Default::default()
-                    };
-                    filter_rules.push(rule);
                 }
+                filter_rules.push(filter_rule);
             }
         } else {
             debug!(
