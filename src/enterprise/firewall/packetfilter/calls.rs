@@ -115,14 +115,14 @@ impl AddrWrap {
     #[must_use]
     fn with_interface(ifname: &str) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
-        let self_ptr = uninit.as_mut_ptr();
         let len = ifname.len().min(IFNAMSIZ - 1);
         unsafe {
-            (*self_ptr).v.ifname[..len].copy_from_slice(&ifname.as_bytes()[..len]);
+            let self_ptr = &mut *uninit.as_mut_ptr();
+            self_ptr.v.ifname[..len].copy_from_slice(&ifname.as_bytes()[..len]);
             // Probably, this is needed only for pfctl to omit displaying number of bits.
             // FIXME: Fill all bytes for IPv6.
-            (*self_ptr).v.a.mask[..4].fill(255);
-            (*self_ptr).r#type = AddrType::DynIftl;
+            self_ptr.v.a.mask[..4].fill(255);
+            self_ptr.r#type = AddrType::DynIftl;
         }
 
         unsafe { uninit.assume_init() }
@@ -211,7 +211,7 @@ struct TailQueue<T> {
 impl<T> TailQueue<T> {
     fn init(&mut self) {
         self.tqh_first = ptr::null_mut();
-        self.tqh_last = &mut self.tqh_first;
+        self.tqh_last = &raw mut self.tqh_first;
     }
 }
 
@@ -332,13 +332,14 @@ impl Pool {
     /// Insert `PoolAddr` at the end of the list. Take ownership of the given `PoolAddr`.
     pub(super) fn insert_pool_addr(&mut self, mut pool_addr: PoolAddr) {
         // TODO: Traverse tail queue; for now assume empty tail queue.
-        if !self.list.tqh_first.is_null() {
-            panic!("Expected one entry in PoolAddr TailQueue.");
-        }
-        self.list.tqh_first = &mut pool_addr;
-        self.list.tqh_last = &mut pool_addr.entries.tqe_next;
+        assert!(
+            self.list.tqh_first.is_null(),
+            "Expected one entry in PoolAddr TailQueue."
+        );
+        self.list.tqh_first = &raw mut pool_addr;
+        self.list.tqh_last = &raw mut pool_addr.entries.tqe_next;
         pool_addr.entries.tqe_next = ptr::null_mut();
-        pool_addr.entries.tqe_prev = &mut self.list.tqh_first;
+        pool_addr.entries.tqe_prev = &raw mut self.list.tqh_first;
     }
 }
 
@@ -554,51 +555,52 @@ pub(super) struct Rule {
 impl Rule {
     pub(super) fn from_pf_rule(pf_rule: &PacketFilterRule) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
-        let self_ptr = uninit.as_mut_ptr();
 
         unsafe {
+            let self_ptr = &mut *uninit.as_mut_ptr();
+
             if let Some(from) = pf_rule.from {
-                (*self_ptr).src = RuleAddr::new(from, pf_rule.from_port);
+                self_ptr.src = RuleAddr::new(from, pf_rule.from_port);
             }
             if let Some(to) = pf_rule.to {
-                (*self_ptr).dst = RuleAddr::new(to, pf_rule.to_port);
+                self_ptr.dst = RuleAddr::new(to, pf_rule.to_port);
             }
             if let Some(interface) = &pf_rule.interface {
                 let len = interface.len().min(IFNAMSIZ - 1);
-                (*self_ptr).ifname[..len].copy_from_slice(&interface.as_bytes()[..len]);
+                self_ptr.ifname[..len].copy_from_slice(&interface.as_bytes()[..len]);
             }
             if let Some(label) = &pf_rule.label {
                 let len = label.len().min(PF_RULE_LABEL_SIZE - 1);
-                (*self_ptr).label[..len].copy_from_slice(&label.as_bytes()[..len]);
+                self_ptr.label[..len].copy_from_slice(&label.as_bytes()[..len]);
             }
 
             // Don't use routing tables.
             #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
             {
-                (*self_ptr).rtableid = -1;
+                self_ptr.rtableid = -1;
             }
             #[cfg(target_os = "macos")]
             {
-                (*self_ptr).rtableid = 0;
+                self_ptr.rtableid = 0;
             }
 
-            (*self_ptr).action = pf_rule.action;
-            (*self_ptr).direction = pf_rule.direction;
-            (*self_ptr).log = pf_rule.log;
-            (*self_ptr).quick = pf_rule.quick;
+            self_ptr.action = pf_rule.action;
+            self_ptr.direction = pf_rule.direction;
+            self_ptr.log = pf_rule.log;
+            self_ptr.quick = pf_rule.quick;
 
-            (*self_ptr).keep_state = pf_rule.state;
+            self_ptr.keep_state = pf_rule.state;
             let af = pf_rule.address_family();
-            (*self_ptr).af = af;
+            self_ptr.af = af;
             #[cfg(target_os = "macos")]
             {
-                (*self_ptr).rpool.af = af;
+                self_ptr.rpool.af = af;
             }
-            (*self_ptr).proto = pf_rule.proto as u8;
-            (*self_ptr).flags = pf_rule.tcp_flags;
-            (*self_ptr).flagset = pf_rule.tcp_flags_set;
+            self_ptr.proto = pf_rule.proto as u8;
+            self_ptr.flags = pf_rule.tcp_flags;
+            self_ptr.flagset = pf_rule.tcp_flags_set;
 
-            (*self_ptr).rpool.list.init();
+            self_ptr.rpool.list.init();
 
             uninit.assume_init()
         }
@@ -658,13 +660,13 @@ impl IocRule {
     #[must_use]
     pub(super) fn with_rule(anchor: &str, rule: Rule) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
-        let self_ptr = uninit.as_mut_ptr();
 
         // Copy anchor name.
         let len = anchor.len().min(MAXPATHLEN - 1);
         unsafe {
-            (*self_ptr).anchor[..len].copy_from_slice(&anchor.as_bytes()[..len]);
-            (*self_ptr).rule = rule;
+            let self_ptr = &mut *uninit.as_mut_ptr();
+            self_ptr.anchor[..len].copy_from_slice(&anchor.as_bytes()[..len]);
+            self_ptr.rule = rule;
         }
 
         unsafe { uninit.assume_init() }
@@ -689,12 +691,12 @@ impl IocPoolAddr {
     #[must_use]
     pub(super) fn new(anchor: &str) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
-        let self_ptr = uninit.as_mut_ptr();
 
         // Copy anchor name.
         let len = anchor.len().min(MAXPATHLEN - 1);
         unsafe {
-            (*self_ptr).anchor[..len].copy_from_slice(&anchor.as_bytes()[..len]);
+            let self_ptr = &mut *uninit.as_mut_ptr();
+            self_ptr.anchor[..len].copy_from_slice(&anchor.as_bytes()[..len]);
         }
 
         unsafe { uninit.assume_init() }
@@ -704,10 +706,10 @@ impl IocPoolAddr {
     #[must_use]
     pub(super) fn with_pool_addr(addr: PoolAddr, ticket: c_uint) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
-        let self_ptr = uninit.as_mut_ptr();
         unsafe {
-            (*self_ptr).ticket = ticket;
-            (*self_ptr).addr = addr;
+            let self_ptr = &mut *uninit.as_mut_ptr();
+            self_ptr.ticket = ticket;
+            self_ptr.addr = addr;
         }
 
         unsafe { uninit.assume_init() }
@@ -726,13 +728,13 @@ impl IocTransElement {
     #[must_use]
     pub(super) fn new(ruleset: RuleSet, anchor: &str) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
-        let self_ptr = uninit.as_mut_ptr();
 
         // Copy anchor name.
         let len = anchor.len().min(MAXPATHLEN - 1);
         unsafe {
-            (*self_ptr).rs_num = ruleset;
-            (*self_ptr).anchor[..len].copy_from_slice(&anchor.as_bytes()[..len]);
+            let self_ptr = &mut *uninit.as_mut_ptr();
+            self_ptr.rs_num = ruleset;
+            self_ptr.anchor[..len].copy_from_slice(&anchor.as_bytes()[..len]);
         }
 
         unsafe { uninit.assume_init() }

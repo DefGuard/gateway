@@ -1,4 +1,4 @@
-FROM rust:1-slim as builder
+FROM rust:1-slim AS builder
 
 RUN apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
 WORKDIR /app

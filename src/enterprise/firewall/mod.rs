@@ -1,8 +1,6 @@
 pub mod api;
-#[cfg(test)]
-mod dummy;
 mod iprange;
-#[cfg(all(not(test), target_os = "linux"))]
+#[cfg(target_os = "linux")]
 mod nftables;
 #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 mod packetfilter;
@@ -223,9 +221,18 @@ pub(crate) struct FirewallRule {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SnatBinding {
+    pub id: i64,
+    pub source_addrs: Vec<Address>,
+    pub public_ip: IpAddr,
+    pub comment: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FirewallConfig {
     pub rules: Vec<FirewallRule>,
     pub default_policy: Policy,
+    pub snat_bindings: Vec<SnatBinding>,
 }
 
 impl FirewallConfig {
@@ -234,6 +241,7 @@ impl FirewallConfig {
     ) -> Result<Self, FirewallError> {
         debug!("Parsing following received firewall proto configuration: {config:?}");
         let mut rules = Vec::new();
+        let mut snat_bindings = Vec::new();
         let default_policy =
             Policy::from_proto(config.default_policy.try_into().map_err(|err| {
                 FirewallError::TypeConversionError(format!("Invalid default policy: {err:?}"))
@@ -242,6 +250,7 @@ impl FirewallConfig {
             "Default firewall policy defined: {default_policy:?}. Proceeding to parsing rules..."
         );
 
+        // parse received firewall rules
         for rule in config.rules {
             debug!("Parsing the following received Defguard ACL proto rule: {rule:?}");
             let mut source_addrs = Vec::new();
@@ -305,9 +314,37 @@ impl FirewallConfig {
             rules.push(firewall_rule);
         }
 
+        // parse received SNAT bindings
+        for binding in config.snat_bindings {
+            debug!("Parsing the following received SNAT binding proto: {binding:?}");
+
+            let mut source_addrs = Vec::new();
+            for addr in binding.source_addrs {
+                source_addrs.push(Address::from_proto(&addr)?);
+            }
+
+            let public_ip = binding.public_ip.parse().map_err(|err| {
+                FirewallError::TypeConversionError(format!(
+                    "Invalid public IP address format: {err}"
+                ))
+            })?;
+
+            let snat_binding = SnatBinding {
+                id: binding.id,
+                source_addrs,
+                public_ip,
+                comment: binding.comment,
+            };
+
+            debug!("Parsed received proto SNAT binding as: {snat_binding:?}");
+
+            snat_bindings.push(snat_binding);
+        }
+
         Ok(Self {
             rules,
             default_policy,
+            snat_bindings,
         })
     }
 }

@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, net::IpAddr, path::PathBuf};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -105,6 +105,9 @@ pub struct Config {
     #[arg(long, env = "DEFGUARD_DISABLE_FW_MGMT")]
     #[serde(default)]
     pub disable_firewall_management: bool,
+
+    #[arg(long, env = "DEFGUARD_HTTP_BIND_ADDRESS")]
+    pub http_bind_address: Option<IpAddr>,
 }
 
 impl Default for Config {
@@ -130,6 +133,7 @@ impl Default for Config {
             masquerade: false,
             fw_priority: None,
             disable_firewall_management: false,
+            http_bind_address: None,
         }
     }
 }

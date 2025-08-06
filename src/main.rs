@@ -59,7 +59,11 @@ async fn main() -> Result<(), GatewayError> {
 
     let mut tasks = JoinSet::new();
     if let Some(health_port) = config.health_port {
-        tasks.spawn(run_server(health_port, Arc::clone(&gateway.connected)));
+        tasks.spawn(run_server(
+            health_port,
+            config.http_bind_address,
+            Arc::clone(&gateway.connected),
+        ));
     }
     tasks.spawn(async move { gateway.start().await });
     while let Some(Ok(result)) = tasks.join_next().await {
