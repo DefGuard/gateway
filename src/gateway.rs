@@ -20,14 +20,13 @@ use tokio::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
-    body::BoxBody,
     codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
     service::Interceptor,
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
-use tower::{ServiceExt, Layer};
+use tower::Layer;
 
 use crate::{
     config::Config,
@@ -113,7 +112,9 @@ pub struct Gateway {
     #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
-    client: GatewayServiceClient<InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>>,
+    client: GatewayServiceClient<
+        InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>,
+    >,
     stats_thread: Option<JoinHandle<()>>,
 }
 
@@ -251,7 +252,9 @@ impl Gateway {
     }
 
     async fn handle_stats_thread(
-        mut client: GatewayServiceClient<InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>>,
+        mut client: GatewayServiceClient<
+            InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>,
+        >,
         rx: UnboundedReceiverStream<StatsUpdate>,
     ) {
         let status = client.stats(rx).await;
@@ -480,8 +483,12 @@ impl Gateway {
 
     fn setup_client(
         config: &Config,
-    ) -> Result<GatewayServiceClient<InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>>, GatewayError>
-    {
+    ) -> Result<
+        GatewayServiceClient<
+            InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>,
+        >,
+        GatewayError,
+    > {
         debug!("Preparing gRPC client configuration");
         let tls = ClientTlsConfig::new();
         // Use CA if provided, otherwise load certificates from system.
@@ -503,7 +510,7 @@ impl Gateway {
 
         // Apply version layer to the channel
         let versioned_service = version_layer(VERSION.to_string()).layer(channel);
-        
+
         let auth_interceptor = AuthInterceptor::new(&config.token)?;
         let client = GatewayServiceClient::with_interceptor(versioned_service, auth_interceptor);
 
