@@ -9,18 +9,16 @@ use defguard_gateway::{
     config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
     execute_command, gateway::Gateway, init_syslog, server::run_server, VERSION,
 };
-use defguard_version::DefguardVersionSet;
+use defguard_version::{ComponentInfo, DefguardVersionSet};
 #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
 use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
-use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 use tokio::task::JoinSet;
 
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
     // parse config
     let config = get_config()?;
-    let version_set = Arc::new(RwLock::new(DefguardVersionSet::try_from(VERSION)?));
 
     // setup pidfile
     let pid = process::id();
@@ -31,14 +29,27 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     // setup logging
-    if config.use_syslog {
+    let version_set = if config.use_syslog {
         if let Err(error) = init_syslog(&config, pid) {
             log::error!("Unable to initialize syslog. Is the syslog daemon running?");
             return Err(error);
         }
+        Arc::new(RwLock::new(DefguardVersionSet {
+            own: ComponentInfo::try_from(VERSION)?,
+            core: Arc::new(RwLock::new(None)),
+            proxy: Arc::new(RwLock::new(None)),
+            gateway: Arc::new(RwLock::new(None)),
+        }))
     } else {
-        init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
-    }
+        defguard_version::tracing::init(
+            VERSION,
+            &config.log_level.to_string(),
+            &[
+                "send_grpc_message",
+                "bidirectional_communication",
+            ],
+        )
+    };
 
     if let Some(pre_up) = &config.pre_up {
         log::info!("Executing specified PRE_UP command: {pre_up}");
