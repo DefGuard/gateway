@@ -1,9 +1,15 @@
-use std::{fs::File, io::Write, process, sync::Arc};
+use std::{
+    fs::File,
+    io::Write,
+    process,
+    sync::{Arc, RwLock},
+};
 
 use defguard_gateway::{
     config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
-    execute_command, gateway::Gateway, init_syslog, server::run_server,
+    execute_command, gateway::Gateway, init_syslog, server::run_server, VERSION,
 };
+use defguard_version::DefguardVersionSet;
 #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
 use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
@@ -14,6 +20,7 @@ use tokio::task::JoinSet;
 async fn main() -> Result<(), GatewayError> {
     // parse config
     let config = get_config()?;
+    let version_set = Arc::new(RwLock::new(DefguardVersionSet::try_from(VERSION)?));
 
     // setup pidfile
     let pid = process::id();
@@ -43,12 +50,12 @@ async fn main() -> Result<(), GatewayError> {
 
     let mut gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
-        Gateway::new(config.clone(), wgapi, firewall_api)?
+        Gateway::new(config.clone(), wgapi, firewall_api, version_set)?
     } else {
         #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
         {
             let wgapi = WGApi::<Kernel>::new(ifname)?;
-            Gateway::new(config.clone(), wgapi, firewall_api)?
+            Gateway::new(config.clone(), wgapi, firewall_api, version_set)?
         }
         #[cfg(any(target_os = "macos", target_os = "netbsd"))]
         {
