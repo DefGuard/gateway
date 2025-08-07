@@ -450,6 +450,7 @@ dependencies = [
  "axum 0.8.4",
  "base64",
  "clap",
+ "defguard_version",
  "defguard_wireguard_rs",
  "env_logger",
  "gethostname",
@@ -468,8 +469,23 @@ dependencies = [
  "toml",
  "tonic",
  "tonic-build",
+ "tower 0.5.2",
  "vergen-git2",
  "x25519-dalek",
+]
+
+[[package]]
+name = "defguard_version"
+version = "0.0.0"
+dependencies = [
+ "http",
+ "os_info",
+ "semver",
+ "thiserror 2.0.12",
+ "tonic",
+ "tonic-middleware",
+ "tower 0.5.2",
+ "tracing",
 ]
 
 [[package]]
@@ -647,6 +663,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05f29059c0c2090612e8d742178b0580d2dc940c837851ad723096f87af6663e"
 
 [[package]]
+name = "futures-macro"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "162ee34ebcb7c64a8abebc059ce0fee27c2262618d7b60ed8faf72fef13c3650"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "futures-sink"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -665,9 +692,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fa08315bb612088cc391249efdc3bc77536f16c91f6cf495e6fbe85b20a4a81"
 dependencies = [
  "futures-core",
+ "futures-macro",
  "futures-task",
  "pin-project-lite",
  "pin-utils",
+ "slab",
 ]
 
 [[package]]
@@ -1344,6 +1373,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
 
 [[package]]
+name = "os_info"
+version = "3.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0e1ac5fde8d43c34139135df8ea9ee9465394b2d8d20f032d38998f64afffc3"
+dependencies = [
+ "log",
+ "plist",
+ "serde",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1402,6 +1443,19 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
+
+[[package]]
+name = "plist"
+version = "1.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3af6b589e163c5a788fab00ce0c0366f6efbb9959c2f9874b224936af7fce7e1"
+dependencies = [
+ "base64",
+ "indexmap 2.10.0",
+ "quick-xml",
+ "serde",
+ "time",
+]
 
 [[package]]
 name = "portable-atomic"
@@ -1511,6 +1565,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52c2c1bf36ddb1a1c396b3601a3cec27c2462e45f07c386894ec3ccf5332bd16"
 dependencies = [
  "prost",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.38.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9845d9dccf565065824e69f9f235fafba1587031eda353c1f1561cd6a6be78f4"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -2131,6 +2194,18 @@ dependencies = [
  "prost-types",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "tonic-middleware"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd11ca7918ee9f94e217285ace20caf6187476f399244ba8438cdc92ce665236"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "tonic",
+ "tower 0.4.13",
 ]
 
 [[package]]

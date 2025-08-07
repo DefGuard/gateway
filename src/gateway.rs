@@ -9,6 +9,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use defguard_version::client::{version_layer, DefguardVersionClientService};
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
 use tokio::{
@@ -19,12 +20,14 @@ use tokio::{
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
+    body::BoxBody,
     codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
     service::Interceptor,
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
+use tower::{ServiceExt, Layer};
 
 use crate::{
     config::Config,
@@ -110,7 +113,7 @@ pub struct Gateway {
     #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
-    client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
+    client: GatewayServiceClient<InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>>,
     stats_thread: Option<JoinHandle<()>>,
 }
 
@@ -248,7 +251,7 @@ impl Gateway {
     }
 
     async fn handle_stats_thread(
-        mut client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
+        mut client: GatewayServiceClient<InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>>,
         rx: UnboundedReceiverStream<StatsUpdate>,
     ) {
         let status = client.stats(rx).await;
@@ -477,7 +480,7 @@ impl Gateway {
 
     fn setup_client(
         config: &Config,
-    ) -> Result<GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>, GatewayError>
+    ) -> Result<GatewayServiceClient<InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>>, GatewayError>
     {
         debug!("Preparing gRPC client configuration");
         let tls = ClientTlsConfig::new();
@@ -498,8 +501,11 @@ impl Gateway {
             .tls_config(tls)?;
         let channel = endpoint.connect_lazy();
 
+        // Apply version layer to the channel
+        let versioned_service = version_layer(VERSION.to_string()).layer(channel);
+        
         let auth_interceptor = AuthInterceptor::new(&config.token)?;
-        let client = GatewayServiceClient::with_interceptor(channel, auth_interceptor);
+        let client = GatewayServiceClient::with_interceptor(versioned_service, auth_interceptor);
 
         debug!("gRPC client configuration done");
         Ok(client)
