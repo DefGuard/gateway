@@ -34,20 +34,17 @@ async fn main() -> Result<(), GatewayError> {
             log::error!("Unable to initialize syslog. Is the syslog daemon running?");
             return Err(error);
         }
-        Arc::new(RwLock::new(DefguardVersionSet {
+        Arc::new(DefguardVersionSet {
             own: ComponentInfo::try_from(VERSION)?,
             core: Arc::new(RwLock::new(None)),
             proxy: Arc::new(RwLock::new(None)),
             gateway: Arc::new(RwLock::new(None)),
-        }))
+        })
     } else {
         defguard_version::tracing::init(
             VERSION,
             &config.log_level.to_string(),
-            &[
-                "send_grpc_message",
-                "bidirectional_communication",
-            ],
+            &["send_grpc_message", "bidirectional_communication"],
         )
     };
 

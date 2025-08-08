@@ -4,15 +4,13 @@ use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex, RwLock,
+        Arc, Mutex,
     },
     time::{Duration, SystemTime},
 };
 
 use defguard_version::{
-    client::{
-        DefguardVersionClientLayer, DefguardVersionClientService,
-    },
+    client::{DefguardVersionClientLayer, DefguardVersionClientService},
     DefguardVersionSet,
 };
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
@@ -128,7 +126,7 @@ impl Gateway {
         config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
         firewall_api: FirewallApi,
-        version_set: Arc<RwLock<DefguardVersionSet>>,
+        version_set: Arc<DefguardVersionSet>,
     ) -> Result<Self, GatewayError> {
         let client = Self::setup_client(&config, version_set)?;
         Ok(Self {
@@ -489,7 +487,7 @@ impl Gateway {
 
     fn setup_client(
         config: &Config,
-        version_set: Arc<RwLock<DefguardVersionSet>>,
+        version_set: Arc<DefguardVersionSet>,
     ) -> Result<
         GatewayServiceClient<
             InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>,
@@ -516,11 +514,9 @@ impl Gateway {
         let channel = endpoint.connect_lazy();
 
         // Apply version layer to the channel
-        let versioned_service = DefguardVersionClientLayer::new(
-            version_set.read().unwrap().own.clone(),
-            Arc::clone(&version_set.read().unwrap().core),
-        )
-        .layer(channel);
+        let versioned_service =
+            DefguardVersionClientLayer::new(version_set.own.clone(), Arc::clone(&version_set.core))
+                .layer(channel);
 
         let auth_interceptor = AuthInterceptor::new(&config.token)?;
         let client = GatewayServiceClient::with_interceptor(versioned_service, auth_interceptor);
