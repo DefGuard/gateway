@@ -1,15 +1,9 @@
-use std::{
-    fs::File,
-    io::Write,
-    process,
-    sync::{Arc, RwLock},
-};
+use std::{fs::File, io::Write, process, sync::Arc};
 
 use defguard_gateway::{
     config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
     execute_command, gateway::Gateway, init_syslog, server::run_server, VERSION,
 };
-use defguard_version::{ComponentInfo, DefguardVersionSet};
 #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
 use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
@@ -29,23 +23,13 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     // setup logging
-    let version_set = if config.use_syslog {
+    if config.use_syslog {
         if let Err(error) = init_syslog(&config, pid) {
             log::error!("Unable to initialize syslog. Is the syslog daemon running?");
             return Err(error);
         }
-        Arc::new(DefguardVersionSet {
-            own: ComponentInfo::try_from(VERSION)?,
-            core: Arc::new(RwLock::new(None)),
-            proxy: Arc::new(RwLock::new(None)),
-            gateway: Arc::new(RwLock::new(None)),
-        })
     } else {
-        defguard_version::tracing::init(
-            VERSION,
-            &config.log_level.to_string(),
-            &["send_grpc_message", "bidirectional_communication"],
-        )
+        defguard_version::tracing::init(VERSION, &config.log_level.to_string())
     };
 
     if let Some(pre_up) = &config.pre_up {
@@ -58,12 +42,12 @@ async fn main() -> Result<(), GatewayError> {
 
     let mut gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
-        Gateway::new(config.clone(), wgapi, firewall_api, version_set)?
+        Gateway::new(config.clone(), wgapi, firewall_api)?
     } else {
         #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
         {
             let wgapi = WGApi::<Kernel>::new(ifname)?;
-            Gateway::new(config.clone(), wgapi, firewall_api, version_set)?
+            Gateway::new(config.clone(), wgapi, firewall_api)?
         }
         #[cfg(any(target_os = "macos", target_os = "netbsd"))]
         {

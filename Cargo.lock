@@ -470,6 +470,7 @@ dependencies = [
  "tonic",
  "tonic-build",
  "tower 0.5.2",
+ "tracing",
  "vergen-git2",
  "x25519-dalek",
 ]

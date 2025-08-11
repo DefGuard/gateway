@@ -11,7 +11,7 @@ use std::{
 
 use defguard_version::{
     client::{DefguardVersionClientLayer, DefguardVersionClientService},
-    DefguardVersionSet,
+    parse_metadata,
 };
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
@@ -118,6 +118,7 @@ pub struct Gateway {
     client: GatewayServiceClient<
         InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>,
     >,
+    core_version: (String, String),
     stats_thread: Option<JoinHandle<()>>,
 }
 
@@ -126,9 +127,8 @@ impl Gateway {
         config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
         firewall_api: FirewallApi,
-        version_set: Arc<DefguardVersionSet>,
     ) -> Result<Self, GatewayError> {
-        let client = Self::setup_client(&config, version_set)?;
+        let client = Self::setup_client(&config)?;
         Ok(Self {
             config,
             interface_configuration: None,
@@ -139,6 +139,7 @@ impl Gateway {
             stats_thread: None,
             firewall_api,
             firewall_config: None,
+            core_version: Default::default(),
         })
     }
 
@@ -461,6 +462,16 @@ impl Gateway {
             };
             match (response, stream) {
                 (Ok(response), Ok(stream)) => {
+                    let (version, info) = parse_metadata(response.metadata()).unwrap();
+                    self.core_version = (version.to_string(), info.to_string());
+
+                    let span = tracing::info_span!(
+                        "core_connect",
+                        gateway_version = %version,
+                        gateway_info = %info,
+                    );
+                    let _guard = span.enter();
+
                     if let Err(err) = self.configure(response.into_inner()) {
                         error!("Interface configuration failed: {err}");
                         continue;
@@ -487,7 +498,6 @@ impl Gateway {
 
     fn setup_client(
         config: &Config,
-        version_set: Arc<DefguardVersionSet>,
     ) -> Result<
         GatewayServiceClient<
             InterceptedService<DefguardVersionClientService<Channel>, AuthInterceptor>,
@@ -514,9 +524,7 @@ impl Gateway {
         let channel = endpoint.connect_lazy();
 
         // Apply version layer to the channel
-        let versioned_service =
-            DefguardVersionClientLayer::new(version_set.own.clone(), Arc::clone(&version_set.core))
-                .layer(channel);
+        let versioned_service = DefguardVersionClientLayer::from_str(VERSION)?.layer(channel);
 
         let auth_interceptor = AuthInterceptor::new(&config.token)?;
         let client = GatewayServiceClient::with_interceptor(versioned_service, auth_interceptor);
@@ -662,6 +670,12 @@ impl Gateway {
                 debug!("Executing specified POST_UP command: {post_up}");
                 execute_command(post_up)?;
             }
+            let span = tracing::info_span!(
+                "core_grpc_loop",
+                core_version = %self.core_version.0,
+                core_info = %self.core_version.1,
+            );
+            let _guard = span.enter();
             let stats_stream = self.spawn_stats_thread();
             let client = self.client.clone();
             select! {
