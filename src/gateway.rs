@@ -659,7 +659,7 @@ impl Gateway {
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
+    use std::{net::Ipv4Addr, slice::from_ref};
 
     #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
     use defguard_wireguard_rs::Kernel;
@@ -916,7 +916,7 @@ mod tests {
 
         // Gateway has no firewall config, but new rules exist
         gateway.firewall_config = None;
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
 
         // Gateway has firewall config, with empty rules list
         gateway.firewall_config = Some(config1.clone());
@@ -924,7 +924,7 @@ mod tests {
 
         // Gateway has firewall config, new rules have different length
         gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
 
         // Gateway has firewall config, new rules have different content
         gateway.firewall_config = Some(config1.clone());
@@ -936,7 +936,7 @@ mod tests {
 
         // Gateway has empty firewall config, new rules exist
         gateway.firewall_config = Some(config_empty.clone());
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
 
         // Both configs are empty
         gateway.firewall_config = Some(config_empty);

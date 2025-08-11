@@ -904,7 +904,7 @@ fn new_anon_set<T>(
     table: &Table,
     family: ProtoFamily,
     interval_set: bool,
-) -> Result<Set<T>, FirewallError>
+) -> Result<Set<'_, T>, FirewallError>
 where
     T: SetKey,
 {
