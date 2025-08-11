@@ -524,7 +524,7 @@ impl Gateway {
         let channel = endpoint.connect_lazy();
 
         // Apply version layer to the channel
-        let versioned_service = DefguardVersionClientLayer::from_str(VERSION)?.layer(channel);
+        let versioned_service = DefguardVersionClientLayer::new(VERSION)?.layer(channel);
 
         let auth_interceptor = AuthInterceptor::new(&config.token)?;
         let client = GatewayServiceClient::with_interceptor(versioned_service, auth_interceptor);
