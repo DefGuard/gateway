@@ -5,6 +5,7 @@ on:
       - main
       - dev
       - 'release/**'
+      - sign_docker_images
     paths-ignore:
       - "*.md"
       - "LICENSE"
