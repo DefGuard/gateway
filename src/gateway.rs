@@ -464,11 +464,10 @@ impl Gateway {
                 (Ok(response), Ok(stream)) => {
                     let (version, info) = parse_metadata(response.metadata()).unwrap();
                     self.core_version = (version.to_string(), info.to_string());
-
                     let span = tracing::info_span!(
                         "core_connect",
-                        gateway_version = %version,
-                        gateway_info = %info,
+                        core_version = %version,
+                        core_info = %info,
                     );
                     let _guard = span.enter();
 
