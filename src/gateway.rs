@@ -9,7 +9,9 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use defguard_version::{parse_metadata, SystemInfo, SYSTEM_INFO_HEADER, VERSION_HEADER};
+use defguard_version::{
+    version_info_from_metadata, SystemInfo, SYSTEM_INFO_HEADER, VERSION_HEADER,
+};
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
 use tokio::{
@@ -469,12 +471,12 @@ impl Gateway {
             };
             match (response, stream) {
                 (Ok(response), Ok(stream)) => {
-                    let (version, info) = parse_metadata(response.metadata()).unwrap();
+                    let (version, info) = version_info_from_metadata(response.metadata());
                     self.core_version = (version.to_string(), info.to_string());
                     let span = tracing::info_span!(
                         "core_connect",
-                        core_version = %version,
-                        core_info = %info,
+                        core_version = version,
+                        core_info = info,
                     );
                     let _guard = span.enter();
 
