@@ -12,7 +12,7 @@ If you already have your defguard instance running you can set up a gateway by f
 
 ## Documentation
 
-See the [documentation](https://defguard.gitbook.io) for more information.
+See the [documentation](https://docs.defguard.net) for more information.
 
 ## Community and Support
 
