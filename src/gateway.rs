@@ -433,7 +433,9 @@ impl Gateway {
         }
 
         // process received firewall config unless firewall management is disabled
-        if !self.config.disable_firewall_management {
+        if self.config.disable_firewall_management {
+            debug!("Firewall management is disabled. Skipping updating firewall configuration");
+        } else {
             let new_firewall_configuration =
                 if let Some(firewall_config) = new_configuration.firewall_config {
                     Some(FirewallConfig::from_proto(firewall_config)?)
@@ -442,8 +444,6 @@ impl Gateway {
                 };
 
             self.process_firewall_changes(new_firewall_configuration.as_ref())?;
-        } else {
-            debug!("Firewall management is disabled. Skipping updating firewall configuration");
         }
 
         Ok(())
@@ -694,7 +694,7 @@ impl Gateway {
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
+    use std::{net::Ipv4Addr, slice::from_ref};
 
     #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
     use defguard_wireguard_rs::Kernel;
@@ -951,7 +951,7 @@ mod tests {
 
         // Gateway has no firewall config, but new rules exist
         gateway.firewall_config = None;
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
 
         // Gateway has firewall config, with empty rules list
         gateway.firewall_config = Some(config1.clone());
@@ -959,7 +959,7 @@ mod tests {
 
         // Gateway has firewall config, new rules have different length
         gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
 
         // Gateway has firewall config, new rules have different content
         gateway.firewall_config = Some(config1.clone());
@@ -971,7 +971,7 @@ mod tests {
 
         // Gateway has empty firewall config, new rules exist
         gateway.firewall_config = Some(config_empty.clone());
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
 
         // Both configs are empty
         gateway.firewall_config = Some(config_empty);

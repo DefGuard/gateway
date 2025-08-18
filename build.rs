@@ -5,18 +5,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let git2 = Git2Builder::default().branch(true).sha(true).build()?;
     Emitter::default().add_instructions(&git2)?.emit()?;
 
-    // compiling protos using path on build time
-    let mut config = tonic_build::Config::new();
-    // enable optional fields
-    config.protoc_arg("--experimental_allow_proto3_optional");
-    tonic_build::configure().compile_protos_with_config(
-        config,
-        &[
-            "proto/wireguard/gateway.proto",
-            "proto/enterprise/firewall/firewall.proto",
-        ],
-        &["proto/wireguard", "proto/enterprise/firewall"],
-    )?;
+    tonic_prost_build::configure()
+        // enable optional fields
+        .protoc_arg("--experimental_allow_proto3_optional")
+        // compiling protos using path on build time
+        .compile_protos(
+            &[
+                "proto/wireguard/gateway.proto",
+                "proto/enterprise/firewall/firewall.proto",
+            ],
+            &["proto/wireguard", "proto/enterprise/firewall"],
+        )?;
     println!("cargo:rerun-if-changed=proto");
     Ok(())
 }

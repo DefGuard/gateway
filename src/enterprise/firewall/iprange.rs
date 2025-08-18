@@ -76,6 +76,23 @@ impl IpAddrRange {
             Self::V6(_) => true,
         }
     }
+
+    /// Returns the start of the range.
+    pub fn start(&self) -> IpAddr {
+        match self {
+            Self::V4(range) => IpAddr::V4(*range.start()),
+            Self::V6(range) => IpAddr::V6(*range.start()),
+        }
+    }
+
+    /// Returns the end of the range.
+    /// If the range is empty, returns the start of the range.
+    pub fn end(&self) -> IpAddr {
+        match self {
+            Self::V4(range) => IpAddr::V4(*range.end()),
+            Self::V6(range) => IpAddr::V6(*range.end()),
+        }
+    }
 }
 
 impl Iterator for IpAddrRange {
