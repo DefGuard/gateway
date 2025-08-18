@@ -27,6 +27,7 @@ jobs:
     runs-on:
       - codebuild-defguard-gateway-runner-${{ github.run_id }}-${{ github.run_attempt }}
       - buildspec-override:true  # use buildspec to setup DockerHub mirror 
+
     container: rust:1
 
     steps:
