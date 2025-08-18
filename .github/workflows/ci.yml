@@ -6,6 +6,7 @@ on:
       - main
       - dev
       - 'release/**'
+      - ecr_mirror_test
     paths-ignore:
       - "*.md"
       - "LICENSE"
