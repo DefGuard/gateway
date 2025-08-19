@@ -29,7 +29,7 @@ async fn main() -> Result<(), GatewayError> {
             return Err(error);
         }
     } else {
-        defguard_version::tracing::init(VERSION, &config.log_level.to_string())
+        defguard_version::tracing::init(VERSION, &config.log_level.to_string())?
     };
 
     if let Some(pre_up) = &config.pre_up {
