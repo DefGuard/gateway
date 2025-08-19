@@ -10,7 +10,7 @@ use std::{
 };
 
 use defguard_version::{
-    version_info_from_metadata, SystemInfo, SYSTEM_INFO_HEADER, VERSION_HEADER,
+    client::version_interceptor, version_info_from_metadata,
 };
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
@@ -73,12 +73,20 @@ impl From<Configuration> for InterfaceConfiguration {
 }
 
 /// Intercepts all grpc requests adding authentication and version metadata
-#[derive(Clone)]
 struct RequestInterceptor {
     hostname: MetadataValue<Ascii>,
     token: MetadataValue<Ascii>,
-    version: MetadataValue<Ascii>,
-    system_info: MetadataValue<Ascii>,
+    version_interceptor_fn: Box<dyn Fn(Request<()>) -> Result<Request<()>, Status> + Send + Sync>,
+}
+
+impl Clone for RequestInterceptor {
+    fn clone(&self) -> Self {
+        Self {
+            hostname: self.hostname.clone(),
+            token: self.token.clone(),
+            version_interceptor_fn: Box::new(version_interceptor(VERSION)),
+        }
+    }
 }
 
 impl RequestInterceptor {
@@ -89,26 +97,22 @@ impl RequestInterceptor {
                 .to_str()
                 .expect("Unable to get current hostname during gRPC connection setup."),
         )?;
-        let version = MetadataValue::try_from(VERSION)?;
-        let system_info = MetadataValue::try_from(SystemInfo::get().to_string())?;
 
         Ok(Self {
             hostname,
             token,
-            version,
-            system_info,
+            version_interceptor_fn: Box::new(version_interceptor(VERSION)),
         })
     }
 }
 
 impl Interceptor for RequestInterceptor {
-    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
-        let metadata = request.metadata_mut();
-        // Add version headers
-        metadata.insert(VERSION_HEADER, self.version.clone());
-        metadata.insert(SYSTEM_INFO_HEADER, self.system_info.clone());
-
+    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
+        // Apply version interceptor - adds version headers
+        let mut request = (self.version_interceptor_fn)(request)?;
+        
         // Add auth headers
+        let metadata = request.metadata_mut();
         metadata.insert("authorization", self.token.clone());
         metadata.insert("hostname", self.hostname.clone());
 
@@ -527,8 +531,8 @@ impl Gateway {
             .tls_config(tls)?;
         let channel = endpoint.connect_lazy();
 
-        let request_interceptor = RequestInterceptor::new(&config.token)?;
-        let client = GatewayServiceClient::with_interceptor(channel, request_interceptor);
+        let auth_interceptor = RequestInterceptor::new(&config.token)?;
+        let client = GatewayServiceClient::with_interceptor(channel, auth_interceptor);
 
         debug!("gRPC client configuration done");
         Ok(client)

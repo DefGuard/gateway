@@ -30,7 +30,7 @@ tonic = { version = "0.14", default-features = false, features = [
     "tls-native-roots",
     "tls-ring",
 ] }
-tracing = "0.1.41"
+tracing = "0.1"
 tonic-prost = "0.14"
 
 [target.'cfg(target_os = "linux")'.dependencies]
