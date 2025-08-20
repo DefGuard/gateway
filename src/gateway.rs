@@ -9,9 +9,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use defguard_version::{
-    client::version_interceptor, version_info_from_metadata,
-};
+use defguard_version::{client::version_interceptor, version_info_from_metadata};
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
 use tokio::{
@@ -110,7 +108,7 @@ impl Interceptor for RequestInterceptor {
     fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
         // Apply version interceptor - adds version headers
         let mut request = (self.version_interceptor_fn)(request)?;
-        
+
         // Add auth headers
         let metadata = request.metadata_mut();
         metadata.insert("authorization", self.token.clone());
@@ -477,11 +475,8 @@ impl Gateway {
                 (Ok(response), Ok(stream)) => {
                     let (version, info) = version_info_from_metadata(response.metadata());
                     self.core_version = (version.to_string(), info.to_string());
-                    let span = tracing::info_span!(
-                        "core_connect",
-                        core_version = version,
-                        core_info = info,
-                    );
+                    let span =
+                        tracing::info_span!("core_connect", component = "core", version, info);
                     let _guard = span.enter();
 
                     if let Err(err) = self.configure(response.into_inner()) {
@@ -675,13 +670,13 @@ impl Gateway {
                 debug!("Executing specified POST_UP command: {post_up}");
                 execute_command(post_up)?;
             }
+            let stats_stream = self.spawn_stats_thread();
             let span = tracing::info_span!(
                 "core_grpc_loop",
-                core_version = %self.core_version.0,
-                core_info = %self.core_version.1,
+                version = %self.core_version.0,
+                info = %self.core_version.1,
             );
             let _guard = span.enter();
-            let stats_stream = self.spawn_stats_thread();
             let client = self.client.clone();
             select! {
                 biased;
