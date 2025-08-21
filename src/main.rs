@@ -4,6 +4,7 @@ use defguard_gateway::{
     config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
     execute_command, gateway::Gateway, init_syslog, server::run_server, VERSION,
 };
+use defguard_version::Version;
 #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
 use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
@@ -29,7 +30,8 @@ async fn main() -> Result<(), GatewayError> {
             return Err(error);
         }
     } else {
-        defguard_version::tracing::init(VERSION, &config.log_level.to_string())?
+        let version = Version::parse(VERSION)?;
+        defguard_version::tracing::init(version, &config.log_level.to_string())?
     };
 
     if let Some(pre_up) = &config.pre_up {

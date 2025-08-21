@@ -392,6 +392,7 @@ dependencies = [
  "nftnl",
  "nix",
  "prost",
+ "semver",
  "serde",
  "syslog",
  "thiserror 2.0.15",

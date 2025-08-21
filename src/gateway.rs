@@ -1,5 +1,5 @@
 use defguard_version::{
-    client::version_interceptor, parse_metadata, ComponentInfo, DefguardComponent,
+    client::version_interceptor, parse_metadata, ComponentInfo, DefguardComponent, Version,
 };
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
@@ -76,6 +76,7 @@ impl From<Configuration> for InterfaceConfiguration {
 struct RequestInterceptor {
     hostname: MetadataValue<Ascii>,
     token: MetadataValue<Ascii>,
+    version: defguard_version::Version,
     version_interceptor_fn: Box<dyn Fn(Request<()>) -> Result<Request<()>, Status> + Send + Sync>,
 }
 
@@ -84,13 +85,14 @@ impl Clone for RequestInterceptor {
         Self {
             hostname: self.hostname.clone(),
             token: self.token.clone(),
-            version_interceptor_fn: Box::new(version_interceptor(VERSION)),
+            version: self.version.clone(),
+            version_interceptor_fn: Box::new(version_interceptor(self.version.clone())),
         }
     }
 }
 
 impl RequestInterceptor {
-    fn new(token: &str) -> Result<Self, GatewayError> {
+    fn new(token: &str, version: Version) -> Result<Self, GatewayError> {
         let token = MetadataValue::try_from(token)?;
         let hostname = MetadataValue::try_from(
             gethostname()
@@ -101,7 +103,8 @@ impl RequestInterceptor {
         Ok(Self {
             hostname,
             token,
-            version_interceptor_fn: Box::new(version_interceptor(VERSION)),
+            version: version.clone(),
+            version_interceptor_fn: Box::new(version_interceptor(version)),
         })
     }
 }
@@ -551,8 +554,8 @@ impl Gateway {
             .keep_alive_while_idle(true)
             .tls_config(tls)?;
         let channel = endpoint.connect_lazy();
-
-        let auth_interceptor = RequestInterceptor::new(&config.token)?;
+        let version = Version::parse(VERSION)?;
+        let auth_interceptor = RequestInterceptor::new(&config.token, version)?;
         let client = GatewayServiceClient::with_interceptor(channel, auth_interceptor);
 
         debug!("gRPC client configuration done");
@@ -780,6 +783,7 @@ mod tests {
             stats_thread: None,
             firewall_api,
             firewall_config: None,
+            core_info: None,
         };
 
         // new config is the same
@@ -971,6 +975,7 @@ mod tests {
             stats_thread: None,
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
+            core_info: None,
         };
 
         // Gateway has no firewall config, new rules are empty
@@ -1043,6 +1048,7 @@ mod tests {
             stats_thread: None,
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
+            core_info: None,
         };
         // Gateway has no config
         gateway.firewall_config = None;

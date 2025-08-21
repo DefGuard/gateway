@@ -47,4 +47,7 @@ pub enum GatewayError {
 
     #[error(transparent)]
     DefguardVersionError(#[from] DefguardVersionError),
+
+    #[error(transparent)]
+    SemverError(#[from] semver::Error),
 }
