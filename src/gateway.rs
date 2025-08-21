@@ -501,7 +501,7 @@ impl Gateway {
                     self.core_info = parse_metadata(response.metadata());
                     let (version, info) = self.get_tracing_variables();
                     let span = tracing::info_span!(
-                        "core_connect",
+                        "core_configuration",
                         component = %DefguardComponent::Core,
                         version,
                         info
@@ -555,8 +555,8 @@ impl Gateway {
             .tls_config(tls)?;
         let channel = endpoint.connect_lazy();
         let version = Version::parse(VERSION)?;
-        let auth_interceptor = RequestInterceptor::new(&config.token, version)?;
-        let client = GatewayServiceClient::with_interceptor(channel, auth_interceptor);
+        let request_interceptor = RequestInterceptor::new(&config.token, version)?;
+        let client = GatewayServiceClient::with_interceptor(channel, request_interceptor);
 
         debug!("gRPC client configuration done");
         Ok(client)
@@ -702,7 +702,7 @@ impl Gateway {
             }
             let (version, info) = self.get_tracing_variables();
             let span = tracing::info_span!(
-                "core_grpc_loop",
+                "core_grpc",
                 component = %DefguardComponent::Core,
                 version,
                 info,
