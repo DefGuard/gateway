@@ -1,5 +1,5 @@
 use defguard_version::{
-    client::version_interceptor, version_info_from_metadata, DefguardComponent,
+    client::version_interceptor, parse_metadata, ComponentInfo, DefguardComponent,
 };
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
@@ -133,7 +133,7 @@ pub struct Gateway {
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
     client: GatewayServiceClient<InterceptedService<Channel, RequestInterceptor>>,
-    core_version: (String, String),
+    core_info: Option<ComponentInfo>,
     stats_thread: Option<JoinHandle<()>>,
 }
 
@@ -154,7 +154,7 @@ impl Gateway {
             stats_thread: None,
             firewall_api,
             firewall_config: None,
-            core_version: Default::default(),
+            core_info: None,
         })
     }
 
@@ -458,6 +458,21 @@ impl Gateway {
         Ok(())
     }
 
+    fn get_tracing_variables(&self) -> (String, String) {
+        let version = self
+            .core_info
+            .as_ref()
+            .map(|info| info.version.to_string())
+            .unwrap_or("?".to_string());
+        let info = self
+            .core_info
+            .as_ref()
+            .map(|info| info.system.to_string())
+            .unwrap_or("?".to_string());
+
+        (version, info)
+    }
+
     /// Continuously tries to connect to gRPC endpoint. Once the connection is established
     /// configures the interface, starts the stats thread, connects and returns the updates stream.
     async fn connect(&mut self) -> Streaming<Update> {
@@ -480,9 +495,14 @@ impl Gateway {
             };
             match (response, stream) {
                 (Ok(response), Ok(stream)) => {
-                    let (version, info) = version_info_from_metadata(response.metadata());
-                    self.core_version = (version.to_string(), info.to_string());
-                    let span = tracing::info_span!("core_connect", component = %DefguardComponent::Core, version, info);
+                    self.core_info = parse_metadata(response.metadata());
+                    let (version, info) = self.get_tracing_variables();
+                    let span = tracing::info_span!(
+                        "core_connect",
+                        component = %DefguardComponent::Core,
+                        version,
+                        info
+                    );
                     let _guard = span.enter();
 
                     if let Err(err) = self.configure(response.into_inner()) {
@@ -677,11 +697,12 @@ impl Gateway {
                 debug!("Executing specified POST_UP command: {post_up}");
                 execute_command(post_up)?;
             }
+            let (version, info) = self.get_tracing_variables();
             let span = tracing::info_span!(
                 "core_grpc_loop",
                 component = %DefguardComponent::Core,
-                version = self.core_version.0,
-                info = self.core_version.1,
+                version,
+                info,
             );
             let _guard = span.enter();
             let stats_stream = self.spawn_stats_thread();
