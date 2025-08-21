@@ -1,4 +1,4 @@
-use defguard_version::DefguardVersionError;
+use defguard_version::{DefguardVersionError, SemverError};
 use defguard_wireguard_rs::error::WireguardInterfaceError;
 use thiserror::Error;
 
@@ -49,5 +49,5 @@ pub enum GatewayError {
     DefguardVersionError(#[from] DefguardVersionError),
 
     #[error(transparent)]
-    SemverError(#[from] semver::Error),
+    SemverError(#[from] SemverError),
 }
