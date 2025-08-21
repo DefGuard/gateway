@@ -1,3 +1,6 @@
+use defguard_version::{client::version_interceptor, version_info_from_metadata};
+use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
+use gethostname::gethostname;
 use std::{
     collections::HashMap,
     fs::read_to_string,
@@ -8,10 +11,6 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
-
-use defguard_version::{client::version_interceptor, version_info_from_metadata};
-use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
-use gethostname::gethostname;
 use tokio::{
     select,
     sync::mpsc,
@@ -26,6 +25,7 @@ use tonic::{
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
+use tracing::{instrument, Instrument};
 
 use crate::{
     config::Config,
@@ -204,6 +204,7 @@ impl Gateway {
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
+    #[instrument(skip_all)]
     fn spawn_stats_thread(&mut self) -> UnboundedReceiverStream<StatsUpdate> {
         if let Some(handle) = self.stats_thread.take() {
             debug!("Aborting previous stats thread before starting a new one");
@@ -214,61 +215,65 @@ impl Gateway {
         let wgapi = Arc::clone(&self.wgapi);
         let (tx, rx) = mpsc::unbounded_channel();
         debug!("Spawning stats thread");
-        let handle = spawn(async move {
-            // helper map to track if peer data is actually changing
-            // and avoid sending duplicate stats
-            let mut peer_map = HashMap::new();
-            let mut interval = interval(period);
-            let mut id = 1;
-            'outer: loop {
-                // wait until next iteration
-                interval.tick().await;
-                debug!("Sending active peer stats updates.");
-                let interface_data = wgapi.lock().unwrap().read_interface_data();
-                match interface_data {
-                    Ok(host) => {
-                        let peers = host.peers;
-                        debug!(
-                            "Found {} peers configured on WireGuard interface",
-                            peers.len()
-                        );
-                        for peer in peers.into_values().filter(|p| {
-                            p.last_handshake
-                                .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
-                        }) {
-                            let has_changed = peer_map
-                                .get(&peer.public_key)
-                                .is_none_or(|last_peer| *last_peer != peer);
-                            if has_changed {
-                                peer_map.insert(peer.public_key.clone(), peer.clone());
-                                id += 1;
-                                if tx
-                                    .send(StatsUpdate {
-                                        id,
-                                        payload: Some(Payload::PeerStats((&peer).into())),
-                                    })
-                                    .is_err()
-                                {
-                                    debug!("Stats stream disappeared");
-                                    break 'outer;
+        let handle = spawn(
+            async move {
+                // helper map to track if peer data is actually changing
+                // and avoid sending duplicate stats
+                let mut peer_map = HashMap::new();
+                let mut interval = interval(period);
+                let mut id = 1;
+                'outer: loop {
+                    // wait until next iteration
+                    interval.tick().await;
+                    debug!("Sending active peer stats updates.");
+                    let interface_data = wgapi.lock().unwrap().read_interface_data();
+                    match interface_data {
+                        Ok(host) => {
+                            let peers = host.peers;
+                            debug!(
+                                "Found {} peers configured on WireGuard interface",
+                                peers.len()
+                            );
+                            for peer in peers.into_values().filter(|p| {
+                                p.last_handshake
+                                    .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
+                            }) {
+                                let has_changed = peer_map
+                                    .get(&peer.public_key)
+                                    .is_none_or(|last_peer| *last_peer != peer);
+                                if has_changed {
+                                    peer_map.insert(peer.public_key.clone(), peer.clone());
+                                    id += 1;
+                                    if tx
+                                        .send(StatsUpdate {
+                                            id,
+                                            payload: Some(Payload::PeerStats((&peer).into())),
+                                        })
+                                        .is_err()
+                                    {
+                                        debug!("Stats stream disappeared");
+                                        break 'outer;
+                                    }
+                                } else {
+                                    debug!(
+                                        "Stats for peer {} have not changed. Skipping.",
+                                        peer.public_key
+                                    );
                                 }
-                            } else {
-                                debug!(
-                                    "Stats for peer {} have not changed. Skipping.",
-                                    peer.public_key
-                                );
                             }
                         }
+                        Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
                     }
-                    Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
+                    debug!("Sent peer stats updates for all peers.");
                 }
-                debug!("Sent peer stats updates for all peers.");
             }
-        });
+            .instrument(tracing::Span::current()),
+        );
         self.stats_thread = Some(handle);
         UnboundedReceiverStream::new(rx)
     }
 
+    #[instrument(skip_all)]
     async fn handle_stats_thread(
         mut client: GatewayServiceClient<InterceptedService<Channel, RequestInterceptor>>,
         rx: UnboundedReceiverStream<StatsUpdate>,
@@ -533,6 +538,7 @@ impl Gateway {
         Ok(client)
     }
 
+    #[instrument(skip_all)]
     async fn handle_updates(&mut self, updates_stream: &mut Streaming<Update>) {
         loop {
             match updates_stream.message().await {
@@ -670,13 +676,14 @@ impl Gateway {
                 debug!("Executing specified POST_UP command: {post_up}");
                 execute_command(post_up)?;
             }
-            let stats_stream = self.spawn_stats_thread();
             let span = tracing::info_span!(
                 "core_grpc_loop",
-                version = %self.core_version.0,
-                info = %self.core_version.1,
+                component = "core",
+                version = self.core_version.0,
+                info = self.core_version.1,
             );
             let _guard = span.enter();
+            let stats_stream = self.spawn_stats_thread();
             let client = self.client.clone();
             select! {
                 biased;
