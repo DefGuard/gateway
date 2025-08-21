@@ -1,4 +1,6 @@
-use defguard_version::{client::version_interceptor, version_info_from_metadata};
+use defguard_version::{
+    client::version_interceptor, version_info_from_metadata, DefguardComponent,
+};
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
 use std::{
@@ -480,8 +482,7 @@ impl Gateway {
                 (Ok(response), Ok(stream)) => {
                     let (version, info) = version_info_from_metadata(response.metadata());
                     self.core_version = (version.to_string(), info.to_string());
-                    let span =
-                        tracing::info_span!("core_connect", component = "core", version, info);
+                    let span = tracing::info_span!("core_connect", component = %DefguardComponent::Core, version, info);
                     let _guard = span.enter();
 
                     if let Err(err) = self.configure(response.into_inner()) {
@@ -678,7 +679,7 @@ impl Gateway {
             }
             let span = tracing::info_span!(
                 "core_grpc_loop",
-                component = "core",
+                component = %DefguardComponent::Core,
                 version = self.core_version.0,
                 info = self.core_version.1,
             );
