@@ -1,3 +1,8 @@
+use defguard_version::{
+    client::version_interceptor, parse_metadata, ComponentInfo, DefguardComponent, Version,
+};
+use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
+use gethostname::gethostname;
 use std::{
     collections::HashMap,
     fs::read_to_string,
@@ -8,9 +13,6 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
-
-use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
-use gethostname::gethostname;
 use tokio::{
     select,
     sync::mpsc,
@@ -25,6 +27,7 @@ use tonic::{
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
+use tracing::{instrument, Instrument};
 
 use crate::{
     config::Config,
@@ -69,14 +72,29 @@ impl From<Configuration> for InterfaceConfiguration {
     }
 }
 
-#[derive(Clone)]
-struct AuthInterceptor {
+type InterceptorFn = Box<dyn Fn(Request<()>) -> Result<Request<()>, Status> + Send + Sync>;
+
+/// Intercepts all grpc requests adding authentication and version metadata
+struct RequestInterceptor {
     hostname: MetadataValue<Ascii>,
     token: MetadataValue<Ascii>,
+    version: defguard_version::Version,
+    version_interceptor_fn: InterceptorFn,
 }
 
-impl AuthInterceptor {
-    fn new(token: &str) -> Result<Self, GatewayError> {
+impl Clone for RequestInterceptor {
+    fn clone(&self) -> Self {
+        Self {
+            hostname: self.hostname.clone(),
+            token: self.token.clone(),
+            version: self.version.clone(),
+            version_interceptor_fn: Box::new(version_interceptor(self.version.clone())),
+        }
+    }
+}
+
+impl RequestInterceptor {
+    fn new(token: &str, version: Version) -> Result<Self, GatewayError> {
         let token = MetadataValue::try_from(token)?;
         let hostname = MetadataValue::try_from(
             gethostname()
@@ -84,12 +102,21 @@ impl AuthInterceptor {
                 .expect("Unable to get current hostname during gRPC connection setup."),
         )?;
 
-        Ok(Self { hostname, token })
+        Ok(Self {
+            hostname,
+            token,
+            version: version.clone(),
+            version_interceptor_fn: Box::new(version_interceptor(version)),
+        })
     }
 }
 
-impl Interceptor for AuthInterceptor {
-    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+impl Interceptor for RequestInterceptor {
+    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
+        // Apply version interceptor - adds version headers
+        let mut request = (self.version_interceptor_fn)(request)?;
+
+        // Add auth headers
         let metadata = request.metadata_mut();
         metadata.insert("authorization", self.token.clone());
         metadata.insert("hostname", self.hostname.clone());
@@ -110,7 +137,8 @@ pub struct Gateway {
     #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
-    client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
+    client: GatewayServiceClient<InterceptedService<Channel, RequestInterceptor>>,
+    core_info: Option<ComponentInfo>,
     stats_thread: Option<JoinHandle<()>>,
 }
 
@@ -131,6 +159,7 @@ impl Gateway {
             stats_thread: None,
             firewall_api,
             firewall_config: None,
+            core_info: None,
         })
     }
 
@@ -182,6 +211,7 @@ impl Gateway {
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
+    #[instrument(skip_all)]
     fn spawn_stats_thread(&mut self) -> UnboundedReceiverStream<StatsUpdate> {
         if let Some(handle) = self.stats_thread.take() {
             debug!("Aborting previous stats thread before starting a new one");
@@ -192,63 +222,67 @@ impl Gateway {
         let wgapi = Arc::clone(&self.wgapi);
         let (tx, rx) = mpsc::unbounded_channel();
         debug!("Spawning stats thread");
-        let handle = spawn(async move {
-            // helper map to track if peer data is actually changing
-            // and avoid sending duplicate stats
-            let mut peer_map = HashMap::new();
-            let mut interval = interval(period);
-            let mut id = 1;
-            'outer: loop {
-                // wait until next iteration
-                interval.tick().await;
-                debug!("Sending active peer stats updates.");
-                let interface_data = wgapi.lock().unwrap().read_interface_data();
-                match interface_data {
-                    Ok(host) => {
-                        let peers = host.peers;
-                        debug!(
-                            "Found {} peers configured on WireGuard interface",
-                            peers.len()
-                        );
-                        for peer in peers.into_values().filter(|p| {
-                            p.last_handshake
-                                .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
-                        }) {
-                            let has_changed = peer_map
-                                .get(&peer.public_key)
-                                .is_none_or(|last_peer| *last_peer != peer);
-                            if has_changed {
-                                peer_map.insert(peer.public_key.clone(), peer.clone());
-                                id += 1;
-                                if tx
-                                    .send(StatsUpdate {
-                                        id,
-                                        payload: Some(Payload::PeerStats((&peer).into())),
-                                    })
-                                    .is_err()
-                                {
-                                    debug!("Stats stream disappeared");
-                                    break 'outer;
+        let handle = spawn(
+            async move {
+                // helper map to track if peer data is actually changing
+                // and avoid sending duplicate stats
+                let mut peer_map = HashMap::new();
+                let mut interval = interval(period);
+                let mut id = 1;
+                'outer: loop {
+                    // wait until next iteration
+                    interval.tick().await;
+                    debug!("Sending active peer stats updates.");
+                    let interface_data = wgapi.lock().unwrap().read_interface_data();
+                    match interface_data {
+                        Ok(host) => {
+                            let peers = host.peers;
+                            debug!(
+                                "Found {} peers configured on WireGuard interface",
+                                peers.len()
+                            );
+                            for peer in peers.into_values().filter(|p| {
+                                p.last_handshake
+                                    .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
+                            }) {
+                                let has_changed = peer_map
+                                    .get(&peer.public_key)
+                                    .is_none_or(|last_peer| *last_peer != peer);
+                                if has_changed {
+                                    peer_map.insert(peer.public_key.clone(), peer.clone());
+                                    id += 1;
+                                    if tx
+                                        .send(StatsUpdate {
+                                            id,
+                                            payload: Some(Payload::PeerStats((&peer).into())),
+                                        })
+                                        .is_err()
+                                    {
+                                        debug!("Stats stream disappeared");
+                                        break 'outer;
+                                    }
+                                } else {
+                                    debug!(
+                                        "Stats for peer {} have not changed. Skipping.",
+                                        peer.public_key
+                                    );
                                 }
-                            } else {
-                                debug!(
-                                    "Stats for peer {} have not changed. Skipping.",
-                                    peer.public_key
-                                );
                             }
                         }
+                        Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
                     }
-                    Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
+                    debug!("Sent peer stats updates for all peers.");
                 }
-                debug!("Sent peer stats updates for all peers.");
             }
-        });
+            .instrument(tracing::Span::current()),
+        );
         self.stats_thread = Some(handle);
         UnboundedReceiverStream::new(rx)
     }
 
+    #[instrument(skip_all)]
     async fn handle_stats_thread(
-        mut client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
+        mut client: GatewayServiceClient<InterceptedService<Channel, RequestInterceptor>>,
         rx: UnboundedReceiverStream<StatsUpdate>,
     ) {
         let status = client.stats(rx).await;
@@ -429,6 +463,19 @@ impl Gateway {
         Ok(())
     }
 
+    fn get_tracing_variables(&self) -> (String, String) {
+        let version = self
+            .core_info
+            .as_ref()
+            .map_or(String::from("?"), |info| info.version.to_string());
+        let info = self
+            .core_info
+            .as_ref()
+            .map_or(String::from("?"), |info| info.system.to_string());
+
+        (version, info)
+    }
+
     /// Continuously tries to connect to gRPC endpoint. Once the connection is established
     /// configures the interface, starts the stats thread, connects and returns the updates stream.
     async fn connect(&mut self) -> Streaming<Update> {
@@ -451,6 +498,16 @@ impl Gateway {
             };
             match (response, stream) {
                 (Ok(response), Ok(stream)) => {
+                    self.core_info = parse_metadata(response.metadata());
+                    let (version, info) = self.get_tracing_variables();
+                    let span = tracing::info_span!(
+                        "core_configuration",
+                        component = %DefguardComponent::Core,
+                        version,
+                        info
+                    );
+                    let _guard = span.enter();
+
                     if let Err(err) = self.configure(response.into_inner()) {
                         error!("Interface configuration failed: {err}");
                         continue;
@@ -477,7 +534,7 @@ impl Gateway {
 
     fn setup_client(
         config: &Config,
-    ) -> Result<GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>, GatewayError>
+    ) -> Result<GatewayServiceClient<InterceptedService<Channel, RequestInterceptor>>, GatewayError>
     {
         debug!("Preparing gRPC client configuration");
         let tls = ClientTlsConfig::new();
@@ -497,14 +554,15 @@ impl Gateway {
             .keep_alive_while_idle(true)
             .tls_config(tls)?;
         let channel = endpoint.connect_lazy();
-
-        let auth_interceptor = AuthInterceptor::new(&config.token)?;
-        let client = GatewayServiceClient::with_interceptor(channel, auth_interceptor);
+        let version = Version::parse(VERSION)?;
+        let request_interceptor = RequestInterceptor::new(&config.token, version)?;
+        let client = GatewayServiceClient::with_interceptor(channel, request_interceptor);
 
         debug!("gRPC client configuration done");
         Ok(client)
     }
 
+    #[instrument(skip_all)]
     async fn handle_updates(&mut self, updates_stream: &mut Streaming<Update>) {
         loop {
             match updates_stream.message().await {
@@ -642,6 +700,14 @@ impl Gateway {
                 debug!("Executing specified POST_UP command: {post_up}");
                 execute_command(post_up)?;
             }
+            let (version, info) = self.get_tracing_variables();
+            let span = tracing::info_span!(
+                "core_grpc",
+                component = %DefguardComponent::Core,
+                version,
+                info,
+            );
+            let _guard = span.enter();
             let stats_stream = self.spawn_stats_thread();
             let client = self.client.clone();
             select! {
@@ -717,6 +783,7 @@ mod tests {
             stats_thread: None,
             firewall_api,
             firewall_config: None,
+            core_info: None,
         };
 
         // new config is the same
@@ -908,6 +975,7 @@ mod tests {
             stats_thread: None,
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
+            core_info: None,
         };
 
         // Gateway has no firewall config, new rules are empty
@@ -980,6 +1048,7 @@ mod tests {
             stats_thread: None,
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
+            core_info: None,
         };
         // Gateway has no config
         gateway.firewall_config = None;

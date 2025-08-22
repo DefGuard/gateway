@@ -10,6 +10,9 @@ use crate::error::GatewayError;
 #[clap(about = "Defguard VPN gateway service")]
 #[command(version)]
 pub struct Config {
+    #[arg(long, short = 'l', env = "DEFGUARD_LOG_LEVEL", default_value = "info")]
+    pub log_level: String,
+
     /// Token received from Defguard after completing the network wizard
     #[arg(
         long,
@@ -113,6 +116,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            log_level: "info".to_string(),
             token: "TOKEN".into(),
             name: None,
             grpc_url: "http://localhost:50051".into(),
