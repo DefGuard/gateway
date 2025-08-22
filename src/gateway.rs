@@ -467,13 +467,11 @@ impl Gateway {
         let version = self
             .core_info
             .as_ref()
-            .map(|info| info.version.to_string())
-            .unwrap_or("?".to_string());
+            .map_or(String::from("?"), |info| info.version.to_string());
         let info = self
             .core_info
             .as_ref()
-            .map(|info| info.system.to_string())
-            .unwrap_or("?".to_string());
+            .map_or(String::from("?"), |info| info.system.to_string());
 
         (version, info)
     }
