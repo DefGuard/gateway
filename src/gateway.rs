@@ -72,12 +72,14 @@ impl From<Configuration> for InterfaceConfiguration {
     }
 }
 
+type InterceptorFn = Box<dyn Fn(Request<()>) -> Result<Request<()>, Status> + Send + Sync>;
+
 /// Intercepts all grpc requests adding authentication and version metadata
 struct RequestInterceptor {
     hostname: MetadataValue<Ascii>,
     token: MetadataValue<Ascii>,
     version: defguard_version::Version,
-    version_interceptor_fn: Box<dyn Fn(Request<()>) -> Result<Request<()>, Status> + Send + Sync>,
+    version_interceptor_fn: InterceptorFn,
 }
 
 impl Clone for RequestInterceptor {
