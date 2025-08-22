@@ -27,7 +27,7 @@ use syslog::{BasicLogger, Facility, Formatter3164};
 
 pub mod enterprise;
 
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("VERGEN_GIT_SHA"));
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("VERGEN_GIT_SHA"));
 
 /// Masks object's field with "***" string.
 /// Used to log sensitive/secret objects.
