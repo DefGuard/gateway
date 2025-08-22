@@ -41,6 +41,7 @@ use crate::{
         gateway_service_client::GatewayServiceClient, stats_update::Payload, update, Configuration,
         ConfigurationRequest, Peer, StatsUpdate, Update,
     },
+    version::ensure_core_version_supported,
     VERSION,
 };
 
@@ -507,6 +508,10 @@ impl Gateway {
                         info
                     );
                     let _guard = span.enter();
+
+                    // check core version and exit if it's not supported
+                    let version = self.core_info.as_ref().map(|info| &info.version);
+                    ensure_core_version_supported(version);
 
                     if let Err(err) = self.configure(response.into_inner()) {
                         error!("Interface configuration failed: {err}");
