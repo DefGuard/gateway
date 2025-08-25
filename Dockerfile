@@ -5,7 +5,7 @@ WORKDIR /app
 COPY . .
 RUN cargo build --release
 
-FROM debian:bookworm-slim
+FROM debian:13-slim
 RUN apt-get update && apt-get -y --no-install-recommends install \
     iproute2 wireguard-tools sudo ca-certificates iptables ebtables nftables && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
