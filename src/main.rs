@@ -31,8 +31,8 @@ async fn main() -> Result<(), GatewayError> {
         }
     } else {
         let version = Version::parse(VERSION)?;
-        defguard_version::tracing::init(version, &config.log_level.to_string())?
-    };
+        defguard_version::tracing::init(version, &config.log_level)?;
+    }
 
     if let Some(pre_up) = &config.pre_up {
         log::info!("Executing specified PRE_UP command: {pre_up}");
