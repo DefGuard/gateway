@@ -1,5 +1,5 @@
 use defguard_version::{
-    client::version_interceptor, get_tracing_variables, parse_metadata, ComponentInfo,
+    client::ClientVersionInterceptor, get_tracing_variables, parse_metadata, ComponentInfo,
     DefguardComponent, Version,
 };
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
@@ -24,10 +24,11 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
-    service::Interceptor,
+    service::{Interceptor, InterceptorLayer},
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
+use tower::ServiceBuilder;
 use tracing::{instrument, Instrument};
 
 use crate::{
@@ -74,29 +75,23 @@ impl From<Configuration> for InterfaceConfiguration {
     }
 }
 
-type InterceptorFn = Box<dyn Fn(Request<()>) -> Result<Request<()>, Status> + Send + Sync>;
-
 /// Intercepts all grpc requests adding authentication and version metadata
-struct RequestInterceptor {
+struct AuthInterceptor {
     hostname: MetadataValue<Ascii>,
     token: MetadataValue<Ascii>,
-    version: defguard_version::Version,
-    version_interceptor_fn: InterceptorFn,
 }
 
-impl Clone for RequestInterceptor {
+impl Clone for AuthInterceptor {
     fn clone(&self) -> Self {
         Self {
             hostname: self.hostname.clone(),
             token: self.token.clone(),
-            version: self.version.clone(),
-            version_interceptor_fn: Box::new(version_interceptor(self.version.clone())),
         }
     }
 }
 
-impl RequestInterceptor {
-    fn new(token: &str, version: Version) -> Result<Self, GatewayError> {
+impl AuthInterceptor {
+    fn new(token: &str) -> Result<Self, GatewayError> {
         let token = MetadataValue::try_from(token)?;
         let hostname = MetadataValue::try_from(
             gethostname()
@@ -104,20 +99,12 @@ impl RequestInterceptor {
                 .expect("Unable to get current hostname during gRPC connection setup."),
         )?;
 
-        Ok(Self {
-            hostname,
-            token,
-            version: version.clone(),
-            version_interceptor_fn: Box::new(version_interceptor(version)),
-        })
+        Ok(Self { hostname, token })
     }
 }
 
-impl Interceptor for RequestInterceptor {
-    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
-        // Apply version interceptor - adds version headers
-        let mut request = (self.version_interceptor_fn)(request)?;
-
+impl Interceptor for AuthInterceptor {
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
         // Add auth headers
         let metadata = request.metadata_mut();
         metadata.insert("authorization", self.token.clone());
@@ -128,6 +115,9 @@ impl Interceptor for RequestInterceptor {
 }
 
 type PubKey = String;
+type GatewayClientType = GatewayServiceClient<
+    InterceptedService<InterceptedService<Channel, AuthInterceptor>, ClientVersionInterceptor>,
+>;
 
 pub struct Gateway {
     config: Config,
@@ -139,7 +129,7 @@ pub struct Gateway {
     #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
-    client: GatewayServiceClient<InterceptedService<Channel, RequestInterceptor>>,
+    client: GatewayClientType,
     core_info: Option<ComponentInfo>,
     stats_thread: Option<JoinHandle<()>>,
 }
@@ -284,7 +274,7 @@ impl Gateway {
 
     #[instrument(skip_all)]
     async fn handle_stats_thread(
-        mut client: GatewayServiceClient<InterceptedService<Channel, RequestInterceptor>>,
+        mut client: GatewayClientType,
         rx: UnboundedReceiverStream<StatsUpdate>,
     ) {
         let status = client.stats(rx).await;
@@ -525,10 +515,7 @@ impl Gateway {
         }
     }
 
-    fn setup_client(
-        config: &Config,
-    ) -> Result<GatewayServiceClient<InterceptedService<Channel, RequestInterceptor>>, GatewayError>
-    {
+    fn setup_client(config: &Config) -> Result<GatewayClientType, GatewayError> {
         debug!("Preparing gRPC client configuration");
         let tls = ClientTlsConfig::new();
         // Use CA if provided, otherwise load certificates from system.
@@ -547,9 +534,13 @@ impl Gateway {
             .keep_alive_while_idle(true)
             .tls_config(tls)?;
         let channel = endpoint.connect_lazy();
-        let version = Version::parse(VERSION)?;
-        let request_interceptor = RequestInterceptor::new(&config.token, version)?;
-        let client = GatewayServiceClient::with_interceptor(channel, request_interceptor);
+        let version_interceptor = ClientVersionInterceptor::new(Version::parse(VERSION)?);
+        let auth_interceptor = AuthInterceptor::new(&config.token)?;
+        let channel = ServiceBuilder::new()
+            .layer(InterceptorLayer::new(version_interceptor))
+            .layer(InterceptorLayer::new(auth_interceptor))
+            .service(channel);
+        let client = GatewayServiceClient::new(channel);
 
         debug!("gRPC client configuration done");
         Ok(client)

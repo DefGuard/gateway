@@ -32,6 +32,7 @@ tonic = { version = "0.14", default-features = false, features = [
 ] }
 tracing = "0.1"
 tonic-prost = "0.14"
+tower = "0.5.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "1a1147271f43b9d7182a114bb056a5224c35d38f" }

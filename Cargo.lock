@@ -401,6 +401,7 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "tower",
  "tracing",
  "vergen-git2",
  "x25519-dalek",
