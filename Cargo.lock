@@ -401,6 +401,7 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "tower",
  "tracing",
  "vergen-git2",
  "x25519-dalek",
@@ -409,7 +410,7 @@ dependencies = [
 [[package]]
 name = "defguard_version"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=f61ce40927a4d21095ea53a691219d5ae46e3e4e#f61ce40927a4d21095ea53a691219d5ae46e3e4e"
+source = "git+https://github.com/DefGuard/defguard.git?rev=a5709e7117103458ad8417d4437a8a369ca5bbce#a5709e7117103458ad8417d4437a8a369ca5bbce"
 dependencies = [
  "http",
  "os_info",
