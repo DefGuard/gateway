@@ -71,6 +71,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: "${{ env.GHCR_REPO }}:${{ github.sha }}-${{ matrix.tag }}"
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH,MEDIUM"
+
   docker-manifest:
     runs-on: [self-hosted, Linux]
 
@@ -110,7 +120,7 @@ jobs:
             docker manifest create ${tag} ${{ env.GHCR_REPO }}:${{ github.sha }}-amd64 ${{ env.GHCR_REPO }}:${{ github.sha }}-arm64 ${{ env.GHCR_REPO }}:${{ github.sha }}-armv7
             docker manifest push ${tag}
           done
-        
+
       - name: Sign the images with GitHub OIDC Token
         run: |
           images='${{ env.GHCR_REPO }}:${{ github.sha }} ${{ steps.meta.outputs.tags }}'

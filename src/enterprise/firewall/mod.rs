@@ -382,6 +382,7 @@ pub enum FirewallError {
 ///
 /// - In IPv4 this is the broadcast address.
 /// - In IPv6 this is just the last address in the network.
+#[must_use]
 pub fn max_address(network: &IpNetwork) -> IpAddr {
     match network {
         IpNetwork::V4(network) => {
