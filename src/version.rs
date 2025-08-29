@@ -10,7 +10,7 @@ pub(crate) fn ensure_core_version_supported(core_version: Option<&Version>) {
         std::process::exit(1);
     };
 
-    if is_version_lower(&core_version, &MIN_CORE_VERSION) {
+    if is_version_lower(core_version, &MIN_CORE_VERSION) {
         error!("Core version {core_version} is not supported. Minimal supported core version is {MIN_CORE_VERSION}. Exiting.");
         std::process::exit(1);
     }
