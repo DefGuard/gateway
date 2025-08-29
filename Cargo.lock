@@ -410,7 +410,7 @@ dependencies = [
 [[package]]
 name = "defguard_version"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=a5709e7117103458ad8417d4437a8a369ca5bbce#a5709e7117103458ad8417d4437a8a369ca5bbce"
+source = "git+https://github.com/DefGuard/defguard.git?rev=db678a95398e38b72bbb4ecef36a27caa427e48c#db678a95398e38b72bbb4ecef36a27caa427e48c"
 dependencies = [
  "http",
  "os_info",
