@@ -28,9 +28,6 @@ jobs:
     container: public.ecr.aws/docker/library/rust:1
 
     steps:
-      - name: Debug
-        run: echo ${{ github.ref_name }}
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
