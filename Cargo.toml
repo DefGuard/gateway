@@ -4,7 +4,7 @@ version = "1.5.0"
 edition = "2021"
 
 [dependencies]
-defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "168bbd8e737e0aa920c6356947e1b6be99c9031b" }
+defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "9aaa99f38eb9e4a07685d47779a8a43d0047b7b9" }
 axum = "0.8"
 base64 = "0.22"
 clap = { version = "4.5", features = ["derive", "env"] }
