@@ -4,8 +4,8 @@ version = "1.5.0"
 edition = "2021"
 
 [dependencies]
-defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "be3f96ced072ede3ebde72f2f6c6063d2e7f7403" }
-axum = { version = "0.8", features = ["macros"] }
+defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "168bbd8e737e0aa920c6356947e1b6be99c9031b" }
+axum = "0.8"
 base64 = "0.22"
 clap = { version = "4.5", features = ["derive", "env"] }
 defguard_wireguard_rs = "0.7.5"
@@ -32,7 +32,7 @@ tonic = { version = "0.14", default-features = false, features = [
 ] }
 tracing = "0.1"
 tonic-prost = "0.14"
-tower = "0.5.2"
+tower = "0.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "1a1147271f43b9d7182a114bb056a5224c35d38f" }

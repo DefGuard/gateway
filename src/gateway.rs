@@ -1,6 +1,6 @@
 use defguard_version::{
-    client::ClientVersionInterceptor, get_tracing_variables, parse_metadata, ComponentInfo,
-    DefguardComponent, Version,
+    client::ClientVersionInterceptor, get_tracing_variables, ComponentInfo, DefguardComponent,
+    Version,
 };
 use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
 use gethostname::gethostname;
@@ -319,10 +319,16 @@ impl Gateway {
                 }
             }
 
-            debug!("Defguard ACL rules are the same. Rules have not changed. My rules: {current_rules:?}, new rules: {new_rules:?}");
+            debug!(
+                "Defguard ACL rules are the same. Rules have not changed. My rules: \
+                {current_rules:?}, new rules: {new_rules:?}"
+            );
             false
         } else {
-            debug!("There are new Defguard ACL rules in the new configuration, but we don't have any in the current one. Rules have changed.");
+            debug!(
+                "There are new Defguard ACL rules in the new configuration, but we don't have \
+                any in the current one. Rules have changed."
+            );
             true
         }
     }
@@ -351,18 +357,24 @@ impl Gateway {
                 }
             }
 
-            debug!("SNAT bindings are the same. Bindings have not changed. My bindings: {current_bindings:?}, new bindings: {new_bindings:?}");
+            debug!(
+                "SNAT bindings are the same. Bindings have not changed. My bindings: \
+                {current_bindings:?}, new bindings: {new_bindings:?}"
+            );
             false
         } else {
-            debug!("There are new SNAT bindings in the new configuration, but we don't have any in the current one. Bindings have changed.");
+            debug!(
+                "There are new SNAT bindings in the new configuration, but we don't have any in \
+                the current one. Bindings have changed."
+            );
             true
         }
     }
 
     /// Process and apply firewall configuration changes.
     /// - If the main config changed (default policy), reconfigure the whole firewall.
-    /// - If only the rules changed, apply the new rules. Currently also reconfigures the whole firewall but that
-    ///   should be temporary.
+    /// - If only the rules changed, apply the new rules. Currently also reconfigures the whole
+    ///   firewall but that should be temporary.
     ///
     /// TODO: Reduce cloning here
     fn process_firewall_changes(
@@ -372,7 +384,10 @@ impl Gateway {
         if let Some(fw_config) = fw_config {
             debug!("Received firewall configuration: {fw_config:?}");
             if self.has_firewall_config_changed(fw_config) {
-                debug!("Received firewall configuration is different than current one. Reconfiguring firewall...");
+                debug!(
+                    "Received firewall configuration is different than current one. \
+                    Reconfiguring firewall..."
+                );
                 self.firewall_api.begin()?;
                 self.firewall_api
                     .setup(fw_config.default_policy, self.config.fw_priority)?;
@@ -383,7 +398,10 @@ impl Gateway {
                 self.firewall_config = Some(fw_config.clone());
                 info!("Reconfigured firewall with new configuration");
             } else {
-                debug!("Received firewall configuration is the same as current one. Skipping reconfiguration.");
+                debug!(
+                    "Received firewall configuration is the same as current one. Skipping \
+                    reconfiguration."
+                );
             }
         } else {
             debug!("Received firewall configuration is empty, cleaning up firewall rules...");
@@ -417,7 +435,7 @@ impl Gateway {
         if self.is_interface_config_changed(&new_interface_configuration, &new_configuration.peers)
         {
             debug!(
-                "Received configuration is different than the current one. Reconfiguring interface..."
+                "Received configuration is different than the current one. Reconfiguring interface."
             );
             self.wgapi
                 .lock()
@@ -435,7 +453,10 @@ impl Gateway {
             self.interface_configuration = Some(new_interface_configuration);
             self.replace_peers(new_configuration.peers);
         } else {
-            debug!("Received configuration is identical to the current one. Skipping interface reconfiguration.");
+            debug!(
+                "Received configuration is identical to the current one. Skipping interface \
+                reconfiguration."
+            );
         }
 
         // process received firewall config unless firewall management is disabled
@@ -477,12 +498,12 @@ impl Gateway {
             };
             match (response, stream) {
                 (Ok(response), Ok(stream)) => {
-                    self.core_info = parse_metadata(response.metadata());
+                    self.core_info = ComponentInfo::from_metadata(response.metadata());
                     let (version, info) = get_tracing_variables(&self.core_info);
                     let span = tracing::info_span!(
                         "core_configuration",
                         component = %DefguardComponent::Core,
-                        version,
+                        version = version.to_string(),
                         info
                     );
                     let _guard = span.enter();
@@ -503,12 +524,18 @@ impl Gateway {
                     break stream.into_inner();
                 }
                 (Err(err), _) => {
-                    error!("Couldn't retrieve gateway configuration from the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
-                    self.config.grpc_url);
+                    error!(
+                        "Couldn't retrieve gateway configuration from the core. Using gRPC URL: \
+                        {}. Retrying in 10s. Error: {err}",
+                        self.config.grpc_url
+                    );
                 }
                 (_, Err(err)) => {
-                    error!("Couldn't establish streaming connection to the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
-                    self.config.grpc_url);
+                    error!(
+                        "Couldn't establish streaming connection to the core. Using gRPC URL: \
+                        {}. Retrying in 10s. Error: {err}",
+                        self.config.grpc_url
+                    );
                 }
             }
             sleep(TEN_SECS).await;
@@ -590,7 +617,10 @@ impl Gateway {
                         }
                         Some(update::Update::FirewallConfig(config)) => {
                             if self.config.disable_firewall_management {
-                                debug!("Received firewall config update, but firewall management is disabled. Skipping processing this update: {config:?}");
+                                debug!(
+                                    "Received firewall config update, but firewall management \
+                                    is disabled. Skipping processing this update: {config:?}"
+                                );
                                 continue;
                             }
 
@@ -622,7 +652,10 @@ impl Gateway {
                         }
                         Some(update::Update::DisableFirewall(())) => {
                             if self.config.disable_firewall_management {
-                                debug!("Received firewall disable request, but firewall management is disabled. Skipping processing this update");
+                                debug!(
+                                    "Received firewall disable request, but firewall management \
+                                    is disabled. Skipping processing this update"
+                                );
                                 continue;
                             }
 
@@ -675,7 +708,7 @@ impl Gateway {
         }
 
         info!(
-            "Trying to connect to {} and obtain the gateway configuration from Defguard...",
+            "Trying to connect to {} and obtain the gateway configuration from Defguard.",
             self.config.grpc_url
         );
         loop {
@@ -688,7 +721,7 @@ impl Gateway {
             let span = tracing::info_span!(
                 "core_grpc",
                 component = %DefguardComponent::Core,
-                version,
+                version = version.to_string(),
                 info,
             );
             let _guard = span.enter();
