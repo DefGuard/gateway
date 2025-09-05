@@ -399,7 +399,7 @@ dependencies = [
 [[package]]
 name = "defguard_version"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=168bbd8e737e0aa920c6356947e1b6be99c9031b#168bbd8e737e0aa920c6356947e1b6be99c9031b"
+source = "git+https://github.com/DefGuard/defguard.git?rev=9aaa99f38eb9e4a07685d47779a8a43d0047b7b9#9aaa99f38eb9e4a07685d47779a8a43d0047b7b9"
 dependencies = [
  "axum",
  "http",
