@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, net::IpAddr, path::PathBuf};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -6,10 +6,22 @@ use toml;
 
 use crate::error::GatewayError;
 
+fn default_log_level() -> String {
+    String::from("info")
+}
+
+fn default_syslog_socket() -> PathBuf {
+    PathBuf::from("/var/run/log")
+}
+
 #[derive(Debug, Parser, Clone, Deserialize)]
 #[clap(about = "Defguard VPN gateway service")]
 #[command(version)]
 pub struct Config {
+    #[arg(long, short = 'l', env = "DEFGUARD_LOG_LEVEL", default_value = "info")]
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
+
     /// Token received from Defguard after completing the network wizard
     #[arg(
         long,
@@ -18,6 +30,7 @@ pub struct Config {
         env = "DEFGUARD_TOKEN",
         default_value = ""
     )]
+    #[serde(default)]
     pub token: String,
 
     #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
@@ -31,6 +44,7 @@ pub struct Config {
         env = "DEFGUARD_GRPC_URL",
         default_value = ""
     )]
+    #[serde(default)]
     pub grpc_url: String,
 
     /// Use userspace WireGuard implementation e.g. wireguard-go
@@ -63,6 +77,7 @@ pub struct Config {
 
     /// Syslog socket path
     #[arg(long, default_value = "/var/run/log")]
+    #[serde(default = "default_syslog_socket")]
     pub syslog_socket: PathBuf,
 
     /// Configuration file path
@@ -105,11 +120,15 @@ pub struct Config {
     #[arg(long, env = "DEFGUARD_DISABLE_FW_MGMT")]
     #[serde(default)]
     pub disable_firewall_management: bool,
+
+    #[arg(long, env = "DEFGUARD_HTTP_BIND_ADDRESS")]
+    pub http_bind_address: Option<IpAddr>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
+            log_level: "info".into(),
             token: "TOKEN".into(),
             name: None,
             grpc_url: "http://localhost:50051".into(),
@@ -130,6 +149,7 @@ impl Default for Config {
             masquerade: false,
             fw_priority: None,
             disable_firewall_management: false,
+            http_bind_address: None,
         }
     }
 }
@@ -142,7 +162,7 @@ pub fn get_config() -> Result<Config, GatewayError> {
     if let Some(config_path) = cli_config.config_path {
         let config_toml = fs::read_to_string(config_path)
             .map_err(|err| GatewayError::InvalidConfigFile(err.to_string()))?;
-        let file_config: Config = toml::from_str(&config_toml)
+        let file_config = toml::from_str(&config_toml)
             .map_err(|err| GatewayError::InvalidConfigFile(err.message().to_string()))?;
         return Ok(file_config);
     }

@@ -7,7 +7,7 @@ use super::{
 };
 use crate::enterprise::firewall::{
     api::{FirewallApi, FirewallManagementApi},
-    FirewallError, Policy,
+    FirewallError, Policy, SnatBinding,
 };
 
 impl FirewallManagementApi for FirewallApi {
@@ -34,7 +34,7 @@ impl FirewallManagementApi for FirewallApi {
         let mut ioc_trans = IocTrans::new(elements.as_mut_slice());
         // This will create an anchor if it doesn't exist.
         unsafe {
-            pf_begin(self.fd(), &mut ioc_trans)?;
+            pf_begin(self.fd(), &raw mut ioc_trans)?;
         }
 
         let ticket = elements[0].ticket;
@@ -46,7 +46,7 @@ impl FirewallManagementApi for FirewallApi {
             debug!("Rollback pf transaction.");
             // Rule cannot be added, so rollback.
             unsafe {
-                pf_rollback(self.fd(), &mut ioc_trans)?;
+                pf_rollback(self.fd(), &raw mut ioc_trans)?;
                 return Err(FirewallError::TransactionFailed(err.to_string()));
             }
         }
@@ -57,7 +57,7 @@ impl FirewallManagementApi for FirewallApi {
                 debug!("Rollback pf transaction.");
                 // Rule cannot be added, so rollback.
                 unsafe {
-                    pf_rollback(self.fd(), &mut ioc_trans)?;
+                    pf_rollback(self.fd(), &raw mut ioc_trans)?;
                     return Err(FirewallError::TransactionFailed(err.to_string()));
                 }
             }
@@ -66,14 +66,18 @@ impl FirewallManagementApi for FirewallApi {
         // Commit transaction.
         debug!("Commit pf transaction.");
         unsafe {
-            pf_commit(self.file.as_raw_fd(), &mut ioc_trans).unwrap();
+            pf_commit(self.file.as_raw_fd(), &raw mut ioc_trans).unwrap();
         }
 
         Ok(())
     }
 
-    /// Set masquerade status.
-    fn set_masquerade_status(&mut self, _enabled: bool) -> Result<(), FirewallError> {
+    /// Setup Network Address Translation using POSTROUTING chain rules
+    fn setup_nat(
+        &mut self,
+        _masquerade_enabled: bool,
+        _snat_bindings: &[SnatBinding],
+    ) -> Result<(), FirewallError> {
         Ok(())
     }
 

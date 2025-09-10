@@ -42,7 +42,7 @@ impl FirewallApi {
         let mut ioc = IocPoolAddr::new(anchor);
 
         unsafe {
-            pf_begin_addrs(self.fd(), &mut ioc)?;
+            pf_begin_addrs(self.fd(), &raw mut ioc)?;
         }
 
         Ok(ioc.ticket)
@@ -58,7 +58,7 @@ impl FirewallApi {
         let mut ioc = IocRule::with_rule(anchor, Rule::from_pf_rule(&rule));
         ioc.ticket = ticket;
         ioc.pool_ticket = pool_ticket;
-        if let Err(err) = unsafe { pf_add_rule(self.fd(), &mut ioc) } {
+        if let Err(err) = unsafe { pf_add_rule(self.fd(), &raw mut ioc) } {
             error!("Packet filter rule {rule} can't be added.");
             return Err(err.into());
         }
@@ -82,7 +82,7 @@ impl FirewallApi {
             ioc.action = Change::None;
             ioc.ticket = ticket;
             ioc.pool_ticket = pool_ticket;
-            if let Err(err) = unsafe { pf_add_rule(self.fd(), &mut ioc) } {
+            if let Err(err) = unsafe { pf_add_rule(self.fd(), &raw mut ioc) } {
                 error!("Packet filter rule {rule} can't be added.");
                 return Err(err.into());
             }
@@ -92,5 +92,4 @@ impl FirewallApi {
     }
 }
 
-#[cfg(not(test))]
 mod api;

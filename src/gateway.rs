@@ -1,3 +1,9 @@
+use defguard_version::{
+    client::ClientVersionInterceptor, get_tracing_variables, ComponentInfo, DefguardComponent,
+    Version,
+};
+use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
+use gethostname::gethostname;
 use std::{
     collections::HashMap,
     fs::read_to_string,
@@ -8,9 +14,6 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
-
-use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
-use gethostname::gethostname;
 use tokio::{
     select,
     sync::mpsc,
@@ -21,16 +24,18 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
-    service::Interceptor,
+    service::{Interceptor, InterceptorLayer},
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
     Request, Status, Streaming,
 };
+use tower::ServiceBuilder;
+use tracing::{instrument, Instrument};
 
 use crate::{
     config::Config,
     enterprise::firewall::{
         api::{FirewallApi, FirewallManagementApi},
-        FirewallConfig, FirewallRule,
+        FirewallConfig, FirewallRule, SnatBinding,
     },
     error::GatewayError,
     execute_command, mask,
@@ -38,6 +43,7 @@ use crate::{
         gateway_service_client::GatewayServiceClient, stats_update::Payload, update, Configuration,
         ConfigurationRequest, Peer, StatsUpdate, Update,
     },
+    version::ensure_core_version_supported,
     VERSION,
 };
 
@@ -69,10 +75,19 @@ impl From<Configuration> for InterfaceConfiguration {
     }
 }
 
-#[derive(Clone)]
+/// Intercepts all grpc requests adding authentication and version metadata
 struct AuthInterceptor {
     hostname: MetadataValue<Ascii>,
     token: MetadataValue<Ascii>,
+}
+
+impl Clone for AuthInterceptor {
+    fn clone(&self) -> Self {
+        Self {
+            hostname: self.hostname.clone(),
+            token: self.token.clone(),
+        }
+    }
 }
 
 impl AuthInterceptor {
@@ -90,6 +105,7 @@ impl AuthInterceptor {
 
 impl Interceptor for AuthInterceptor {
     fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        // Add auth headers
         let metadata = request.metadata_mut();
         metadata.insert("authorization", self.token.clone());
         metadata.insert("hostname", self.hostname.clone());
@@ -99,6 +115,9 @@ impl Interceptor for AuthInterceptor {
 }
 
 type PubKey = String;
+type GatewayClientType = GatewayServiceClient<
+    InterceptedService<InterceptedService<Channel, AuthInterceptor>, ClientVersionInterceptor>,
+>;
 
 pub struct Gateway {
     config: Config,
@@ -110,7 +129,8 @@ pub struct Gateway {
     #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
-    client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
+    client: GatewayClientType,
+    core_info: Option<ComponentInfo>,
     stats_thread: Option<JoinHandle<()>>,
 }
 
@@ -131,6 +151,7 @@ impl Gateway {
             stats_thread: None,
             firewall_api,
             firewall_config: None,
+            core_info: None,
         })
     }
 
@@ -182,6 +203,7 @@ impl Gateway {
     }
 
     /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
+    #[instrument(skip_all)]
     fn spawn_stats_thread(&mut self) -> UnboundedReceiverStream<StatsUpdate> {
         if let Some(handle) = self.stats_thread.take() {
             debug!("Aborting previous stats thread before starting a new one");
@@ -192,63 +214,67 @@ impl Gateway {
         let wgapi = Arc::clone(&self.wgapi);
         let (tx, rx) = mpsc::unbounded_channel();
         debug!("Spawning stats thread");
-        let handle = spawn(async move {
-            // helper map to track if peer data is actually changing
-            // and avoid sending duplicate stats
-            let mut peer_map = HashMap::new();
-            let mut interval = interval(period);
-            let mut id = 1;
-            'outer: loop {
-                // wait until next iteration
-                interval.tick().await;
-                debug!("Sending active peer stats updates.");
-                let interface_data = wgapi.lock().unwrap().read_interface_data();
-                match interface_data {
-                    Ok(host) => {
-                        let peers = host.peers;
-                        debug!(
-                            "Found {} peers configured on WireGuard interface",
-                            peers.len()
-                        );
-                        for peer in peers.into_values().filter(|p| {
-                            p.last_handshake
-                                .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
-                        }) {
-                            let has_changed = peer_map
-                                .get(&peer.public_key)
-                                .is_none_or(|last_peer| *last_peer != peer);
-                            if has_changed {
-                                peer_map.insert(peer.public_key.clone(), peer.clone());
-                                id += 1;
-                                if tx
-                                    .send(StatsUpdate {
-                                        id,
-                                        payload: Some(Payload::PeerStats((&peer).into())),
-                                    })
-                                    .is_err()
-                                {
-                                    debug!("Stats stream disappeared");
-                                    break 'outer;
+        let handle = spawn(
+            async move {
+                // helper map to track if peer data is actually changing
+                // and avoid sending duplicate stats
+                let mut peer_map = HashMap::new();
+                let mut interval = interval(period);
+                let mut id = 1;
+                'outer: loop {
+                    // wait until next iteration
+                    interval.tick().await;
+                    debug!("Sending active peer stats updates.");
+                    let interface_data = wgapi.lock().unwrap().read_interface_data();
+                    match interface_data {
+                        Ok(host) => {
+                            let peers = host.peers;
+                            debug!(
+                                "Found {} peers configured on WireGuard interface",
+                                peers.len()
+                            );
+                            for peer in peers.into_values().filter(|p| {
+                                p.last_handshake
+                                    .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
+                            }) {
+                                let has_changed = peer_map
+                                    .get(&peer.public_key)
+                                    .is_none_or(|last_peer| *last_peer != peer);
+                                if has_changed {
+                                    peer_map.insert(peer.public_key.clone(), peer.clone());
+                                    id += 1;
+                                    if tx
+                                        .send(StatsUpdate {
+                                            id,
+                                            payload: Some(Payload::PeerStats((&peer).into())),
+                                        })
+                                        .is_err()
+                                    {
+                                        debug!("Stats stream disappeared");
+                                        break 'outer;
+                                    }
+                                } else {
+                                    debug!(
+                                        "Stats for peer {} have not changed. Skipping.",
+                                        peer.public_key
+                                    );
                                 }
-                            } else {
-                                debug!(
-                                    "Stats for peer {} have not changed. Skipping.",
-                                    peer.public_key
-                                );
                             }
                         }
+                        Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
                     }
-                    Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
+                    debug!("Sent peer stats updates for all peers.");
                 }
-                debug!("Sent peer stats updates for all peers.");
             }
-        });
+            .instrument(tracing::Span::current()),
+        );
         self.stats_thread = Some(handle);
         UnboundedReceiverStream::new(rx)
     }
 
+    #[instrument(skip_all)]
     async fn handle_stats_thread(
-        mut client: GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>,
+        mut client: GatewayClientType,
         rx: UnboundedReceiverStream<StatsUpdate>,
     ) {
         let status = client.stats(rx).await;
@@ -262,7 +288,8 @@ impl Gateway {
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
-                || self.have_firewall_rules_changed(&new_fw_config.rules);
+                || self.have_firewall_rules_changed(&new_fw_config.rules)
+                || self.have_snat_bindings_changed(&new_fw_config.snat_bindings);
         }
 
         true
@@ -292,18 +319,62 @@ impl Gateway {
                 }
             }
 
-            debug!("Defguard ACL rules are the same. Rules have not changed. My rules: {current_rules:?}, new rules: {new_rules:?}");
+            debug!(
+                "Defguard ACL rules are the same. Rules have not changed. My rules: \
+                {current_rules:?}, new rules: {new_rules:?}"
+            );
             false
         } else {
-            debug!("There are new Defguard ACL rules in the new configuration, but we don't have any in the current one. Rules have changed.");
+            debug!(
+                "There are new Defguard ACL rules in the new configuration, but we don't have \
+                any in the current one. Rules have changed."
+            );
+            true
+        }
+    }
+
+    /// Checks whether SNAT bindings have changed.
+    fn have_snat_bindings_changed(&self, new_bindings: &[SnatBinding]) -> bool {
+        debug!("Checking if SNAT bindings have changed");
+        if let Some(current_config) = &self.firewall_config {
+            let current_bindings = &current_config.snat_bindings;
+            if current_bindings.len() != new_bindings.len() {
+                debug!("Number of SNAT bindings is different, so the bindings have changed");
+                return true;
+            }
+
+            for binding in new_bindings {
+                if !current_bindings.contains(binding) {
+                    debug!("Found a new SNAT binding: {binding:?}. Bindings have changed.");
+                    return true;
+                }
+            }
+
+            for binding in current_bindings {
+                if !new_bindings.contains(binding) {
+                    debug!("Found a removed SNAT binding: {binding:?}. Bindings have changed.");
+                    return true;
+                }
+            }
+
+            debug!(
+                "SNAT bindings are the same. Bindings have not changed. My bindings: \
+                {current_bindings:?}, new bindings: {new_bindings:?}"
+            );
+            false
+        } else {
+            debug!(
+                "There are new SNAT bindings in the new configuration, but we don't have any in \
+                the current one. Bindings have changed."
+            );
             true
         }
     }
 
     /// Process and apply firewall configuration changes.
     /// - If the main config changed (default policy), reconfigure the whole firewall.
-    /// - If only the rules changed, apply the new rules. Currently also reconfigures the whole firewall but that
-    ///   should be temporary.
+    /// - If only the rules changed, apply the new rules. Currently also reconfigures the whole
+    ///   firewall but that should be temporary.
     ///
     /// TODO: Reduce cloning here
     fn process_firewall_changes(
@@ -313,27 +384,30 @@ impl Gateway {
         if let Some(fw_config) = fw_config {
             debug!("Received firewall configuration: {fw_config:?}");
             if self.has_firewall_config_changed(fw_config) {
-                debug!("Received firewall configuration is different than current one. Reconfiguring firewall...");
+                debug!(
+                    "Received firewall configuration is different than current one. \
+                    Reconfiguring firewall..."
+                );
                 self.firewall_api.begin()?;
                 self.firewall_api
                     .setup(fw_config.default_policy, self.config.fw_priority)?;
-                if self.config.masquerade {
-                    self.firewall_api.set_masquerade_status(true)?;
-                }
+                self.firewall_api
+                    .setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
                 self.firewall_api.add_rules(fw_config.rules.clone())?;
                 self.firewall_api.commit()?;
                 self.firewall_config = Some(fw_config.clone());
                 info!("Reconfigured firewall with new configuration");
             } else {
-                debug!("Received firewall configuration is the same as current one. Skipping reconfiguration.");
+                debug!(
+                    "Received firewall configuration is the same as current one. Skipping \
+                    reconfiguration."
+                );
             }
         } else {
             debug!("Received firewall configuration is empty, cleaning up firewall rules...");
             self.firewall_api.begin()?;
             self.firewall_api.cleanup()?;
-            if self.config.masquerade {
-                self.firewall_api.set_masquerade_status(true)?;
-            }
+            self.firewall_api.setup_nat(self.config.masquerade, &[])?;
             self.firewall_api.commit()?;
             self.firewall_config = None;
             debug!("Cleaned up firewall rules");
@@ -361,7 +435,7 @@ impl Gateway {
         if self.is_interface_config_changed(&new_interface_configuration, &new_configuration.peers)
         {
             debug!(
-                "Received configuration is different than the current one. Reconfiguring interface..."
+                "Received configuration is different than the current one. Reconfiguring interface."
             );
             self.wgapi
                 .lock()
@@ -379,11 +453,16 @@ impl Gateway {
             self.interface_configuration = Some(new_interface_configuration);
             self.replace_peers(new_configuration.peers);
         } else {
-            debug!("Received configuration is identical to the current one. Skipping interface reconfiguration.");
+            debug!(
+                "Received configuration is identical to the current one. Skipping interface \
+                reconfiguration."
+            );
         }
 
         // process received firewall config unless firewall management is disabled
-        if !self.config.disable_firewall_management {
+        if self.config.disable_firewall_management {
+            debug!("Firewall management is disabled. Skipping updating firewall configuration");
+        } else {
             let new_firewall_configuration =
                 if let Some(firewall_config) = new_configuration.firewall_config {
                     Some(FirewallConfig::from_proto(firewall_config)?)
@@ -392,8 +471,6 @@ impl Gateway {
                 };
 
             self.process_firewall_changes(new_firewall_configuration.as_ref())?;
-        } else {
-            debug!("Firewall management is disabled. Skipping updating firewall configuration");
         }
 
         Ok(())
@@ -421,6 +498,20 @@ impl Gateway {
             };
             match (response, stream) {
                 (Ok(response), Ok(stream)) => {
+                    self.core_info = ComponentInfo::from_metadata(response.metadata());
+                    let (version, info) = get_tracing_variables(&self.core_info);
+                    let span = tracing::info_span!(
+                        "core_configuration",
+                        component = %DefguardComponent::Core,
+                        version = version.to_string(),
+                        info
+                    );
+                    let _guard = span.enter();
+
+                    // check core version and exit if it's not supported
+                    let version = self.core_info.as_ref().map(|info| &info.version);
+                    ensure_core_version_supported(version);
+
                     if let Err(err) = self.configure(response.into_inner()) {
                         error!("Interface configuration failed: {err}");
                         continue;
@@ -433,22 +524,25 @@ impl Gateway {
                     break stream.into_inner();
                 }
                 (Err(err), _) => {
-                    error!("Couldn't retrieve gateway configuration from the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
-                    self.config.grpc_url);
+                    error!(
+                        "Couldn't retrieve gateway configuration from the core. Using gRPC URL: \
+                        {}. Retrying in 10s. Error: {err}",
+                        self.config.grpc_url
+                    );
                 }
                 (_, Err(err)) => {
-                    error!("Couldn't establish streaming connection to the core. Using gRPC URL: {}. Retrying in 10s. Error: {err}",
-                    self.config.grpc_url);
+                    error!(
+                        "Couldn't establish streaming connection to the core. Using gRPC URL: \
+                        {}. Retrying in 10s. Error: {err}",
+                        self.config.grpc_url
+                    );
                 }
             }
             sleep(TEN_SECS).await;
         }
     }
 
-    fn setup_client(
-        config: &Config,
-    ) -> Result<GatewayServiceClient<InterceptedService<Channel, AuthInterceptor>>, GatewayError>
-    {
+    fn setup_client(config: &Config) -> Result<GatewayClientType, GatewayError> {
         debug!("Preparing gRPC client configuration");
         let tls = ClientTlsConfig::new();
         // Use CA if provided, otherwise load certificates from system.
@@ -467,14 +561,19 @@ impl Gateway {
             .keep_alive_while_idle(true)
             .tls_config(tls)?;
         let channel = endpoint.connect_lazy();
-
+        let version_interceptor = ClientVersionInterceptor::new(Version::parse(VERSION)?);
         let auth_interceptor = AuthInterceptor::new(&config.token)?;
-        let client = GatewayServiceClient::with_interceptor(channel, auth_interceptor);
+        let channel = ServiceBuilder::new()
+            .layer(InterceptorLayer::new(version_interceptor))
+            .layer(InterceptorLayer::new(auth_interceptor))
+            .service(channel);
+        let client = GatewayServiceClient::new(channel);
 
         debug!("gRPC client configuration done");
         Ok(client)
     }
 
+    #[instrument(skip_all)]
     async fn handle_updates(&mut self, updates_stream: &mut Streaming<Update>) {
         loop {
             match updates_stream.message().await {
@@ -518,7 +617,10 @@ impl Gateway {
                         }
                         Some(update::Update::FirewallConfig(config)) => {
                             if self.config.disable_firewall_management {
-                                debug!("Received firewall config update, but firewall management is disabled. Skipping processing this update: {config:?}");
+                                debug!(
+                                    "Received firewall config update, but firewall management \
+                                    is disabled. Skipping processing this update: {config:?}"
+                                );
                                 continue;
                             }
 
@@ -550,7 +652,10 @@ impl Gateway {
                         }
                         Some(update::Update::DisableFirewall(())) => {
                             if self.config.disable_firewall_management {
-                                debug!("Received firewall disable request, but firewall management is disabled. Skipping processing this update");
+                                debug!(
+                                    "Received firewall disable request, but firewall management \
+                                    is disabled. Skipping processing this update"
+                                );
                                 continue;
                             }
 
@@ -597,13 +702,13 @@ impl Gateway {
             #[cfg(target_os = "linux")]
             if !self.config.disable_firewall_management && self.config.masquerade {
                 self.firewall_api.begin()?;
-                self.firewall_api.set_masquerade_status(true)?;
+                self.firewall_api.setup_nat(self.config.masquerade, &[])?;
                 self.firewall_api.commit()?;
             }
         }
 
         info!(
-            "Trying to connect to {} and obtain the gateway configuration from Defguard...",
+            "Trying to connect to {} and obtain the gateway configuration from Defguard.",
             self.config.grpc_url
         );
         loop {
@@ -612,6 +717,14 @@ impl Gateway {
                 debug!("Executing specified POST_UP command: {post_up}");
                 execute_command(post_up)?;
             }
+            let (version, info) = get_tracing_variables(&self.core_info);
+            let span = tracing::info_span!(
+                "core_grpc",
+                component = %DefguardComponent::Core,
+                version = version.to_string(),
+                info,
+            );
+            let _guard = span.enter();
             let stats_stream = self.spawn_stats_thread();
             let client = self.client.clone();
             select! {
@@ -629,7 +742,7 @@ impl Gateway {
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
+    use std::{net::Ipv4Addr, slice::from_ref};
 
     #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
     use defguard_wireguard_rs::Kernel;
@@ -687,6 +800,7 @@ mod tests {
             stats_thread: None,
             firewall_api,
             firewall_config: None,
+            core_info: None,
         };
 
         // new config is the same
@@ -852,11 +966,13 @@ mod tests {
         let config1 = FirewallConfig {
             rules: vec![rule1.clone(), rule2.clone()],
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         let config_empty = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         #[cfg(target_os = "macos")]
@@ -876,6 +992,7 @@ mod tests {
             stats_thread: None,
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
+            core_info: None,
         };
 
         // Gateway has no firewall config, new rules are empty
@@ -884,7 +1001,7 @@ mod tests {
 
         // Gateway has no firewall config, but new rules exist
         gateway.firewall_config = None;
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
 
         // Gateway has firewall config, with empty rules list
         gateway.firewall_config = Some(config1.clone());
@@ -892,7 +1009,7 @@ mod tests {
 
         // Gateway has firewall config, new rules have different length
         gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
 
         // Gateway has firewall config, new rules have different content
         gateway.firewall_config = Some(config1.clone());
@@ -904,7 +1021,7 @@ mod tests {
 
         // Gateway has empty firewall config, new rules exist
         gateway.firewall_config = Some(config_empty.clone());
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone()]));
+        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
 
         // Both configs are empty
         gateway.firewall_config = Some(config_empty);
@@ -916,16 +1033,19 @@ mod tests {
         let config1 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         let config2 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Deny,
+            snat_bindings: vec![],
         };
 
         let config3 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
 
         #[cfg(target_os = "macos")]
@@ -945,6 +1065,7 @@ mod tests {
             stats_thread: None,
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
+            core_info: None,
         };
         // Gateway has no config
         gateway.firewall_config = None;
@@ -971,6 +1092,7 @@ mod tests {
                 ipv4: true,
             }],
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
         gateway.firewall_config = Some(config1);
         assert!(gateway.has_firewall_config_changed(&config4));
@@ -988,6 +1110,7 @@ mod tests {
                 ipv4: false,
             }],
             default_policy: Policy::Allow,
+            snat_bindings: vec![],
         };
         gateway.firewall_config = Some(config4);
         assert!(gateway.has_firewall_config_changed(&config5));
