@@ -21,7 +21,7 @@ jobs:
       - codebuild-defguard-gateway-runner-${{ github.run_id }}-${{ github.run_attempt }}
         image:${{ matrix.os }}
         instance-size:${{ matrix.size }}
-        buildspec-override:true
+        # buildspec-override:true
       # - self-hosted
       # - Linux
       # - ${{ matrix.runner }}
