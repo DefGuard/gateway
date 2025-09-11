@@ -44,12 +44,15 @@ jobs:
         include:
           - os: arm-3.0
             size: xlarge
+            cpu: arm64
             tag: arm64
           - os: ubuntu-7.0
             size: xlarge
+            cpu: amd64
             tag: amd64
           - os: arm-ec2
             size: large
+            cpu: arm/v7
             tag: armv7
 
     permissions:
