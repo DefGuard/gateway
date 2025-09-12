@@ -85,8 +85,8 @@ jobs:
           push: true
           tags: "${{ env.GHCR_REPO }}:${{ github.sha }}-${{ matrix.tag }}"
           cache-from: |
-            type=registry,ref=${{ env.GHCR_REPO }}:cache-${{ matrix.cpu }}
-            type=registry,ref=${{ env.GHCR_REPO }}:cache-${{ matrix.cpu }}-${{ github.ref_name }}
+            type=registry,ref=${{ env.GHCR_REPO }}:cache-${{ matrix.tag }}
+            type=registry,ref=${{ env.GHCR_REPO }}:cache-${{ matrix.tag }}-${{ github.ref_name }}
           cache-to: type=registry,mode=max,ref=${{ env.GHCR_REPO }}:cache-${{ matrix.cpu }}-${{ github.ref_name }}
 
       - name: Scan image with Trivy
