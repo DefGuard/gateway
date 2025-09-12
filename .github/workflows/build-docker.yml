@@ -50,8 +50,8 @@ jobs:
             size: xlarge
             cpu: amd64
             tag: amd64
-          - os: arm-ec2
-            size: large
+          - os: arm-3.0
+            size: xlarge
             cpu: arm/v7
             tag: armv7
 
