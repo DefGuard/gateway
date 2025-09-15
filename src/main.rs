@@ -2,12 +2,12 @@ use std::{fs::File, io::Write, process, sync::Arc};
 
 use defguard_gateway::{
     config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
-    execute_command, gateway::Gateway, init_syslog, server::run_server,
+    execute_command, gateway::Gateway, init_syslog, server::run_server, VERSION,
 };
+use defguard_version::Version;
 #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
 use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
-use env_logger::{init_from_env, Env, DEFAULT_FILTER_ENV};
 use tokio::task::JoinSet;
 
 #[tokio::main]
@@ -30,7 +30,8 @@ async fn main() -> Result<(), GatewayError> {
             return Err(error);
         }
     } else {
-        init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
+        let version = Version::parse(VERSION)?;
+        defguard_version::tracing::init(version, &config.log_level)?;
     }
 
     if let Some(pre_up) = &config.pre_up {

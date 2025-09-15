@@ -24,6 +24,24 @@ pub(crate) enum Address {
 }
 
 impl Address {
+    // FIXME: remove after merging nft hotfix into dev
+    #[allow(dead_code)]
+    pub fn first(&self) -> IpAddr {
+        match self {
+            Address::Network(network) => network.ip(),
+            Address::Range(range) => range.start(),
+        }
+    }
+
+    // FIXME: remove after merging nft hotfix into dev
+    #[allow(dead_code)]
+    pub fn last(&self) -> IpAddr {
+        match self {
+            Address::Network(network) => max_address(network),
+            Address::Range(range) => range.end(),
+        }
+    }
+
     pub fn from_proto(ip: &proto::enterprise::firewall::IpAddress) -> Result<Self, FirewallError> {
         match &ip.address {
             Some(proto::enterprise::firewall::ip_address::Address::Ip(ip)) => {
@@ -358,4 +376,86 @@ pub enum FirewallError {
     TransactionNotStarted,
     #[error("Firewall transaction failed: {0}")]
     TransactionFailed(String),
+}
+
+/// Get the max address in a network.
+///
+/// - In IPv4 this is the broadcast address.
+/// - In IPv6 this is just the last address in the network.
+#[must_use]
+pub fn max_address(network: &IpNetwork) -> IpAddr {
+    match network {
+        IpNetwork::V4(network) => {
+            let addr = network.ip().to_bits();
+            let mask = network.mask().to_bits();
+
+            IpAddr::V4(Ipv4Addr::from(addr | !mask))
+        }
+        IpNetwork::V6(network) => {
+            let addr = network.ip().to_bits();
+            let mask = network.mask().to_bits();
+
+            IpAddr::V6(Ipv6Addr::from(addr | !mask))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_max_address_ipv4_24() {
+        let network = IpNetwork::V4(Ipv4Network::from_str("192.168.1.0/24").unwrap());
+        let max = max_address(&network);
+        assert_eq!(max, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 255)));
+    }
+
+    #[test]
+    fn test_max_address_ipv4_16() {
+        let network = IpNetwork::V4(Ipv4Network::from_str("10.1.0.0/16").unwrap());
+        let max = max_address(&network);
+        assert_eq!(max, IpAddr::V4(Ipv4Addr::new(10, 1, 255, 255)));
+    }
+
+    #[test]
+    fn test_max_address_ipv4_8() {
+        let network = IpNetwork::V4(Ipv4Network::from_str("172.16.0.0/8").unwrap());
+        let max = max_address(&network);
+        assert_eq!(max, IpAddr::V4(Ipv4Addr::new(172, 255, 255, 255)));
+    }
+
+    #[test]
+    fn test_max_address_ipv4_32() {
+        let network = IpNetwork::V4(Ipv4Network::from_str("192.168.1.1/32").unwrap());
+        let max = max_address(&network);
+        assert_eq!(max, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+    }
+
+    #[test]
+    fn test_max_address_ipv6_64() {
+        let network = IpNetwork::V6(Ipv6Network::from_str("2001:db8::/64").unwrap());
+        let max = max_address(&network);
+        assert_eq!(
+            max,
+            IpAddr::V6(Ipv6Addr::from_str("2001:db8::ffff:ffff:ffff:ffff").unwrap())
+        );
+    }
+
+    #[test]
+    fn test_max_address_ipv6_128() {
+        let network = IpNetwork::V6(Ipv6Network::from_str("2001:db8::1/128").unwrap());
+        let max = max_address(&network);
+        assert_eq!(max, IpAddr::V6(Ipv6Addr::from_str("2001:db8::1").unwrap()));
+    }
+
+    #[test]
+    fn test_max_address_ipv6_48() {
+        let network = IpNetwork::V6(Ipv6Network::from_str("2001:db8:1234::/48").unwrap());
+        let max = max_address(&network);
+        assert_eq!(
+            max,
+            IpAddr::V6(Ipv6Addr::from_str("2001:db8:1234:ffff:ffff:ffff:ffff:ffff").unwrap())
+        );
+    }
 }
