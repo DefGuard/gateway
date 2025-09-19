@@ -8,7 +8,7 @@ defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "86
 axum = "0.8"
 base64 = "0.22"
 clap = { version = "4.5", features = ["derive", "env"] }
-defguard_wireguard_rs = "0.7.6"
+defguard_wireguard_rs = "0.7.7"
 env_logger = "0.11"
 gethostname = "1.0"
 ipnetwork = "0.21"
