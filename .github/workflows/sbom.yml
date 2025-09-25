@@ -30,7 +30,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: 'fs'
-          format: 'github'
+          format: 'spdx-json'
           output: "defguard-gateway-${{ env.VERSION }}.sbom.json"
           scan-ref: '.'
           severity: "CRITICAL,HIGH,MEDIUM"
@@ -40,9 +40,10 @@ jobs:
         with:
           image-ref: "ghcr.io/defguard/gateway:${{ env.VERSION }}"
           scan-type: 'image'
-          format: 'github'
+          format: 'spdx-json'
           output: "defguard-gateway-${{ env.VERSION }}-docker.sbom.json"
           severity: "CRITICAL,HIGH,MEDIUM"
+          scanners: "vuln"
 
       - name: Upload SBOM
         uses: actions/upload-release-asset@v1.0.2
@@ -53,6 +54,7 @@ jobs:
           asset_path: "defguard-gateway-${{ env.VERSION }}.sbom.json" 
           asset_name: "defguard-gateway-${{ env.VERSION }}.sbom.json"
           asset_content_type: application/octet-stream
+          scanners: "vuln"
 
       - name: Upload docker SBOM
         uses: actions/upload-release-asset@v1.0.2
