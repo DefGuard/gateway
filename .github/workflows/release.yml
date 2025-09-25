@@ -52,8 +52,7 @@ jobs:
           generate_release_notes: true
 
   create-sbom:
-    # TODO change to build-docker-release
-    needs: [create-release, build-docker-prerelease]
+    needs: [create-release, build-docker-release]
     uses: ./.github/workflows/sbom.yml
     with:
       upload_url: ${{ needs.create-release.outputs.upload_url }}
