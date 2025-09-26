@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       upload_url:
-        description: "Release assets upload url"
+        description: "Release assets upload URL"
         required: true
         type: string
 
@@ -26,7 +26,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Create SBOM with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0
         with:
           scan-type: 'fs'
           format: 'spdx-json'
@@ -35,7 +35,7 @@ jobs:
           severity: "CRITICAL,HIGH,MEDIUM"
 
       - name: Create docker image SBOM with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0
         with:
           image-ref: "ghcr.io/defguard/gateway:${{ env.VERSION }}"
           scan-type: 'image'
@@ -45,23 +45,10 @@ jobs:
           scanners: "vuln"
 
       - name: Upload SBOM
-        uses: actions/upload-release-asset@v1.0.2
+        uses: shogo82148/actions-upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ inputs.upload_url }}
-          asset_path: "defguard-gateway-${{ env.VERSION }}.sbom.json" 
-          asset_name: "defguard-gateway-${{ env.VERSION }}.sbom.json"
+          asset_path: "defguard-*.sbom.json"
           asset_content_type: application/octet-stream
-          scanners: "vuln"
-
-      - name: Upload docker SBOM
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ inputs.upload_url }}
-          asset_path: "defguard-gateway-${{ env.VERSION }}-docker.sbom.json" 
-          asset_name: "defguard-gateway-${{ env.VERSION }}-docker.sbom.json" 
-          asset_content_type: application/octet-stream
-
