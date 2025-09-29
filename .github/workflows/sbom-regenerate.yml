@@ -20,10 +20,14 @@ jobs:
         id: get-releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # run: |
+        #   # We use the GitHub CLI to list releases and 'jq' to format the output
+        #   # as a JSON array suitable for the job matrix.
+        #   RELEASES_JSON=$(gh release list --json tagName,uploadUrl --limit 2 | jq -c '[.[] | select(.tagName | startswith("v"))]')
+        #   echo "releases=$RELEASES_JSON" >> $GITHUB_OUTPUT
         run: |
-          # We use the GitHub CLI to list releases and 'jq' to format the output
-          # as a JSON array suitable for the job matrix.
-          RELEASES_JSON=$(gh release list --json tagName,uploadUrl --limit 2 | jq -c '[.[] | select(.tagName | startswith("v"))]')
+          RELEASES_JSON=$(gh api repos/${{ github.repository }}/releases \
+            --jq '[.[] | {tagName: .tag_name, uploadUrl: .upload_url}]')
           echo "releases=$RELEASES_JSON" >> $GITHUB_OUTPUT
 
   # This job will create a parallel run for each release found by the previous job.
