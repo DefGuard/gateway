@@ -18,6 +18,7 @@ jobs:
 
     steps:
       - name: Determine release tag and version
+        id: vars
         # uses inputs.tag for scheduled runs, otherwise github.ref_name
         run: |
           TAG_NAME=${{ inputs.tag || github.ref_name }}
