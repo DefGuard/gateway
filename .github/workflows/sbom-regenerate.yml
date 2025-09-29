@@ -1,13 +1,13 @@
 name: Periodic SBOM Regeneration
 
 on:
-  push:
-    branches:
-      - sbom-schedule
+  # push:
+  #   branches:
+  #     - sbom-schedule
 
   # 2:00 AM UTC
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '37 11 * * *'
 
 jobs:
   list-releases:
