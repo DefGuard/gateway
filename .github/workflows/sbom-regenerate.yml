@@ -1,7 +1,9 @@
 name: Periodic SBOM Regeneration
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - sbom-schedule
 
   # 2:00 AM UTC
   schedule:
