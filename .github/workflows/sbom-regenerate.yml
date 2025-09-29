@@ -1,0 +1,48 @@
+name: Periodic SBOM Regeneration
+
+on:
+  workflow_dispatch:
+
+  # 2:00 AM UTC
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  list-releases:
+    name: List Existing Releases
+    runs-on: [self-hosted, Linux, X64]
+    outputs:
+      releases: ${{ steps.get-releases.outputs.releases }}
+    steps:
+      - name: Get list of releases
+        id: get-releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # We use the GitHub CLI to list releases and 'jq' to format the output
+          # as a JSON array suitable for the job matrix.
+          RELEASES_JSON=$(gh release list --json tagName,uploadUrl --limit 2 | jq -c '[.[] | select(.tagName | startswith("v"))]')
+          echo "releases=$RELEASES_JSON" >> $GITHUB_OUTPUT
+
+  # This job will create a parallel run for each release found by the previous job.
+  regenerate-for-release:
+    name: Regenerate SBOM for Release
+    runs-on: [self-hosted, Linux, X64]
+    needs: list-releases
+    # Don't run this job if there are no releases to process
+    if: needs.list-releases.outputs.releases != '[]'
+    strategy:
+      fail-fast: false
+      # Dynamically create a matrix from the JSON output of the 'list-releases' job
+      matrix:
+        release: ${{ fromJson(needs.list-releases.outputs.releases) }}
+    # uses: ./.github/workflows/sbom.yml
+    # with:
+    #   upload_url: ${{ matrix.release.uploadUrl }}
+    #   tag: ${{ matrix.release.tagName }}
+    # secrets: inherit
+    steps:
+      - name: Show Variables
+        run: |
+          echo "Release Tag: ${{ matrix.release.tagName }}"
+          echo "Upload URL: ${{ matrix.release.uploadUrl }}"
