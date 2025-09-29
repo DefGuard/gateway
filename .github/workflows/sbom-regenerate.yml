@@ -1,13 +1,8 @@
 name: Periodic SBOM Regeneration
 
 on:
-  push:
-    branches:
-      - sbom-schedule
-
-  # 2:30 AM UTC
   schedule:
-    - cron: '30 2 * * *'
+    - cron: '30 2 * * *' # 2:30 AM UTC
 
 jobs:
   list-releases:
@@ -22,7 +17,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RELEASES_JSON=$(gh api repos/${{ github.repository }}/releases \
-            --jq '[.[] | select(.draft == false) | {tagName: .tag_name, uploadUrl: .upload_url}][:1]')
+            --jq '[.[] | select(.draft == false) | {tagName: .tag_name, uploadUrl: .upload_url}][:3]')
           echo "releases=$RELEASES_JSON" >> $GITHUB_OUTPUT
 
   # This job will create a parallel run for each release found by the previous job.
@@ -41,8 +36,3 @@ jobs:
       upload_url: ${{ matrix.release.uploadUrl }}
       tag: ${{ matrix.release.tagName }}
     secrets: inherit
-    # steps:
-    #   - name: Show Variables
-    #     run: |
-    #       echo "Release Tag: ${{ matrix.release.tagName }}"
-    #       echo "Upload URL: ${{ matrix.release.uploadUrl }}"
