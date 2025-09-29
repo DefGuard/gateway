@@ -14,7 +14,7 @@ on:
 
 jobs:
   create-sbom:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
 
     steps:
       - name: Determine release tag and version
