@@ -6,7 +6,7 @@ on:
 
 jobs:
   list-releases:
-    name: List Existing Releases
+    name: List releases
     runs-on: ubuntu-latest
     outputs:
       releases: ${{ steps.get-releases.outputs.releases }}
@@ -17,11 +17,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RELEASES_JSON=$(gh api repos/${{ github.repository }}/releases \
-            --jq '[.[] | select(.draft == false) | {tagName: .tag_name, uploadUrl: .upload_url}][:3]')
+            --jq '[.[] | select(.draft == false) | {tagName: .tag_name, uploadUrl: .upload_url}][:1]')
           echo "releases=$RELEASES_JSON" >> $GITHUB_OUTPUT
 
   regenerate-for-release:
-    name: Regenerate SBOM for Release
+    name: Regenerate SBOM for release
     needs: list-releases
     # Don't run if no releases were found.
     if: needs.list-releases.outputs.releases != '[]'
