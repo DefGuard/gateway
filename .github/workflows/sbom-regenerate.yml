@@ -27,7 +27,7 @@ jobs:
         #   echo "releases=$RELEASES_JSON" >> $GITHUB_OUTPUT
         run: |
           RELEASES_JSON=$(gh api repos/${{ github.repository }}/releases \
-            --jq '[.[:3] | .[] | {tagName: .tag_name, uploadUrl: .upload_url}]')
+            --jq '[.[] | select(.draft == false) | {tagName: .tag_name, uploadUrl: .upload_url}][:3]')
           echo "releases=$RELEASES_JSON" >> $GITHUB_OUTPUT
 
   # This job will create a parallel run for each release found by the previous job.
