@@ -20,15 +20,13 @@ jobs:
             --jq '[.[] | select(.draft == false) | {tagName: .tag_name, uploadUrl: .upload_url}][:3]')
           echo "releases=$RELEASES_JSON" >> $GITHUB_OUTPUT
 
-  # This job will create a parallel run for each release found by the previous job.
   regenerate-for-release:
     name: Regenerate SBOM for Release
     needs: list-releases
-    # Don't run this job if there are no releases to process
+    # Don't run if no releases were found.
     if: needs.list-releases.outputs.releases != '[]'
     strategy:
       fail-fast: false
-      # Dynamically create a matrix from the JSON output of the 'list-releases' job
       matrix:
         release: ${{ fromJson(needs.list-releases.outputs.releases) }}
     uses: ./.github/workflows/sbom.yml
