@@ -33,7 +33,7 @@ pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("VERGEN_G
 /// Used to log sensitive/secret objects.
 #[macro_export]
 macro_rules! mask {
-    ($object:expr, $field:ident) => {{
+    ($object:expr_2021, $field:ident) => {{
         let mut object = $object.clone();
         object.$field = String::from("***");
         object

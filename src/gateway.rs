@@ -746,13 +746,18 @@ mod tests {
 
     #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
     use defguard_wireguard_rs::Kernel;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
     use defguard_wireguard_rs::Userspace;
     use defguard_wireguard_rs::WGApi;
     use ipnetwork::IpNetwork;
 
     use super::*;
     use crate::enterprise::firewall::{Address, FirewallRule, Policy, Port, Protocol};
+
+    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
+    type WG = WGApi<Userspace>;
+    #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
+    type WG = WGApi<Kernel>;
 
     #[tokio::test]
     async fn test_configuration_comparison() {
@@ -783,10 +788,7 @@ mod tests {
             .map(|peer| (peer.pubkey.clone(), peer))
             .collect();
 
-        #[cfg(any(target_os = "macos", target_os = "netbsd"))]
-        let wgapi = WGApi::<Userspace>::new("wg0".into()).unwrap();
-        #[cfg(not(target_os = "macos"))]
-        let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
+        let wgapi = WG::new("wg0").unwrap();
         let config = Config::default();
         let client = Gateway::setup_client(&config).unwrap();
         let firewall_api = FirewallApi::new("wg0").unwrap();
@@ -975,11 +977,7 @@ mod tests {
             snat_bindings: vec![],
         };
 
-        #[cfg(target_os = "macos")]
-        let wgapi = WGApi::<Userspace>::new("wg0".into()).unwrap();
-        #[cfg(not(target_os = "macos"))]
-        let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
-
+        let wgapi = WG::new("wg0").unwrap();
         let config = Config::default();
         let client = Gateway::setup_client(&config).unwrap();
         let mut gateway = Gateway {
@@ -1048,11 +1046,7 @@ mod tests {
             snat_bindings: vec![],
         };
 
-        #[cfg(target_os = "macos")]
-        let wgapi = WGApi::<Userspace>::new("wg0".into()).unwrap();
-        #[cfg(not(target_os = "macos"))]
-        let wgapi = WGApi::<Kernel>::new("wg0".into()).unwrap();
-
+        let wgapi = WG::new("wg0").unwrap();
         let config = Config::default();
         let client = Gateway::setup_client(&config).unwrap();
         let mut gateway = Gateway {
