@@ -11,33 +11,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-docker-release:
-    # Ignore tags with -, like v1.0.0-alpha
-    # This job will build the docker container with the "latest" tag which
-    # is a tag used in production, thus it should only be run for full releases.
-    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-')
-    name: Build Release Docker image
-    uses: ./.github/workflows/build-docker.yml
-    with:
-      tags: |
-        type=raw,value=latest
-        type=semver,pattern={{version}}
-        type=semver,pattern={{major}}.{{minor}}
-        type=sha
+  # build-docker-release:
+  #   # Ignore tags with -, like v1.0.0-alpha
+  #   # This job will build the docker container with the "latest" tag which
+  #   # is a tag used in production, thus it should only be run for full releases.
+  #   if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-')
+  #   name: Build Release Docker image
+  #   uses: ./.github/workflows/build-docker.yml
+  #   with:
+  #     tags: |
+  #       type=raw,value=latest
+  #       type=semver,pattern={{version}}
+  #       type=semver,pattern={{major}}.{{minor}}
+  #       type=sha
 
-  build-docker-prerelease:
-    # Only build tags with -, like v1.0.0-alpha
-    if: startsWith(github.ref, 'refs/tags/') && contains(github.ref, '-')
-    name: Build Pre-release Docker image
-    uses: ./.github/workflows/build-docker.yml
-    with:
-      tags: |
-        type=raw,value=pre-release
-        type=semver,pattern={{version}}
-        type=sha
-      # Explicitly disable latest tag. It will be added otherwise.
-      flavor: |
-        latest=false
+  # build-docker-prerelease:
+  #   # Only build tags with -, like v1.0.0-alpha
+  #   if: startsWith(github.ref, 'refs/tags/') && contains(github.ref, '-')
+  #   name: Build Pre-release Docker image
+  #   uses: ./.github/workflows/build-docker.yml
+  #   with:
+  #     tags: |
+  #       type=raw,value=pre-release
+  #       type=semver,pattern={{version}}
+  #       type=sha
+  #     # Explicitly disable latest tag. It will be added otherwise.
+  #     flavor: |
+  #       latest=false
 
   create-release:
     name: create-release
@@ -48,16 +48,16 @@ jobs:
       - name: Create GitHub release
         id: release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+        # if: startsWith(github.ref, 'refs/tags/')
         with:
           draft: true
           generate_release_notes: true
 
-  create-sbom:
-    needs: [create-release, build-docker-release]
-    uses: ./.github/workflows/sbom.yml
-    with:
-      upload_url: ${{ needs.create-release.outputs.upload_url }}
+  # create-sbom:
+  #   needs: [create-release, build-docker-release]
+  #   uses: ./.github/workflows/sbom.yml
+  #   with:
+  #     upload_url: ${{ needs.create-release.outputs.upload_url }}
 
   build-release:
     name: Release ${{ matrix.build }}
@@ -69,23 +69,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build: [linux, linux-arm64, freebsd]
+        build: [linux] #, linux-arm64, freebsd]
         include:
           - build: linux
             arch: amd64
             os: Linux
             asset_name: defguard-gateway-linux-x86_64
             target: x86_64-unknown-linux-gnu
-          - build: linux-arm64
-            arch: arm64
-            os: Linux
-            asset_name: defguard-gateway-linux-arm64
-            target: aarch64-unknown-linux-gnu
-          - build: freebsd
-            arch: amd64
-            os: Linux
-            asset_name: defguard-gateway-freebsd-x86_64
-            target: x86_64-unknown-freebsd
+          # - build: linux-arm64
+          #   arch: arm64
+          #   os: Linux
+          #   asset_name: defguard-gateway-linux-arm64
+          #   target: aarch64-unknown-linux-gnu
+          # - build: freebsd
+          #   arch: amd64
+          #   os: Linux
+          #   asset_name: defguard-gateway-freebsd-x86_64
+          #   target: x86_64-unknown-freebsd
     steps:
       # Store the version, stripping any v-prefix
       - name: Write release version
