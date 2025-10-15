@@ -92,8 +92,12 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo Version: $VERSION
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
+          echo "VERSION=1.5.1" >> $GITHUB_ENV
+      # - name: Write release version
+      #   run: |
+      #     VERSION=${GITHUB_REF_NAME#v}
+      #     echo Version: $VERSION
+      #     echo "VERSION=$VERSION" >> $GITHUB_ENV
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -157,6 +161,7 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload DEB to apt repository on s3
+        if: matrix.build != 'freebsd'
         run: |
           export PATH="/srv/github/defguard/.local/share/gem/ruby/3.3.0/bin:$PATH"
           COMPONENT=$([[ "${{ github.ref_name }}" == *"-"* ]] && echo "pre-release" || echo "release") # if tag contain "-" assume it's pre-release.
