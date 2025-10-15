@@ -1,43 +1,41 @@
 name: Publish
 on:
   push:
-    branches:
-      - apt_repository
-    # tags:
-    #   - v*.*.*
+    tags:
+      - v*.*.*
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # build-docker-release:
-  #   # Ignore tags with -, like v1.0.0-alpha
-  #   # This job will build the docker container with the "latest" tag which
-  #   # is a tag used in production, thus it should only be run for full releases.
-  #   if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-')
-  #   name: Build Release Docker image
-  #   uses: ./.github/workflows/build-docker.yml
-  #   with:
-  #     tags: |
-  #       type=raw,value=latest
-  #       type=semver,pattern={{version}}
-  #       type=semver,pattern={{major}}.{{minor}}
-  #       type=sha
+  build-docker-release:
+    # Ignore tags with -, like v1.0.0-alpha
+    # This job will build the docker container with the "latest" tag which
+    # is a tag used in production, thus it should only be run for full releases.
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-')
+    name: Build Release Docker image
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      tags: |
+        type=raw,value=latest
+        type=semver,pattern={{version}}
+        type=semver,pattern={{major}}.{{minor}}
+        type=sha
 
-  # build-docker-prerelease:
-  #   # Only build tags with -, like v1.0.0-alpha
-  #   if: startsWith(github.ref, 'refs/tags/') && contains(github.ref, '-')
-  #   name: Build Pre-release Docker image
-  #   uses: ./.github/workflows/build-docker.yml
-  #   with:
-  #     tags: |
-  #       type=raw,value=pre-release
-  #       type=semver,pattern={{version}}
-  #       type=sha
-  #     # Explicitly disable latest tag. It will be added otherwise.
-  #     flavor: |
-  #       latest=false
+  build-docker-prerelease:
+    # Only build tags with -, like v1.0.0-alpha
+    if: startsWith(github.ref, 'refs/tags/') && contains(github.ref, '-')
+    name: Build Pre-release Docker image
+    uses: ./.github/workflows/build-docker.yml
+    with:
+      tags: |
+        type=raw,value=pre-release
+        type=semver,pattern={{version}}
+        type=sha
+      # Explicitly disable latest tag. It will be added otherwise.
+      flavor: |
+        latest=false
 
   create-release:
     name: create-release
@@ -48,16 +46,16 @@ jobs:
       - name: Create GitHub release
         id: release
         uses: softprops/action-gh-release@v2
-        # if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           draft: true
           generate_release_notes: true
 
-  # create-sbom:
-  #   needs: [create-release, build-docker-release]
-  #   uses: ./.github/workflows/sbom.yml
-  #   with:
-  #     upload_url: ${{ needs.create-release.outputs.upload_url }}
+  create-sbom:
+    needs: [create-release, build-docker-release]
+    uses: ./.github/workflows/sbom.yml
+    with:
+      upload_url: ${{ needs.create-release.outputs.upload_url }}
 
   build-release:
     name: Release ${{ matrix.build }}
@@ -69,35 +67,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build: [linux] #, linux-arm64, freebsd]
+        build: [linux, linux-arm64, freebsd]
         include:
           - build: linux
             arch: amd64
             os: Linux
             asset_name: defguard-gateway-linux-x86_64
             target: x86_64-unknown-linux-gnu
-          # - build: linux-arm64
-          #   arch: arm64
-          #   os: Linux
-          #   asset_name: defguard-gateway-linux-arm64
-          #   target: aarch64-unknown-linux-gnu
-          # - build: freebsd
-          #   arch: amd64
-          #   os: Linux
-          #   asset_name: defguard-gateway-freebsd-x86_64
-          #   target: x86_64-unknown-freebsd
+          - build: linux-arm64
+            arch: arm64
+            os: Linux
+            asset_name: defguard-gateway-linux-arm64
+            target: aarch64-unknown-linux-gnu
+          - build: freebsd
+            arch: amd64
+            os: Linux
+            asset_name: defguard-gateway-freebsd-x86_64
+            target: x86_64-unknown-freebsd
     steps:
       # Store the version, stripping any v-prefix
-      # - name: Write release version
-      #   run: |
-      #     VERSION=${GITHUB_REF_NAME#v}
-      #     echo Version: $VERSION
-      #     echo "VERSION=$VERSION" >> $GITHUB_ENV
       - name: Write release version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo Version: $VERSION
-          echo "VERSION=1.5.1" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -160,7 +153,7 @@ jobs:
           asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
           asset_content_type: application/octet-stream
 
-      - name: Install dependencies
+      - name: Install ruby with deb-s3
         if: matrix.build != 'freebsd'
         run: |
           sudo apt-get install -y ruby
@@ -174,89 +167,89 @@ jobs:
 
           deb-s3 upload -l --bucket=apt.defguard.net --access-key-id=${{ secrets.AWS_ACCESS_KEY_APT }} --secret-access-key=${{ secrets.AWS_SECRET_KEY_APT }} --s3-region=eu-north-1 --no-fail-if-exists --codename=trixie --component="$COMPONENT" defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
 
-      # - name: Run `packer init`
-      #   if: matrix.build == 'linux' && matrix.arch == 'amd64'
-      #   id: init
-      #   run: "packer init ./images/ami/gateway.pkr.hcl"
+      - name: Run `packer init`
+        if: matrix.build == 'linux' && matrix.arch == 'amd64'
+        id: init
+        run: "packer init ./images/ami/gateway.pkr.hcl"
 
-      # - name: Build AMI images for multiple regions
-      #   if: matrix.build == 'linux' && matrix.arch == 'amd64'
-      #   run: |
-      #     regions=(us-east-1 eu-west-1 ap-northeast-1 eu-central-1)
-      #     for region in "${regions[@]}"; do
-      #       echo "Building AMI for region: $region"
-      #       echo "Running packer validate for $region..."
-      #       packer validate --var "package_version=${{ env.VERSION }}" --var "region=$region" ./images/ami/gateway.pkr.hcl
-      #       echo "Building AMI image for $region..."
-      #       packer build -color=false -on-error=abort --var "package_version=${{ env.VERSION }}" --var "region=$region" ./images/ami/gateway.pkr.hcl
-      #     done
-      #   env:
-      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Build AMI images for multiple regions
+        if: matrix.build == 'linux' && matrix.arch == 'amd64'
+        run: |
+          regions=(us-east-1 eu-west-1 ap-northeast-1 eu-central-1)
+          for region in "${regions[@]}"; do
+            echo "Building AMI for region: $region"
+            echo "Running packer validate for $region..."
+            packer validate --var "package_version=${{ env.VERSION }}" --var "region=$region" ./images/ami/gateway.pkr.hcl
+            echo "Building AMI image for $region..."
+            packer build -color=false -on-error=abort --var "package_version=${{ env.VERSION }}" --var "region=$region" ./images/ami/gateway.pkr.hcl
+          done
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      # - name: Build RPM package
-      #   if: matrix.build == 'linux'
-      #   uses: defGuard/fpm-action@main
-      #   with:
-      #     fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml.sample"
-      #     fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm --after-install after-install.sh"
+      - name: Build RPM package
+        if: matrix.build == 'linux'
+        uses: defGuard/fpm-action@main
+        with:
+          fpm_args: "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/sbin/defguard-gateway defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service example-config.toml=/etc/defguard/gateway.toml.sample"
+          fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm --after-install after-install.sh"
 
-      # - name: Upload RPM
-      #   if: matrix.build == 'linux'
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ needs.create-release.outputs.upload_url }}
-      #     asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
-      #     asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
-      #     asset_content_type: application/octet-stream
+      - name: Upload RPM
+        if: matrix.build == 'linux'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
+          asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.rpm
+          asset_content_type: application/octet-stream
 
-      # - name: Build FreeBSD package
-      #   if: matrix.build == 'freebsd'
-      #   uses: defGuard/fpm-action@main
-      #   with:
-      #     fpm_args:
-      #       "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway
-      #       defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard_gateway
-      #       example-config.toml=/etc/defguard/gateway.toml.sample
-      #       defguard-rc.conf=/etc/rc.conf.d/defguard_gateway"
-      #     fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg --freebsd-osversion '*'"
+      - name: Build FreeBSD package
+        if: matrix.build == 'freebsd'
+        uses: defGuard/fpm-action@main
+        with:
+          fpm_args:
+            "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway
+            defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard_gateway
+            example-config.toml=/etc/defguard/gateway.toml.sample
+            defguard-rc.conf=/etc/rc.conf.d/defguard_gateway"
+          fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg --freebsd-osversion '*'"
 
-      # - name: Upload FreeBSD
-      #   if: matrix.build == 'freebsd'
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ needs.create-release.outputs.upload_url }}
-      #     asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg
-      #     asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg
-      #     asset_content_type: application/octet-stream
+      - name: Upload FreeBSD
+        if: matrix.build == 'freebsd'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg
+          asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.pkg
+          asset_content_type: application/octet-stream
 
-      # - name: Build OPNsense package
-      #   if: matrix.build == 'freebsd'
-      #   uses: defGuard/fpm-action@main
-      #   with:
-      #     fpm_args:
-      #       "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway
-      #       defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard_gateway
-      #       example-config.toml=/etc/defguard/gateway.toml.sample
-      #       defguard-rc.conf=/etc/rc.conf.d/defguard_gateway
-      #       opnsense/src/etc/=/usr/local/etc/
-      #       opnsense/src/opnsense/=/usr/local/opnsense/"
-      #     fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg --freebsd-osversion '*'"
+      - name: Build OPNsense package
+        if: matrix.build == 'freebsd'
+        uses: defGuard/fpm-action@main
+        with:
+          fpm_args:
+            "${{ matrix.asset_name }}-${{ github.ref_name }}=/usr/local/sbin/defguard-gateway
+            defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard_gateway
+            example-config.toml=/etc/defguard/gateway.toml.sample
+            defguard-rc.conf=/etc/rc.conf.d/defguard_gateway
+            opnsense/src/etc/=/usr/local/etc/
+            opnsense/src/opnsense/=/usr/local/opnsense/"
+          fpm_opts: "--architecture ${{ matrix.arch }} --debug --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg --freebsd-osversion '*'"
 
-      # - name: Upload OPNsense package
-      #   if: matrix.build == 'freebsd'
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ needs.create-release.outputs.upload_url }}
-      #     asset_path: defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
-      #     asset_name: defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
-      #     asset_content_type: application/octet-stream
+      - name: Upload OPNsense package
+        if: matrix.build == 'freebsd'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
+          asset_name: defguard-gateway_${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
+          asset_content_type: application/octet-stream
 
 
   apt-sign:
