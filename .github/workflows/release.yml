@@ -165,12 +165,11 @@ jobs:
         run: |
           sudo apt-get install -y ruby
           gem install deb-s3
+          echo "$(ruby -r rubygems -e 'puts Gem.user_dir')/bin" >> $GITHUB_PATH
 
       - name: Upload DEB to apt repository on s3
         if: matrix.build != 'freebsd'
         run: |
-          export PATH="$(gem environment gemdir)/bin:$PATH"
-          
           COMPONENT=$([[ "${{ github.ref_name }}" == *"-"* ]] && echo "pre-release" || echo "release") # if tag contain "-" assume it's pre-release.
 
           deb-s3 upload -l --bucket=apt.defguard.net --access-key-id=${{ secrets.AWS_ACCESS_KEY_APT }} --secret-access-key=${{ secrets.AWS_SECRET_KEY_APT }} --s3-region=eu-north-1 --no-fail-if-exists --codename=trixie --component="$COMPONENT" defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
