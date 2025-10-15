@@ -164,8 +164,8 @@ jobs:
         if: matrix.build != 'freebsd'
         run: |
           sudo apt-get install -y ruby
-          gem install deb-s3
           echo "$(gem environment gemdir)/bin" >> $GITHUB_PATH
+          gem install deb-s3
 
       - name: Upload DEB to apt repository on s3
         if: matrix.build != 'freebsd'
