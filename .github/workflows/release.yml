@@ -160,33 +160,19 @@ jobs:
           asset_name: defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
           asset_content_type: application/octet-stream
 
-      # - name: Upload DEB to apt repository on s3
-      #   if: matrix.build != 'freebsd'
-      #   run: |
-      #     export PATH="/srv/github/defguard/.local/share/gem/ruby/3.3.0/bin:$PATH"
-      #     COMPONENT=$([[ "${{ github.ref_name }}" == *"-"* ]] && echo "pre-release" || echo "release") # if tag contain "-" assume it's pre-release.
-
-      #     deb-s3 upload -l --bucket=apt.defguard.net --access-key-id=${{ secrets.AWS_ACCESS_KEY_APT }} --secret-access-key=${{ secrets.AWS_SECRET_KEY_APT }} --s3-region=eu-north-1 --no-fail-if-exists --codename=trixie --component="$COMPONENT" defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
-
-      - name: Setup deb-s3
+      - name: Install dependencies
         if: matrix.build != 'freebsd'
-        uses: deb-s3/setup-deb-s3@v1
+        run: |
+          sudo apt-get install -y ruby
+          gem install deb-s3
+          echo "$(gem environment gemdir)/bin" >> $GITHUB_PATH
 
       - name: Upload DEB to apt repository on s3
         if: matrix.build != 'freebsd'
         run: |
-          COMPONENT=$([[ "${{ github.ref_name }}" == *"-"* ]] && echo "pre-release" || echo "release")
-          
-          deb-s3 upload \
-            --bucket=apt.defguard.net \
-            --access-key-id=${{ secrets.AWS_ACCESS_KEY_APT }} \
-            --secret-access-key=${{ secrets.AWS_SECRET_KEY_APT }} \
-            --s3-region=eu-north-1 \
-            --codename=trixie \
-            --component="$COMPONENT" \
-            --no-fail-if-exists \
-            defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
+          COMPONENT=$([[ "${{ github.ref_name }}" == *"-"* ]] && echo "pre-release" || echo "release") # if tag contain "-" assume it's pre-release.
 
+          deb-s3 upload -l --bucket=apt.defguard.net --access-key-id=${{ secrets.AWS_ACCESS_KEY_APT }} --secret-access-key=${{ secrets.AWS_SECRET_KEY_APT }} --s3-region=eu-north-1 --no-fail-if-exists --codename=trixie --component="$COMPONENT" defguard-gateway_${{ env.VERSION }}_${{ matrix.target }}.deb
 
       # - name: Run `packer init`
       #   if: matrix.build == 'linux' && matrix.arch == 'amd64'
