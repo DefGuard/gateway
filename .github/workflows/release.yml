@@ -172,20 +172,20 @@ jobs:
         id: init
         run: "packer init ./images/ami/gateway.pkr.hcl"
 
-      - name: Build AMI images for multiple regions
-        if: matrix.build == 'linux' && matrix.arch == 'amd64'
-        run: |
-          regions=(us-east-1 eu-west-1 ap-northeast-1 eu-central-1)
-          for region in "${regions[@]}"; do
-            echo "Building AMI for region: $region"
-            echo "Running packer validate for $region..."
-            packer validate --var "package_version=${{ env.VERSION }}" --var "region=$region" ./images/ami/gateway.pkr.hcl
-            echo "Building AMI image for $region..."
-            packer build -color=false -on-error=abort --var "package_version=${{ env.VERSION }}" --var "region=$region" ./images/ami/gateway.pkr.hcl
-          done
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      # - name: Build AMI images for multiple regions
+      #   if: matrix.build == 'linux' && matrix.arch == 'amd64'
+      #   run: |
+      #     regions=(us-east-1 eu-west-1 ap-northeast-1 eu-central-1)
+      #     for region in "${regions[@]}"; do
+      #       echo "Building AMI for region: $region"
+      #       echo "Running packer validate for $region..."
+      #       packer validate --var "package_version=${{ env.VERSION }}" --var "region=$region" ./images/ami/gateway.pkr.hcl
+      #       echo "Building AMI image for $region..."
+      #       packer build -color=false -on-error=abort --var "package_version=${{ env.VERSION }}" --var "region=$region" ./images/ami/gateway.pkr.hcl
+      #     done
+      #   env:
+      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Build RPM package
         if: matrix.build == 'linux'
