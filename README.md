@@ -8,7 +8,7 @@ To learn more about the system see our [documentation](https://defguard.gitbook.
 
 ## Quick start
 
-If you already have your defguard instance running you can set up a gateway by following our [deployment guide](https://defguard.gitbook.io/defguard/features/setting-up-your-instance/gateway).
+If you already have your defguard instance running you can set up a gateway by following our [deployment guide](https://docs.defguard.net/deployment-strategies/setting-up-your-instance).
 
 ## Documentation
 
