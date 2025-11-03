@@ -99,7 +99,7 @@ impl From<proto::gateway::Configuration> for InterfaceConfiguration {
             name: config.name,
             prvkey: config.prvkey,
             addresses,
-            port: config.port,
+            port: config.port as u16,
             peers,
             mtu: None,
         }

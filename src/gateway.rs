@@ -1,50 +1,50 @@
 use defguard_version::{
-    client::ClientVersionInterceptor, get_tracing_variables, ComponentInfo, DefguardComponent,
-    Version,
+    ComponentInfo, DefguardComponent, Version, client::ClientVersionInterceptor,
+    get_tracing_variables,
 };
-use defguard_wireguard_rs::{net::IpAddrMask, WireguardInterfaceApi};
+use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use gethostname::gethostname;
 use std::{
     collections::HashMap,
     fs::read_to_string,
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, SystemTime},
 };
 use tokio::{
     select,
     sync::mpsc,
-    task::{spawn, JoinHandle},
+    task::{JoinHandle, spawn},
     time::{interval, sleep},
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
+    Request, Status, Streaming,
     codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
     service::{Interceptor, InterceptorLayer},
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
-    Request, Status, Streaming,
 };
 use tower::ServiceBuilder;
-use tracing::{instrument, Instrument};
+use tracing::{Instrument, instrument};
 
 use crate::{
+    VERSION,
     config::Config,
     enterprise::firewall::{
-        api::{FirewallApi, FirewallManagementApi},
         FirewallConfig, FirewallRule, SnatBinding,
+        api::{FirewallApi, FirewallManagementApi},
     },
     error::GatewayError,
     execute_command, mask,
     proto::gateway::{
-        gateway_service_client::GatewayServiceClient, stats_update::Payload, update, Configuration,
-        ConfigurationRequest, Peer, StatsUpdate, Update,
+        Configuration, ConfigurationRequest, Peer, StatsUpdate, Update,
+        gateway_service_client::GatewayServiceClient, stats_update::Payload, update,
     },
     version::ensure_core_version_supported,
-    VERSION,
 };
 
 const TEN_SECS: Duration = Duration::from_secs(10);
@@ -55,7 +55,7 @@ struct InterfaceConfiguration {
     name: String,
     prvkey: String,
     addresses: Vec<IpAddrMask>,
-    port: u32,
+    port: u16,
 }
 
 impl From<Configuration> for InterfaceConfiguration {
@@ -70,7 +70,7 @@ impl From<Configuration> for InterfaceConfiguration {
             name: config.name,
             prvkey: config.prvkey,
             addresses,
-            port: config.port,
+            port: config.port as u16,
         }
     }
 }
@@ -613,7 +613,7 @@ impl Gateway {
                                 {
                                     error!("Failed to update peer: {err}");
                                 }
-                            };
+                            }
                         }
                         Some(update::Update::FirewallConfig(config)) => {
                             if self.config.disable_firewall_management {
