@@ -21,7 +21,7 @@ extern crate log;
 use std::{process::Command, str::FromStr, time::SystemTime};
 
 use config::Config;
-use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration};
+use defguard_wireguard_rs::{InterfaceConfiguration, host::Peer, net::IpAddrMask};
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
 
@@ -33,7 +33,7 @@ pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("VERGEN_G
 /// Used to log sensitive/secret objects.
 #[macro_export]
 macro_rules! mask {
-    ($object:expr, $field:ident) => {{
+    ($object:expr_2021, $field:ident) => {{
         let mut object = $object.clone();
         object.$field = String::from("***");
         object
@@ -99,7 +99,7 @@ impl From<proto::gateway::Configuration> for InterfaceConfiguration {
             name: config.name,
             prvkey: config.prvkey,
             addresses,
-            port: config.port,
+            port: config.port as u16,
             peers,
             mtu: None,
         }
