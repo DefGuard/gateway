@@ -4,14 +4,14 @@ use std::{
 };
 
 use nftnl::{
+    Batch, Chain, FinalizedBatch, ProtoFamily, Rule, Table,
     expr::{Expression, Immediate, InterfaceName, Nat, NatType, Register},
     nft_expr, nftnl_sys,
     set::{Set, SetKey},
-    Batch, Chain, FinalizedBatch, ProtoFamily, Rule, Table,
 };
 
-use super::{get_set_id, Address, FilterRule, Policy, Port, Protocol, State};
-use crate::enterprise::firewall::{iprange::IpAddrRange, max_address, FirewallError, SnatBinding};
+use super::{Address, FilterRule, Policy, Port, Protocol, State, get_set_id};
+use crate::enterprise::firewall::{FirewallError, SnatBinding, iprange::IpAddrRange, max_address};
 
 const FILTER_TABLE: &str = "filter";
 const NAT_TABLE: &str = "nat";
@@ -98,7 +98,7 @@ fn add_address_to_set(set: *mut nftnl_sys::nftnl_set, ip: &Address) -> Result<()
                     return Err(FirewallError::InvalidConfiguration(format!(
                         "Expected both addresses to be of the same type, got {net:?} and \
                         {upper_bound:?}",
-                    )))
+                    )));
                 }
             }
         }
@@ -876,7 +876,7 @@ pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
             Err(err) => {
                 return Err(FirewallError::NetlinkError(format!(
                     "There was an error while sending netlink messages: {err:?}"
-                )))
+                )));
             }
         };
     }

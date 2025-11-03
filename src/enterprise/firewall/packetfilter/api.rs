@@ -1,13 +1,13 @@
 use std::os::fd::AsRawFd;
 
 use super::{
-    calls::{pf_begin, pf_commit, pf_rollback, IocTrans, IocTransElement},
-    rule::RuleSet,
     FirewallRule,
+    calls::{IocTrans, IocTransElement, pf_begin, pf_commit, pf_rollback},
+    rule::RuleSet,
 };
 use crate::enterprise::firewall::{
-    api::{FirewallApi, FirewallManagementApi},
     FirewallError, Policy, SnatBinding,
+    api::{FirewallApi, FirewallManagementApi},
 };
 
 impl FirewallManagementApi for FirewallApi {

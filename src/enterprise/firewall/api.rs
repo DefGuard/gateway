@@ -37,7 +37,7 @@ impl FirewallApi {
 pub(crate) trait FirewallManagementApi {
     /// Set up the firewall with `default_policy`, `priority`, and cleans up any existing rules.
     fn setup(&mut self, default_policy: Policy, priority: Option<i32>)
-        -> Result<(), FirewallError>;
+    -> Result<(), FirewallError>;
 
     /// Clean up the firewall rules.
     fn cleanup(&mut self) -> Result<(), FirewallError>;

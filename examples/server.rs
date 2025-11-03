@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    io::{stdout, Write},
+    io::{Write, stdout},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{Arc, Mutex},
 };
@@ -19,7 +19,7 @@ use tokio::{
     },
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tonic::{transport::Server, Request, Response, Status, Streaming};
+use tonic::{Request, Response, Status, Streaming, transport::Server};
 
 pub struct HostConfig {
     name: String,

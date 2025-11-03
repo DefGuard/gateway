@@ -21,7 +21,7 @@ extern crate log;
 use std::{process::Command, str::FromStr, time::SystemTime};
 
 use config::Config;
-use defguard_wireguard_rs::{host::Peer, net::IpAddrMask, InterfaceConfiguration};
+use defguard_wireguard_rs::{InterfaceConfiguration, host::Peer, net::IpAddrMask};
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
 
