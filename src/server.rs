@@ -15,7 +15,7 @@ async fn healthcheck<'a>(
     Extension(connected): Extension<Arc<AtomicBool>>,
 ) -> (StatusCode, &'a str) {
     if connected.load(Ordering::Relaxed) {
-        (StatusCode::OK, "Alive")
+        (StatusCode::OK, "alive")
     } else {
         (StatusCode::SERVICE_UNAVAILABLE, "Not connected to core")
     }
