@@ -40,8 +40,8 @@
     <id>defguardgateway.general.PidFile</id>
     <label>PID file</label>
     <type>text</type>
-    <hint>Save PID to this file.</hint>
     <help>Optional: write PID to this file.</help>
+    <hint>Default value: /var/run/defguard_gateway.pid</hint>
   </field>
   <field>
     <id>defguardgateway.general.SyslogSocket</id>
