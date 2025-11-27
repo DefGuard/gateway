@@ -27,6 +27,7 @@ toml = { version = "0.9", default-features = false, features = [
 tonic = { version = "0.14", default-features = false, features = [
     "codegen",
     "gzip",
+    "router",
     "tls-native-roots",
     "tls-ring",
 ] }

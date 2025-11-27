@@ -7,28 +7,27 @@ use gethostname::gethostname;
 use std::{
     collections::HashMap,
     fs::read_to_string,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, SystemTime},
 };
 use tokio::{
-    select,
     sync::mpsc,
     task::{JoinHandle, spawn},
     time::{interval, sleep},
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
-    Request, Status, Streaming,
+    Request, Response, Status, Streaming,
     codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
-    service::{Interceptor, InterceptorLayer},
-    transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
+    service::Interceptor,
+    transport::{Channel, Identity, Server, ServerTlsConfig},
 };
-use tower::ServiceBuilder;
 use tracing::{Instrument, instrument};
 
 use crate::{
@@ -41,8 +40,8 @@ use crate::{
     error::GatewayError,
     execute_command, mask,
     proto::gateway::{
-        Configuration, ConfigurationRequest, Peer, StatsUpdate, Update,
-        gateway_service_client::GatewayServiceClient, stats_update::Payload, update,
+        Configuration, ConfigurationRequest, CoreRequest, CoreResponse, Peer, Update, core_request,
+        core_response, gateway_server, update,
     },
     version::ensure_core_version_supported,
 };
@@ -74,6 +73,8 @@ impl From<Configuration> for InterfaceConfiguration {
         }
     }
 }
+
+type ClientMap = HashMap<SocketAddr, mpsc::UnboundedSender<Result<CoreRequest, Status>>>;
 
 /// Intercepts all grpc requests adding authentication and version metadata
 struct AuthInterceptor {
@@ -115,9 +116,9 @@ impl Interceptor for AuthInterceptor {
 }
 
 type PubKey = String;
-type GatewayClientType = GatewayServiceClient<
-    InterceptedService<InterceptedService<Channel, AuthInterceptor>, ClientVersionInterceptor>,
->;
+// type GatewayClientType = GatewayServiceClient<
+//     InterceptedService<InterceptedService<Channel, AuthInterceptor>, ClientVersionInterceptor>,
+// >;
 
 pub struct Gateway {
     config: Config,
@@ -129,9 +130,10 @@ pub struct Gateway {
     #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
-    client: GatewayClientType,
     core_info: Option<ComponentInfo>,
-    stats_thread: Option<JoinHandle<()>>,
+    // stats_thread: Option<JoinHandle<()>>,
+    // TODO: allow only one client.
+    pub(super) clients: ClientMap,
 }
 
 impl Gateway {
@@ -140,18 +142,16 @@ impl Gateway {
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
         firewall_api: FirewallApi,
     ) -> Result<Self, GatewayError> {
-        let client = Self::setup_client(&config)?;
         Ok(Self {
             config,
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
-            connected: Arc::new(AtomicBool::new(false)),
-            client,
-            stats_thread: None,
             firewall_api,
             firewall_config: None,
+            connected: Arc::new(AtomicBool::new(false)),
             core_info: None,
+            clients: ClientMap::new(),
         })
     }
 
@@ -202,87 +202,87 @@ impl Gateway {
         })
     }
 
-    /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
-    #[instrument(skip_all)]
-    fn spawn_stats_thread(&mut self) -> UnboundedReceiverStream<StatsUpdate> {
-        if let Some(handle) = self.stats_thread.take() {
-            debug!("Aborting previous stats thread before starting a new one");
-            handle.abort();
-        }
-        // Create an async stream that periodically yields WireGuard interface statistics.
-        let period = Duration::from_secs(self.config.stats_period);
-        let wgapi = Arc::clone(&self.wgapi);
-        let (tx, rx) = mpsc::unbounded_channel();
-        debug!("Spawning stats thread");
-        let handle = spawn(
-            async move {
-                // helper map to track if peer data is actually changing
-                // and avoid sending duplicate stats
-                let mut peer_map = HashMap::new();
-                let mut interval = interval(period);
-                let mut id = 1;
-                'outer: loop {
-                    // wait until next iteration
-                    interval.tick().await;
-                    debug!("Sending active peer stats updates.");
-                    let interface_data = wgapi.lock().unwrap().read_interface_data();
-                    match interface_data {
-                        Ok(host) => {
-                            let peers = host.peers;
-                            debug!(
-                                "Found {} peers configured on WireGuard interface",
-                                peers.len()
-                            );
-                            for peer in peers.into_values().filter(|p| {
-                                p.last_handshake
-                                    .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
-                            }) {
-                                let has_changed = peer_map
-                                    .get(&peer.public_key)
-                                    .is_none_or(|last_peer| *last_peer != peer);
-                                if has_changed {
-                                    peer_map.insert(peer.public_key.clone(), peer.clone());
-                                    id += 1;
-                                    if tx
-                                        .send(StatsUpdate {
-                                            id,
-                                            payload: Some(Payload::PeerStats((&peer).into())),
-                                        })
-                                        .is_err()
-                                    {
-                                        debug!("Stats stream disappeared");
-                                        break 'outer;
-                                    }
-                                } else {
-                                    debug!(
-                                        "Stats for peer {} have not changed. Skipping.",
-                                        peer.public_key
-                                    );
-                                }
-                            }
-                        }
-                        Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
-                    }
-                    debug!("Sent peer stats updates for all peers.");
-                }
-            }
-            .instrument(tracing::Span::current()),
-        );
-        self.stats_thread = Some(handle);
-        UnboundedReceiverStream::new(rx)
-    }
+    // /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
+    // #[instrument(skip_all)]
+    // fn spawn_stats_thread(&mut self) -> UnboundedReceiverStream<StatsUpdate> {
+    //     if let Some(handle) = self.stats_thread.take() {
+    //         debug!("Aborting previous stats thread before starting a new one");
+    //         handle.abort();
+    //     }
+    //     // Create an async stream that periodically yields WireGuard interface statistics.
+    //     let period = Duration::from_secs(self.config.stats_period);
+    //     let wgapi = Arc::clone(&self.wgapi);
+    //     let (tx, rx) = mpsc::unbounded_channel();
+    //     debug!("Spawning stats thread");
+    //     let handle = spawn(
+    //         async move {
+    //             // helper map to track if peer data is actually changing
+    //             // and avoid sending duplicate stats
+    //             let mut peer_map = HashMap::new();
+    //             let mut interval = interval(period);
+    //             let mut id = 1;
+    //             'outer: loop {
+    //                 // wait until next iteration
+    //                 interval.tick().await;
+    //                 debug!("Sending active peer stats updates.");
+    //                 let interface_data = wgapi.lock().unwrap().read_interface_data();
+    //                 match interface_data {
+    //                     Ok(host) => {
+    //                         let peers = host.peers;
+    //                         debug!(
+    //                             "Found {} peers configured on WireGuard interface",
+    //                             peers.len()
+    //                         );
+    //                         for peer in peers.into_values().filter(|p| {
+    //                             p.last_handshake
+    //                                 .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
+    //                         }) {
+    //                             let has_changed = peer_map
+    //                                 .get(&peer.public_key)
+    //                                 .is_none_or(|last_peer| *last_peer != peer);
+    //                             if has_changed {
+    //                                 peer_map.insert(peer.public_key.clone(), peer.clone());
+    //                                 id += 1;
+    //                                 if tx
+    //                                     .send(StatsUpdate {
+    //                                         id,
+    //                                         payload: Some(Payload::PeerStats((&peer).into())),
+    //                                     })
+    //                                     .is_err()
+    //                                 {
+    //                                     debug!("Stats stream disappeared");
+    //                                     break 'outer;
+    //                                 }
+    //                             } else {
+    //                                 debug!(
+    //                                     "Stats for peer {} have not changed. Skipping.",
+    //                                     peer.public_key
+    //                                 );
+    //                             }
+    //                         }
+    //                     }
+    //                     Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
+    //                 }
+    //                 debug!("Sent peer stats updates for all peers.");
+    //             }
+    //         }
+    //         .instrument(tracing::Span::current()),
+    //     );
+    //     self.stats_thread = Some(handle);
+    //     UnboundedReceiverStream::new(rx)
+    // }
 
-    #[instrument(skip_all)]
-    async fn handle_stats_thread(
-        mut client: GatewayClientType,
-        rx: UnboundedReceiverStream<StatsUpdate>,
-    ) {
-        let status = client.stats(rx).await;
-        match status {
-            Ok(_) => info!("Stats thread terminated successfully."),
-            Err(err) => error!("Stats thread terminated with error: {err}"),
-        }
-    }
+    // #[instrument(skip_all)]
+    // async fn handle_stats_thread(
+    //     mut client: GatewayClientType,
+    //     rx: UnboundedReceiverStream<StatsUpdate>,
+    // ) {
+    //     let status = client.stats(rx).await;
+    //     match status {
+    //         Ok(_) => info!("Stats thread terminated successfully."),
+    //         Err(err) => error!("Stats thread terminated with error: {err}"),
+    //     }
+    // }
 
     /// Checks whether the firewall config changed
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
@@ -476,208 +476,292 @@ impl Gateway {
         Ok(())
     }
 
-    /// Continuously tries to connect to gRPC endpoint. Once the connection is established
-    /// configures the interface, starts the stats thread, connects and returns the updates stream.
-    async fn connect(&mut self) -> Streaming<Update> {
-        // set diconnected if we are in this function and drop mutex
-        self.connected.store(false, Ordering::Relaxed);
-        loop {
-            debug!(
-                "Connecting to Defguard gRPC endpoint: {}",
-                self.config.grpc_url
-            );
-            let (response, stream) = {
-                let response = self
-                    .client
-                    .config(ConfigurationRequest {
-                        name: self.config.name.clone(),
-                    })
-                    .await;
-                let stream = self.client.updates(()).await;
-                (response, stream)
-            };
-            match (response, stream) {
-                (Ok(response), Ok(stream)) => {
-                    self.core_info = ComponentInfo::from_metadata(response.metadata());
-                    let (version, info) = get_tracing_variables(&self.core_info);
-                    let span = tracing::info_span!(
-                        "core_configuration",
-                        component = %DefguardComponent::Core,
-                        version = version.to_string(),
-                        info
-                    );
-                    let _guard = span.enter();
-
-                    // check core version and exit if it's not supported
-                    let version = self.core_info.as_ref().map(|info| &info.version);
-                    ensure_core_version_supported(version);
-
-                    if let Err(err) = self.configure(response.into_inner()) {
-                        error!("Interface configuration failed: {err}");
-                        continue;
-                    }
-                    info!(
-                        "Connected to Defguard gRPC endpoint: {}",
-                        self.config.grpc_url
-                    );
-                    self.connected.store(true, Ordering::Relaxed);
-                    break stream.into_inner();
-                }
-                (Err(err), _) => {
-                    error!(
-                        "Couldn't retrieve gateway configuration from the core. Using gRPC URL: \
-                        {}. Retrying in 10s. Error: {err}",
-                        self.config.grpc_url
-                    );
-                }
-                (_, Err(err)) => {
-                    error!(
-                        "Couldn't establish streaming connection to the core. Using gRPC URL: \
-                        {}. Retrying in 10s. Error: {err}",
-                        self.config.grpc_url
-                    );
-                }
+    /// Send message to all connected clients.
+    pub fn broadcast_to_clients(&self, message: &CoreRequest) {
+        for (addr, tx) in &self.clients {
+            if tx.send(Ok(message.clone())).is_err() {
+                debug!("Failed to send message to {addr}");
             }
-            sleep(TEN_SECS).await;
         }
     }
 
-    fn setup_client(config: &Config) -> Result<GatewayClientType, GatewayError> {
-        debug!("Preparing gRPC client configuration");
-        let tls = ClientTlsConfig::new();
-        // Use CA if provided, otherwise load certificates from system.
-        let tls = if let Some(ca) = &config.grpc_ca {
-            let ca = read_to_string(ca).map_err(|err| {
-                error!("Failed to read CA file: {err}");
-                GatewayError::InvalidCaFile
-            })?;
-            tls.ca_certificate(Certificate::from_pem(ca))
-        } else {
-            tls.with_enabled_roots()
-        };
-        let endpoint = Endpoint::from_shared(config.grpc_url.clone())?
-            .http2_keep_alive_interval(TEN_SECS)
-            .tcp_keepalive(Some(TEN_SECS))
-            .keep_alive_while_idle(true)
-            .tls_config(tls)?;
-        let channel = endpoint.connect_lazy();
-        let version_interceptor = ClientVersionInterceptor::new(Version::parse(VERSION)?);
-        let auth_interceptor = AuthInterceptor::new(&config.token)?;
-        let channel = ServiceBuilder::new()
-            .layer(InterceptorLayer::new(version_interceptor))
-            .layer(InterceptorLayer::new(auth_interceptor))
-            .service(channel);
-        let client = GatewayServiceClient::new(channel);
+    // Continuously tries to connect to gRPC endpoint. Once the connection is established
+    // configures the interface, starts the stats thread, connects and returns the updates stream.
+    // async fn connect(&mut self) -> Streaming<Update> {
+    //     // set diconnected if we are in this function and drop mutex
+    //     self.connected.store(false, Ordering::Relaxed);
+    //     loop {
+    //         debug!(
+    //             "Connecting to Defguard gRPC endpoint: {}",
+    //             self.config.grpc_url
+    //         );
+    //         let (response, stream) = {
+    //             let response = self
+    //                 .client
+    //                 .config(ConfigurationRequest {
+    //                     name: self.config.name.clone(),
+    //                 })
+    //                 .await;
+    //             let stream = self.client.updates(()).await;
+    //             (response, stream)
+    //         };
+    //         match (response, stream) {
+    //             (Ok(response), Ok(stream)) => {
+    //                 self.core_info = ComponentInfo::from_metadata(response.metadata());
+    //                 let (version, info) = get_tracing_variables(&self.core_info);
+    //                 let span = tracing::info_span!(
+    //                     "core_configuration",
+    //                     component = %DefguardComponent::Core,
+    //                     version = version.to_string(),
+    //                     info
+    //                 );
+    //                 let _guard = span.enter();
 
-        debug!("gRPC client configuration done");
-        Ok(client)
-    }
+    //                 // check core version and exit if it's not supported
+    //                 let version = self.core_info.as_ref().map(|info| &info.version);
+    //                 ensure_core_version_supported(version);
 
-    #[instrument(skip_all)]
-    async fn handle_updates(&mut self, updates_stream: &mut Streaming<Update>) {
-        loop {
-            match updates_stream.message().await {
-                Ok(Some(update)) => {
-                    debug!("Received update: {update:?}");
-                    match update.update {
-                        Some(update::Update::Network(configuration)) => {
-                            if let Err(err) = self.configure(configuration) {
-                                error!("Failed to update network configuration: {err}");
-                            }
-                        }
-                        Some(update::Update::Peer(peer_config)) => {
-                            debug!("Applying peer configuration: {peer_config:?}");
-                            // UpdateType::Delete
-                            if update.update_type == 2 {
-                                debug!("Deleting peer {peer_config:?}");
-                                self.peers.remove(&peer_config.pubkey);
-                                if let Err(err) = self.wgapi.lock().unwrap().remove_peer(
-                                    &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
-                                ) {
-                                    error!("Failed to delete peer: {err}");
-                                }
-                            }
-                            // UpdateType::Create, UpdateType::Modify
-                            else {
-                                debug!(
-                                    "Updating peer {peer_config:?}, update type: {}",
-                                    update.update_type
-                                );
-                                self.peers
-                                    .insert(peer_config.pubkey.clone(), peer_config.clone());
-                                if let Err(err) = self
-                                    .wgapi
-                                    .lock()
-                                    .unwrap()
-                                    .configure_peer(&peer_config.into())
-                                {
-                                    error!("Failed to update peer: {err}");
-                                }
-                            }
-                        }
-                        Some(update::Update::FirewallConfig(config)) => {
-                            if self.config.disable_firewall_management {
-                                debug!(
-                                    "Received firewall config update, but firewall management \
-                                    is disabled. Skipping processing this update: {config:?}"
-                                );
-                                continue;
-                            }
+    //                 if let Err(err) = self.configure(response.into_inner()) {
+    //                     error!("Interface configuration failed: {err}");
+    //                     continue;
+    //                 }
+    //                 info!(
+    //                     "Connected to Defguard gRPC endpoint: {}",
+    //                     self.config.grpc_url
+    //                 );
+    //                 self.connected.store(true, Ordering::Relaxed);
+    //                 break stream.into_inner();
+    //             }
+    //             (Err(err), _) => {
+    //                 error!(
+    //                     "Couldn't retrieve gateway configuration from the core. Using gRPC URL: \
+    //                     {}. Retrying in 10s. Error: {err}",
+    //                     self.config.grpc_url
+    //                 );
+    //             }
+    //             (_, Err(err)) => {
+    //                 error!(
+    //                     "Couldn't establish streaming connection to the core. Using gRPC URL: \
+    //                     {}. Retrying in 10s. Error: {err}",
+    //                     self.config.grpc_url
+    //                 );
+    //             }
+    //         }
+    //         sleep(TEN_SECS).await;
+    //     }
+    // }
 
-                            debug!("Applying received firewall configuration: {config:?}");
-                            let config_str = format!("{config:?}");
-                            match FirewallConfig::from_proto(config) {
-                                Ok(new_firewall_config) => {
-                                    debug!(
-                                        "Parsed the received firewall configuration: \
-                                        {new_firewall_config:?}, processing it and applying \
-                                        changes"
-                                    );
-                                    if let Err(err) =
-                                        self.process_firewall_changes(Some(&new_firewall_config))
-                                    {
-                                        error!(
-                                            "Failed to process received firewall configuration: \
-                                            {err}"
-                                        );
-                                    }
-                                }
-                                Err(err) => {
-                                    error!(
-                                        "Failed to parse received firewall configuration: {err}. \
-                                        Configuration: {config_str}"
-                                    );
-                                }
-                            }
-                        }
-                        Some(update::Update::DisableFirewall(())) => {
-                            if self.config.disable_firewall_management {
-                                debug!(
-                                    "Received firewall disable request, but firewall management \
-                                    is disabled. Skipping processing this update"
-                                );
-                                continue;
-                            }
+    // fn setup_client(config: &Config) -> Result<GatewayClientType, GatewayError> {
+    //     debug!("Preparing gRPC client configuration");
+    //     let tls = ClientTlsConfig::new();
+    //     // Use CA if provided, otherwise load certificates from system.
+    //     let tls = if let Some(ca) = &config.grpc_ca {
+    //         let ca = read_to_string(ca).map_err(|err| {
+    //             error!("Failed to read CA file: {err}");
+    //             GatewayError::InvalidCaFile
+    //         })?;
+    //         tls.ca_certificate(Certificate::from_pem(ca))
+    //     } else {
+    //         tls.with_enabled_roots()
+    //     };
+    //     let endpoint = Endpoint::from_shared(config.grpc_url.clone())?
+    //         .http2_keep_alive_interval(TEN_SECS)
+    //         .tcp_keepalive(Some(TEN_SECS))
+    //         .keep_alive_while_idle(true)
+    //         .tls_config(tls)?;
+    //     let channel = endpoint.connect_lazy();
+    //     let version_interceptor = ClientVersionInterceptor::new(Version::parse(VERSION)?);
+    //     let auth_interceptor = AuthInterceptor::new(&config.token)?;
+    //     let channel = ServiceBuilder::new()
+    //         .layer(InterceptorLayer::new(version_interceptor))
+    //         .layer(InterceptorLayer::new(auth_interceptor))
+    //         .service(channel);
+    //     let client = GatewayServiceClient::new(channel);
 
-                            debug!("Disabling firewall configuration");
-                            if let Err(err) = self.process_firewall_changes(None) {
-                                error!("Failed to disable firewall configuration: {err}");
-                            }
-                        }
-                        _ => warn!("Unsupported kind of update: {update:?}"),
-                    }
-                }
-                Ok(None) => {
-                    break;
-                }
-                Err(err) => {
-                    error!(
-                        "Disconnected from Defguard gRPC endoint: {}: {err}",
-                        self.config.grpc_url
-                    );
-                    break;
-                }
-            }
+    //     debug!("gRPC client configuration done");
+    //     Ok(client)
+    // }
+
+    // #[instrument(skip_all)]
+    // async fn handle_updates(&mut self, updates_stream: &mut Streaming<Update>) {
+    //     loop {
+    //         match updates_stream.message().await {
+    //             Ok(Some(update)) => {
+    //                 debug!("Received update: {update:?}");
+    //                 match update.update {
+    //                     Some(update::Update::Network(configuration)) => {
+    //                         if let Err(err) = self.configure(configuration) {
+    //                             error!("Failed to update network configuration: {err}");
+    //                         }
+    //                     }
+    //                     Some(update::Update::Peer(peer_config)) => {
+    //                         debug!("Applying peer configuration: {peer_config:?}");
+    //                         // UpdateType::Delete
+    //                         if update.update_type == 2 {
+    //                             debug!("Deleting peer {peer_config:?}");
+    //                             self.peers.remove(&peer_config.pubkey);
+    //                             if let Err(err) = self.wgapi.lock().unwrap().remove_peer(
+    //                                 &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
+    //                             ) {
+    //                                 error!("Failed to delete peer: {err}");
+    //                             }
+    //                         }
+    //                         // UpdateType::Create, UpdateType::Modify
+    //                         else {
+    //                             debug!(
+    //                                 "Updating peer {peer_config:?}, update type: {}",
+    //                                 update.update_type
+    //                             );
+    //                             self.peers
+    //                                 .insert(peer_config.pubkey.clone(), peer_config.clone());
+    //                             if let Err(err) = self
+    //                                 .wgapi
+    //                                 .lock()
+    //                                 .unwrap()
+    //                                 .configure_peer(&peer_config.into())
+    //                             {
+    //                                 error!("Failed to update peer: {err}");
+    //                             }
+    //                         }
+    //                     }
+    //                     Some(update::Update::FirewallConfig(config)) => {
+    //                         if self.config.disable_firewall_management {
+    //                             debug!(
+    //                                 "Received firewall config update, but firewall management \
+    //                                 is disabled. Skipping processing this update: {config:?}"
+    //                             );
+    //                             continue;
+    //                         }
+
+    //                         debug!("Applying received firewall configuration: {config:?}");
+    //                         let config_str = format!("{config:?}");
+    //                         match FirewallConfig::from_proto(config) {
+    //                             Ok(new_firewall_config) => {
+    //                                 debug!(
+    //                                     "Parsed the received firewall configuration: \
+    //                                     {new_firewall_config:?}, processing it and applying \
+    //                                     changes"
+    //                                 );
+    //                                 if let Err(err) =
+    //                                     self.process_firewall_changes(Some(&new_firewall_config))
+    //                                 {
+    //                                     error!(
+    //                                         "Failed to process received firewall configuration: \
+    //                                         {err}"
+    //                                     );
+    //                                 }
+    //                             }
+    //                             Err(err) => {
+    //                                 error!(
+    //                                     "Failed to parse received firewall configuration: {err}. \
+    //                                     Configuration: {config_str}"
+    //                                 );
+    //                             }
+    //                         }
+    //                     }
+    //                     Some(update::Update::DisableFirewall(())) => {
+    //                         if self.config.disable_firewall_management {
+    //                             debug!(
+    //                                 "Received firewall disable request, but firewall management \
+    //                                 is disabled. Skipping processing this update"
+    //                             );
+    //                             continue;
+    //                         }
+
+    //                         debug!("Disabling firewall configuration");
+    //                         if let Err(err) = self.process_firewall_changes(None) {
+    //                             error!("Failed to disable firewall configuration: {err}");
+    //                         }
+    //                     }
+    //                     _ => warn!("Unsupported kind of update: {update:?}"),
+    //                 }
+    //             }
+    //             Ok(None) => {
+    //                 break;
+    //             }
+    //             Err(err) => {
+    //                 error!(
+    //                     "Disconnected from Defguard gRPC endoint: {}: {err}",
+    //                     self.config.grpc_url
+    //                 );
+    //                 break;
+    //             }
+    //         }
+    //     }
+    // }
+
+    // Starts the gateway process.
+    // * Retrieves configuration and configuration updates from Defguard gRPC server
+    // * Manages the interface according to configuration and updates
+    // * Sends interface statistics to Defguard server periodically
+    // pub async fn start(&mut self) -> Result<(), GatewayError> {
+    //     info!(
+    //         "Starting Defguard gateway version {VERSION} with configuration: {:?}",
+    //         mask!(self.config, token)
+    //     );
+
+    //     // Try to create network interface for WireGuard.
+    //     // FIXME: check if the interface already exists, or somehow be more clever.
+    //     if let Err(err) = self.wgapi.lock().unwrap().create_interface() {
+    //         warn!(
+    //             "Couldn't create network interface {}: {err}. Proceeding anyway.",
+    //             self.config.ifname
+    //         );
+    //     } else {
+    //         #[cfg(target_os = "linux")]
+    //         if !self.config.disable_firewall_management && self.config.masquerade {
+    //             self.firewall_api.begin()?;
+    //             self.firewall_api.setup_nat(self.config.masquerade, &[])?;
+    //             self.firewall_api.commit()?;
+    //         }
+    //     }
+
+    //     info!(
+    //         "Trying to connect to {} and obtain the gateway configuration from Defguard.",
+    //         self.config.grpc_url
+    //     );
+    //     loop {
+    //         let mut updates_stream = self.connect().await;
+    //         if let Some(post_up) = &self.config.post_up {
+    //             debug!("Executing specified POST_UP command: {post_up}");
+    //             execute_command(post_up)?;
+    //         }
+    //         let (version, info) = get_tracing_variables(&self.core_info);
+    //         let span = tracing::info_span!(
+    //             "core_grpc",
+    //             component = %DefguardComponent::Core,
+    //             version = version.to_string(),
+    //             info,
+    //         );
+    //         let _guard = span.enter();
+    //         let stats_stream = self.spawn_stats_thread();
+    //         let client = self.client.clone();
+    //         select! {
+    //             biased;
+    //             () = Self::handle_stats_thread(client, stats_stream) => {
+    //                 error!("Stats stream aborted; reconnecting");
+    //             }
+    //             () = self.handle_updates(&mut updates_stream) => {
+    //                 error!("Updates stream aborted; reconnecting");
+    //             }
+    //         }
+    //     }
+    // }
+}
+
+pub struct GatewayServer {
+    auth_token: String,
+    message_id: AtomicU64,
+    gateway: Arc<Mutex<Gateway>>,
+}
+
+impl GatewayServer {
+    #[must_use]
+    pub fn new(auth_token: String, gateway: Arc<Mutex<Gateway>>) -> Self {
+        Self {
+            auth_token,
+            message_id: AtomicU64::new(0),
+            gateway,
         }
     }
 
@@ -685,57 +769,215 @@ impl Gateway {
     /// * Retrieves configuration and configuration updates from Defguard gRPC server
     /// * Manages the interface according to configuration and updates
     /// * Sends interface statistics to Defguard server periodically
-    pub async fn start(&mut self) -> Result<(), GatewayError> {
+    pub async fn start(self, config: Config) -> Result<(), GatewayError> {
         info!(
             "Starting Defguard gateway version {VERSION} with configuration: {:?}",
-            mask!(self.config, token)
+            mask!(config, token)
         );
 
         // Try to create network interface for WireGuard.
         // FIXME: check if the interface already exists, or somehow be more clever.
-        if let Err(err) = self.wgapi.lock().unwrap().create_interface() {
+        if let Err(err) = self
+            .gateway
+            .lock()
+            .unwrap()
+            .wgapi
+            .lock()
+            .unwrap()
+            .create_interface()
+        {
             warn!(
                 "Couldn't create network interface {}: {err}. Proceeding anyway.",
-                self.config.ifname
+                config.ifname
             );
-        } else {
-            #[cfg(target_os = "linux")]
-            if !self.config.disable_firewall_management && self.config.masquerade {
-                self.firewall_api.begin()?;
-                self.firewall_api.setup_nat(self.config.masquerade, &[])?;
-                self.firewall_api.commit()?;
-            }
         }
 
-        info!(
-            "Trying to connect to {} and obtain the gateway configuration from Defguard.",
-            self.config.grpc_url
-        );
-        loop {
-            let mut updates_stream = self.connect().await;
-            if let Some(post_up) = &self.config.post_up {
-                debug!("Executing specified POST_UP command: {post_up}");
-                execute_command(post_up)?;
-            }
-            let (version, info) = get_tracing_variables(&self.core_info);
-            let span = tracing::info_span!(
-                "core_grpc",
-                component = %DefguardComponent::Core,
-                version = version.to_string(),
-                info,
-            );
-            let _guard = span.enter();
-            let stats_stream = self.spawn_stats_thread();
-            let client = self.client.clone();
-            select! {
-                biased;
-                () = Self::handle_stats_thread(client, stats_stream) => {
-                    error!("Stats stream aborted; reconnecting");
+        // self.get_config();
+        if let Some(post_up) = &config.post_up {
+            debug!("Executing specified post-up command: {post_up}");
+            execute_command(post_up)?;
+        }
+
+        // Optionally, read gRPC TLS certificate and key.
+        debug!("Configuring certificates for gRPC");
+        let grpc_cert = config
+            .grpc_cert
+            .as_ref()
+            .and_then(|path| read_to_string(path).ok());
+        let grpc_key = config
+            .grpc_key
+            .as_ref()
+            .and_then(|path| read_to_string(path).ok());
+        debug!("Configured certificates for gRPC, cert: {grpc_cert:?}");
+
+        // Build gRPC server.
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
+        info!("gRPC server is listening on {addr}");
+        let mut builder = if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
+            let identity = Identity::from_pem(cert, key);
+            Server::builder().tls_config(ServerTlsConfig::new().identity(identity))?
+        } else {
+            Server::builder()
+        };
+
+        // Start gRPC server. This should run indefinitely.
+        debug!("Serving gRPC");
+        builder
+            .add_service(gateway_server::GatewayServer::new(self))
+            .serve(addr)
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[tonic::async_trait]
+impl gateway_server::Gateway for GatewayServer {
+    type BidiStream = UnboundedReceiverStream<Result<CoreRequest, Status>>;
+
+    /// Handle bidirectional communication with Defguard core.
+    async fn bidi(
+        &self,
+        request: Request<Streaming<CoreResponse>>,
+    ) -> Result<Response<Self::BidiStream>, Status> {
+        let Some(address) = request.remote_addr() else {
+            error!("Failed to determine client address for request: {request:?}");
+            return Err(Status::internal("Failed to determine client address"));
+        };
+        info!("Defguard core gRPC client connected from {address}");
+
+        let (tx, rx) = mpsc::unbounded_channel();
+        // First, send configuration request
+        if let Ok(hostname) = gethostname().into_string() {
+            let payload = ConfigurationRequest {
+                name: None,
+                auth_token: self.auth_token.clone(),
+                hostname,
+            };
+            let req = CoreRequest {
+                id: self.message_id.fetch_add(1, Ordering::Relaxed),
+                payload: Some(core_request::Payload::ConfigRequest(payload)),
+            };
+
+            match tx.send(Ok(req)) {
+                Ok(()) => info!("Requesting network configuration from {address}"),
+                Err(err) => {
+                    error!("Unable to send network configuration request to {address}: {err}");
+                    return Err(Status::internal("failed to send configuration request"));
                 }
-                () = self.handle_updates(&mut updates_stream) => {
-                    error!("Updates stream aborted; reconnecting");
+            }
+        } else {
+            error!("Unable to get hostname");
+            return Err(Status::internal("failed to get hostname"));
+        }
+
+        self.gateway.lock().unwrap().clients.insert(address, tx);
+
+        let gateway = Arc::clone(&self.gateway);
+        let mut stream = request.into_inner();
+        tokio::spawn(async move {
+            loop {
+                match stream.message().await {
+                    Ok(Some(response)) => {
+                        debug!("Received message from Defguard core: {response:?}");
+                        // Discard empty payloads.
+                        if let Some(payload) = response.payload {
+                            match payload {
+                                core_response::Payload::Config(configuration) => {
+                                    match gateway.lock() {
+                                        Ok(mut gw) => {
+                                            gw.connected.store(true, Ordering::Relaxed);
+                                            let _ = gw.configure(configuration);
+                                        }
+                                        Err(err) => error!("Lock failed: {err}"),
+                                    }
+                                }
+                                core_response::Payload::Update(update) => match gateway.lock() {
+                                    Ok(mut gw) => {
+                                        // gw.handle_update(update);
+                                    }
+                                    Err(err) => error!("Lock failed: {err}"),
+                                },
+                                core_response::Payload::Empty(()) => (),
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        info!("gRPC stream from Defguard Core has been closed");
+                        break;
+                    }
+                    Err(err) => {
+                        error!("gRPC stream from Defguard Core failed with error: {err}");
+                        break;
+                    }
                 }
             }
+            info!("Defguard core gRPC stream has been disconnected: {address}");
+            gateway
+                .lock()
+                .unwrap()
+                .connected
+                .store(false, Ordering::Relaxed);
+            gateway.lock().unwrap().clients.remove(&address);
+        });
+
+        Ok(Response::new(UnboundedReceiverStream::new(rx)))
+    }
+}
+
+/// Gather WireGuard statistics and send them to Core through gRPC.
+pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result<(), GatewayError> {
+    // Helper map to track if peer data is actually changing to avoid sending duplicate stats.
+    let mut peer_map = HashMap::new();
+    let mut interval = interval(period);
+    let mut id = 1;
+    loop {
+        // Wait until next iteration.
+        interval.tick().await;
+
+        debug!("Obtaining peer statistics from WireGuard");
+        let result = gateway
+            .lock()
+            .unwrap()
+            .wgapi
+            .lock()
+            .unwrap()
+            .read_interface_data();
+        match result {
+            Ok(host) => {
+                let peers = host.peers;
+                debug!(
+                    "Found {} peers configured on WireGuard interface",
+                    peers.len()
+                );
+                // Filter out never connected peers.
+                for peer in peers.into_values().filter(|p| {
+                    p.last_handshake
+                        .map_or(false, |last_hs| last_hs != SystemTime::UNIX_EPOCH)
+                }) {
+                    let has_changed = match peer_map.get(&peer.public_key) {
+                        Some(last_peer) => *last_peer != peer,
+                        None => true,
+                    };
+                    if has_changed {
+                        peer_map.insert(peer.public_key.clone(), peer.clone());
+                        let payload = core_request::Payload::PeerStats((&peer).into());
+                        let message = CoreRequest {
+                            id,
+                            payload: Some(payload),
+                        };
+                        id += 1;
+                        gateway.lock().unwrap().broadcast_to_clients(&message);
+                        debug!("Sent statistics for peer {}", peer.public_key);
+                    } else {
+                        debug!(
+                            "Statistics for peer {} have not changed. Skipping.",
+                            peer.public_key
+                        );
+                    }
+                }
+            }
+            Err(err) => error!("Failed to retrieve WireGuard interface statistics: {err}"),
         }
     }
 }
