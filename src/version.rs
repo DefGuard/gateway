@@ -1,6 +1,6 @@
 use defguard_version::{Version, is_version_lower};
 
-const MIN_CORE_VERSION: Version = Version::new(1, 5, 0);
+const MIN_CORE_VERSION: Version = Version::new(1, 6, 0);
 
 /// Ensures the core version meets minimum version requirements.
 /// Terminates the process if it doesn't.

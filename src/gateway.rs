@@ -1,6 +1,6 @@
 use defguard_version::{
     ComponentInfo, DefguardComponent, Version, client::ClientVersionInterceptor,
-    get_tracing_variables,
+    get_tracing_variables, server::DefguardVersionLayer,
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use gethostname::gethostname;
@@ -25,9 +25,10 @@ use tonic::{
     Request, Response, Status, Streaming,
     codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
-    service::Interceptor,
+    service::{Interceptor, InterceptorLayer},
     transport::{Channel, Identity, Server, ServerTlsConfig},
 };
+use tower::ServiceBuilder;
 use tracing::{Instrument, instrument};
 
 use crate::{
@@ -823,7 +824,18 @@ impl GatewayServer {
         // Start gRPC server. This should run indefinitely.
         debug!("Serving gRPC");
         builder
-            .add_service(gateway_server::GatewayServer::new(self))
+            .add_service(
+                ServiceBuilder::new()
+                    // .layer(InterceptorLayer::new(JwtInterceptor::new(
+                    //     ClaimsType::Gateway,
+                    // )))
+                    // .layer(InterceptorLayer::new(CoreVersionInterceptor::new(
+                    //     MIN_CORE_VERSION,
+                    //     incompatible_components,
+                    // )))
+                    .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
+                    .service(gateway_server::GatewayServer::new(self)),
+            )
             .serve(addr)
             .await?;
 
@@ -844,31 +856,31 @@ impl gateway_server::Gateway for GatewayServer {
             error!("Failed to determine client address for request: {request:?}");
             return Err(Status::internal("Failed to determine client address"));
         };
-        info!("Defguard core gRPC client connected from {address}");
+        info!("Defguard Core gRPC client connected from {address}");
 
         let (tx, rx) = mpsc::unbounded_channel();
-        // First, send configuration request
-        if let Ok(hostname) = gethostname().into_string() {
-            let payload = ConfigurationRequest {
-                name: None,
-                auth_token: self.auth_token.clone(),
-                hostname,
-            };
-            let req = CoreRequest {
-                id: self.message_id.fetch_add(1, Ordering::Relaxed),
-                payload: Some(core_request::Payload::ConfigRequest(payload)),
-            };
-
-            match tx.send(Ok(req)) {
-                Ok(()) => info!("Requesting network configuration from {address}"),
-                Err(err) => {
-                    error!("Unable to send network configuration request to {address}: {err}");
-                    return Err(Status::internal("failed to send configuration request"));
-                }
-            }
-        } else {
+        // First, send configuration request.
+        let Ok(hostname) = gethostname().into_string() else {
             error!("Unable to get hostname");
             return Err(Status::internal("failed to get hostname"));
+        };
+
+        let payload = ConfigurationRequest {
+            name: None, // TODO: remove?
+            auth_token: self.auth_token.clone(),
+            hostname,
+        };
+        let req = CoreRequest {
+            id: self.message_id.fetch_add(1, Ordering::Relaxed),
+            payload: Some(core_request::Payload::ConfigRequest(payload)),
+        };
+
+        match tx.send(Ok(req)) {
+            Ok(()) => info!("Requesting network configuration from {address}"),
+            Err(err) => {
+                error!("Unable to send network configuration request to {address}: {err}");
+                return Err(Status::internal("failed to send configuration request"));
+            }
         }
 
         self.gateway.lock().unwrap().clients.insert(address, tx);
