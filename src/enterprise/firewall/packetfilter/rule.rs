@@ -434,5 +434,27 @@ mod tests {
             rules[3].to_string(),
             "pass in quick on lo0 from any  to 192.168.1.20/24 port = 42 keep state"
         );
+
+        // One address, port range.
+        let addr1 = Address::Network(
+            IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)), 24).unwrap(),
+        );
+        let mut fr = FirewallRule {
+            comment: None,
+            destination_addrs: vec![addr1],
+            destination_ports: vec![Port::Range(6000, 6666)],
+            id: 0,
+            verdict: Policy::Allow,
+            protocols: Vec::new(),
+            source_addrs: Vec::new(),
+            ipv4: true,
+        };
+
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &mut fr);
+        assert_eq!(1, rules.len());
+        assert_eq!(
+            rules[0].to_string(),
+            "pass in quick on lo0 from any  to 192.168.1.10/24 port 6000:6666 keep state"
+        );
     }
 }
