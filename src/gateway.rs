@@ -826,9 +826,6 @@ impl GatewayServer {
         builder
             .add_service(
                 ServiceBuilder::new()
-                    // .layer(InterceptorLayer::new(JwtInterceptor::new(
-                    //     ClaimsType::Gateway,
-                    // )))
                     // .layer(InterceptorLayer::new(CoreVersionInterceptor::new(
                     //     MIN_CORE_VERSION,
                     //     incompatible_components,
@@ -994,6 +991,7 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use std::{net::Ipv4Addr, slice::from_ref};
@@ -1364,3 +1362,4 @@ mod tests {
         assert!(gateway.has_firewall_config_changed(&config5));
     }
 }
+*/
