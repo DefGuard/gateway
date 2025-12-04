@@ -1,7 +1,7 @@
 //! Low level communication with Packet Filter.
 
 use std::{
-    ffi::{c_char, c_int, c_long, c_uchar, c_uint, c_ulong, c_ushort, c_void},
+    ffi::c_void,
     fmt,
     mem::{size_of, zeroed, MaybeUninit},
     ptr,
@@ -55,7 +55,7 @@ union VTarget {
     ifname: [u8; IFNAMSIZ],
     // tblname: [u8; 32],
     // rtlabelname: [u8; 32],
-    // rtlabel: c_uint,
+    // rtlabel: u32,
 }
 
 // const PFI_AFLAG_NETWORK: u8 = 1;
@@ -154,14 +154,14 @@ impl fmt::Debug for AddrWrap {
 pub(super) struct RuleAddr {
     addr: AddrWrap,
     // macOS: here `union pf_rule_xport` is flattened to its first variant: `struct pf_port_range`.
-    port: [c_ushort; 2],
-    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    port: [u16; 2], // big-endian
+    #[cfg(target_os = "macos")]
     op: PortOp,
     #[cfg(target_os = "macos")]
-    _padding: [c_uchar; 3],
-    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
-    neg: c_uchar,
-    #[cfg(target_os = "netbsd")]
+    _padding: [u8; 3],
+    #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+    neg: u8,
+    #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
     op: PortOp,
 }
 
@@ -179,14 +179,14 @@ impl RuleAddr {
                 op = PortOp::None;
             }
             Port::Single(port) => {
-                from_port = port;
+                from_port = port.to_be();
                 to_port = 0;
-                op = PortOp::None;
+                op = PortOp::Equal;
             }
             Port::Range(from, to) => {
-                from_port = from;
-                to_port = to;
-                op = PortOp::Equal;
+                from_port = from.to_be();
+                to_port = to.to_be();
+                op = PortOp::Range;
             }
         }
         Self {
@@ -195,7 +195,6 @@ impl RuleAddr {
             op,
             #[cfg(target_os = "macos")]
             _padding: [0; 3],
-            #[cfg(any(target_os = "macos", target_os = "netbsd"))]
             neg: 0,
         }
     }
@@ -280,8 +279,8 @@ pub(super) struct Pool {
     cur: *mut PoolAddr,
     key: PoolHashKey,
     counter: Addr,
-    tblidx: c_int,
-    pub(super) proxy_port: [c_ushort; 2],
+    tblidx: i32,
+    pub(super) proxy_port: [u16; 2],
     #[cfg(any(target_os = "macos", target_os = "netbsd"))]
     port_op: PortOp,
     pub(super) opts: PoolOpts,
@@ -367,10 +366,10 @@ struct pf_anchor_node {
 struct pf_ruleset_rule {
     ptr: *mut TailQueue<Rule>,
     ptr_array: *mut *mut Rule,
-    rcount: c_uint,
-    rsize: c_uint,
-    ticket: c_uint,
-    open: c_int,
+    rcount: u32,
+    rsize: u32,
+    ticket: u32,
+    open: i32,
 }
 
 #[repr(C)]
@@ -384,9 +383,9 @@ struct pf_ruleset_rules {
 struct pf_ruleset {
     rules: [pf_ruleset_rules; 6],
     anchor: *mut pf_anchor,
-    tticket: c_uint,
-    tables: c_int,
-    topen: c_int,
+    tticket: u32,
+    tables: i32,
+    topen: i32,
 }
 
 #[repr(C)]
@@ -395,26 +394,26 @@ struct pf_anchor {
     entry_node: pf_anchor_node,
     parent: *mut pf_anchor,
     children: pf_anchor_node,
-    name: [c_char; 64],
-    path: [c_char; MAXPATHLEN],
+    name: [i8; 64],
+    path: [i8; MAXPATHLEN],
     ruleset: pf_ruleset,
-    refcnt: c_int,
-    match_: c_int,
-    owner: [c_char; 64],
+    refcnt: i32,
+    match_: i32,
+    owner: [i8; 64],
 }
 
 #[derive(Debug)]
 #[repr(C)]
 struct pf_rule_conn_rate {
-    limit: c_uint,
-    seconds: c_uint,
+    limit: u32,
+    seconds: u32,
 }
 
 #[derive(Debug)]
 #[repr(C)]
 struct pf_rule_id {
     uid: [uid_t; 2],
-    op: c_uchar,
+    op: u8,
     //_pad: [u_int8_t; 3],
 }
 
@@ -429,53 +428,53 @@ pub(super) struct Rule {
     dst: RuleAddr,
 
     skip: [usize; 8],
-    label: [c_uchar; PF_RULE_LABEL_SIZE],
-    ifname: [c_uchar; IFNAMSIZ],
-    qname: [c_uchar; 64],
-    pqname: [c_uchar; 64],
-    tagname: [c_uchar; 64],
-    match_tagname: [c_uchar; 64],
-    overload_tblname: [c_uchar; 32],
+    label: [u8; PF_RULE_LABEL_SIZE],
+    ifname: [u8; IFNAMSIZ],
+    qname: [u8; 64],
+    pqname: [u8; 64],
+    tagname: [u8; 64],
+    match_tagname: [u8; 64],
+    overload_tblname: [u8; 32],
 
     entries: TailQueueEntry<Self>,
     pub(super) rpool: Pool,
 
-    evaluations: c_long,
-    packets: [c_ulong; 2],
-    bytes: [c_ulong; 2],
+    evaluations: i64,
+    packets: [u64; 2],
+    bytes: [u64; 2],
 
     #[cfg(target_os = "macos")]
-    ticket: c_ulong,
+    ticket: u64,
     #[cfg(target_os = "macos")]
-    owner: [c_char; 64],
+    owner: [i8; 64],
     #[cfg(target_os = "macos")]
-    priority: c_int,
+    priority: i32,
 
     kif: *mut c_void, // struct pfi_kif, kernel only
     anchor: *mut pf_anchor,
     overload_tbl: *mut c_void, // struct pfr_ktable, kernel only
 
-    os_fingerprint: c_uint,
+    os_fingerprint: u32,
 
-    rtableid: c_int,
+    rtableid: i32,
     #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
-    timeout: [c_uint; 20],
+    timeout: [u32; 20],
     #[cfg(target_os = "macos")]
-    timeout: [c_uint; 26],
+    timeout: [u32; 26],
     #[cfg(any(target_os = "macos", target_os = "netbsd"))]
-    states: c_uint,
-    max_states: c_uint,
+    states: u32,
+    max_states: u32,
     #[cfg(any(target_os = "macos", target_os = "netbsd"))]
-    src_nodes: c_uint,
-    max_src_nodes: c_uint,
-    max_src_states: c_uint,
-    max_src_conn: c_uint,
+    src_nodes: u32,
+    max_src_nodes: u32,
+    max_src_states: u32,
+    max_src_conn: u32,
     max_src_conn_rate: pf_rule_conn_rate,
-    qid: c_uint,
-    pqid: c_uint,
-    rt_listid: c_uint,
-    nr: c_uint,
-    prob: c_uint,
+    qid: u32,
+    pqid: u32,
+    rt_listid: u32,
+    nr: u32,
+    prob: u32,
     cuid: uid_t,
     cpid: pid_t,
 
@@ -486,49 +485,49 @@ pub(super) struct Rule {
     #[cfg(target_os = "freebsd")]
     src_nodes: u64,
 
-    return_icmp: c_ushort,
-    return_icmp6: c_ushort,
-    max_mss: c_ushort,
-    tag: c_ushort,
-    match_tag: c_ushort,
+    return_icmp: u16,
+    return_icmp6: u16,
+    max_mss: u16,
+    tag: u16,
+    match_tag: u16,
     #[cfg(target_os = "freebsd")]
-    scrub_flags: c_ushort,
+    scrub_flags: u16,
 
     uid: pf_rule_id,
     gid: pf_rule_id,
 
-    rule_flag: c_uint, // RuleFlag
+    rule_flag: u32, // RuleFlag
     pub(super) action: Action,
     direction: Direction,
-    log: c_uchar, // LogFlags
-    logif: c_uchar,
+    log: u8, // LogFlags
+    logif: u8,
     quick: bool,
-    ifnot: c_uchar,
-    match_tag_not: c_uchar,
-    natpass: c_uchar,
+    ifnot: u8,
+    match_tag_not: u8,
+    natpass: u8,
 
     keep_state: State,
     af: AddressFamily,
-    proto: c_uchar,
-    r#type: c_uchar,
-    code: c_uchar,
-    flags: c_uchar,   // TCP_FLAG
-    flagset: c_uchar, // TCP_FLAG
-    min_ttl: c_uchar,
-    allow_opts: c_uchar,
-    rt: c_uchar,
-    return_ttl: c_uchar,
+    proto: u8,
+    r#type: u8,
+    code: u8,
+    flags: u8,   // TCP_FLAG
+    flagset: u8, // TCP_FLAG
+    min_ttl: u8,
+    allow_opts: u8,
+    rt: u8,
+    return_ttl: u8,
 
-    tos: c_uchar,
+    tos: u8,
     #[cfg(target_os = "freebsd")]
-    set_tos: c_uchar,
-    anchor_relative: c_uchar,
-    anchor_wildcard: c_uchar,
-    flush: c_uchar,
+    set_tos: u8,
+    anchor_relative: u8,
+    anchor_wildcard: u8,
+    flush: u8,
     #[cfg(target_os = "freebsd")]
-    prio: c_uchar,
+    prio: u8,
     #[cfg(target_os = "freebsd")]
-    set_prio: [c_uchar; 2],
+    set_prio: [u8; 2],
 
     #[cfg(target_os = "freebsd")]
     divert: (Addr, u16),
@@ -541,15 +540,15 @@ pub(super) struct Rule {
     u_src_nodes: u64,
 
     #[cfg(target_os = "macos")]
-    proto_variant: c_uchar,
+    proto_variant: u8,
     #[cfg(target_os = "macos")]
-    extfilter: c_uchar,
+    extfilter: u8,
     #[cfg(target_os = "macos")]
-    extmap: c_uchar,
+    extmap: u8,
     #[cfg(target_os = "macos")]
-    dnpipe: c_uint,
+    dnpipe: u32,
     #[cfg(target_os = "macos")]
-    dntype: c_uint,
+    dntype: u32,
 }
 
 impl Rule {
@@ -648,11 +647,11 @@ pub(crate) const MAXPATHLEN: usize = libc::PATH_MAX as usize;
 #[repr(C)]
 pub(super) struct IocRule {
     pub action: Change,
-    pub ticket: c_uint,
-    pub pool_ticket: c_uint,
-    pub nr: c_uint,
-    pub anchor: [c_uchar; MAXPATHLEN],
-    pub anchor_call: [c_uchar; MAXPATHLEN],
+    pub ticket: u32,
+    pub pool_ticket: u32,
+    pub nr: u32,
+    pub anchor: [u8; MAXPATHLEN],
+    pub anchor_call: [u8; MAXPATHLEN],
     pub rule: Rule,
 }
 
@@ -677,13 +676,13 @@ impl IocRule {
 #[repr(C)]
 pub(super) struct IocPoolAddr {
     action: Change,
-    pub(super) ticket: c_uint,
-    nr: c_uint,
-    r_num: c_uint,
-    r_action: c_uchar,
-    r_last: c_uchar,
-    af: c_uchar,
-    anchor: [c_uchar; MAXPATHLEN],
+    pub(super) ticket: u32,
+    nr: u32,
+    r_num: u32,
+    r_action: u8,
+    r_last: u8,
+    af: u8,
+    anchor: [u8; MAXPATHLEN],
     addr: PoolAddr,
 }
 
@@ -704,7 +703,7 @@ impl IocPoolAddr {
 
     #[allow(dead_code)]
     #[must_use]
-    pub(super) fn with_pool_addr(addr: PoolAddr, ticket: c_uint) -> Self {
+    pub(super) fn with_pool_addr(addr: PoolAddr, ticket: u32) -> Self {
         let mut uninit = MaybeUninit::<Self>::zeroed();
         unsafe {
             let self_ptr = &mut *uninit.as_mut_ptr();
@@ -720,8 +719,8 @@ impl IocPoolAddr {
 #[repr(C)]
 pub(super) struct IocTransElement {
     rs_num: RuleSet,
-    anchor: [c_uchar; MAXPATHLEN],
-    pub(super) ticket: c_uint,
+    anchor: [u8; MAXPATHLEN],
+    pub(super) ticket: u32,
 }
 
 impl IocTransElement {
@@ -745,9 +744,9 @@ impl IocTransElement {
 #[repr(C)]
 pub(super) struct IocTrans {
     /// Number of elements.
-    size: c_int,
+    size: i32,
     /// Size of each element in bytes.
-    esize: c_int,
+    esize: i32,
     array: *mut IocTransElement,
 }
 
