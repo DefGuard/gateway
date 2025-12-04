@@ -107,8 +107,8 @@ confidence-threshold = 0.8
 # Allow 1 or more licenses on a per-crate basis, so that particular licenses
 # aren't accepted for every possible crate as with the normal allow list
 exceptions = [
-    { allow = ["AGPL-3.0-only"], crate = "defguard-gateway" },
-    { allow = ["AGPL-3.0-only"], crate = "defguard_version" }
+    { allow = ["AGPL-3.0-or-later"], crate = "defguard-gateway" },
+    { allow = ["AGPL-3.0-or-later"], crate = "defguard_version" }
 ]
 
 # Some crates don't have (easily) machine readable licensing information,
