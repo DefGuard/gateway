@@ -26,7 +26,7 @@ use tonic::{
     codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
     service::{Interceptor, InterceptorLayer},
-    transport::{Channel, Identity, Server, ServerTlsConfig},
+    transport::{Identity, Server, ServerTlsConfig},
 };
 use tower::ServiceBuilder;
 use tracing::{Instrument, instrument};
@@ -578,176 +578,97 @@ impl Gateway {
     //         .layer(InterceptorLayer::new(auth_interceptor))
     //         .service(channel);
     //     let client = GatewayServiceClient::new(channel);
-
-    //     debug!("gRPC client configuration done");
     //     Ok(client)
     // }
 
-    // #[instrument(skip_all)]
-    // async fn handle_updates(&mut self, updates_stream: &mut Streaming<Update>) {
-    //     loop {
-    //         match updates_stream.message().await {
-    //             Ok(Some(update)) => {
-    //                 debug!("Received update: {update:?}");
-    //                 match update.update {
-    //                     Some(update::Update::Network(configuration)) => {
-    //                         if let Err(err) = self.configure(configuration) {
-    //                             error!("Failed to update network configuration: {err}");
-    //                         }
-    //                     }
-    //                     Some(update::Update::Peer(peer_config)) => {
-    //                         debug!("Applying peer configuration: {peer_config:?}");
-    //                         // UpdateType::Delete
-    //                         if update.update_type == 2 {
-    //                             debug!("Deleting peer {peer_config:?}");
-    //                             self.peers.remove(&peer_config.pubkey);
-    //                             if let Err(err) = self.wgapi.lock().unwrap().remove_peer(
-    //                                 &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
-    //                             ) {
-    //                                 error!("Failed to delete peer: {err}");
-    //                             }
-    //                         }
-    //                         // UpdateType::Create, UpdateType::Modify
-    //                         else {
-    //                             debug!(
-    //                                 "Updating peer {peer_config:?}, update type: {}",
-    //                                 update.update_type
-    //                             );
-    //                             self.peers
-    //                                 .insert(peer_config.pubkey.clone(), peer_config.clone());
-    //                             if let Err(err) = self
-    //                                 .wgapi
-    //                                 .lock()
-    //                                 .unwrap()
-    //                                 .configure_peer(&peer_config.into())
-    //                             {
-    //                                 error!("Failed to update peer: {err}");
-    //                             }
-    //                         }
-    //                     }
-    //                     Some(update::Update::FirewallConfig(config)) => {
-    //                         if self.config.disable_firewall_management {
-    //                             debug!(
-    //                                 "Received firewall config update, but firewall management \
-    //                                 is disabled. Skipping processing this update: {config:?}"
-    //                             );
-    //                             continue;
-    //                         }
+    #[instrument(skip_all)]
+    fn handle_updates(&mut self, update: Update) {
+        debug!("Received update: {update:?}");
+        match update.update {
+            Some(update::Update::Network(configuration)) => {
+                if let Err(err) = self.configure(configuration) {
+                    error!("Failed to update network configuration: {err}");
+                }
+            }
+            Some(update::Update::Peer(peer_config)) => {
+                debug!("Applying peer configuration: {peer_config:?}");
+                // UpdateType::Delete
+                if update.update_type == 2 {
+                    debug!("Deleting peer {peer_config:?}");
+                    self.peers.remove(&peer_config.pubkey);
+                    if let Err(err) =
+                        self.wgapi.lock().unwrap().remove_peer(
+                            &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
+                        )
+                    {
+                        error!("Failed to delete peer: {err}");
+                    }
+                }
+                // UpdateType::Create, UpdateType::Modify
+                else {
+                    debug!(
+                        "Updating peer {peer_config:?}, update type: {}",
+                        update.update_type
+                    );
+                    self.peers
+                        .insert(peer_config.pubkey.clone(), peer_config.clone());
+                    if let Err(err) = self
+                        .wgapi
+                        .lock()
+                        .unwrap()
+                        .configure_peer(&peer_config.into())
+                    {
+                        error!("Failed to update peer: {err}");
+                    }
+                }
+            }
+            Some(update::Update::FirewallConfig(config)) => {
+                if self.config.disable_firewall_management {
+                    debug!(
+                        "Received firewall config update, but firewall management is disabled. \
+                        Skipping processing this update: {config:?}"
+                    );
+                    return;
+                }
 
-    //                         debug!("Applying received firewall configuration: {config:?}");
-    //                         let config_str = format!("{config:?}");
-    //                         match FirewallConfig::from_proto(config) {
-    //                             Ok(new_firewall_config) => {
-    //                                 debug!(
-    //                                     "Parsed the received firewall configuration: \
-    //                                     {new_firewall_config:?}, processing it and applying \
-    //                                     changes"
-    //                                 );
-    //                                 if let Err(err) =
-    //                                     self.process_firewall_changes(Some(&new_firewall_config))
-    //                                 {
-    //                                     error!(
-    //                                         "Failed to process received firewall configuration: \
-    //                                         {err}"
-    //                                     );
-    //                                 }
-    //                             }
-    //                             Err(err) => {
-    //                                 error!(
-    //                                     "Failed to parse received firewall configuration: {err}. \
-    //                                     Configuration: {config_str}"
-    //                                 );
-    //                             }
-    //                         }
-    //                     }
-    //                     Some(update::Update::DisableFirewall(())) => {
-    //                         if self.config.disable_firewall_management {
-    //                             debug!(
-    //                                 "Received firewall disable request, but firewall management \
-    //                                 is disabled. Skipping processing this update"
-    //                             );
-    //                             continue;
-    //                         }
+                debug!("Applying received firewall configuration: {config:?}");
+                let config_str = format!("{config:?}");
+                match FirewallConfig::from_proto(config) {
+                    Ok(new_firewall_config) => {
+                        debug!(
+                            "Parsed the received firewall configuration: {new_firewall_config:?}, \
+                            processing it and applying changes"
+                        );
+                        if let Err(err) = self.process_firewall_changes(Some(&new_firewall_config))
+                        {
+                            error!("Failed to process received firewall configuration: {err}");
+                        }
+                    }
+                    Err(err) => {
+                        error!(
+                            "Failed to parse received firewall configuration: {err}. \
+                            Configuration: {config_str}"
+                        );
+                    }
+                }
+            }
+            Some(update::Update::DisableFirewall(())) => {
+                if self.config.disable_firewall_management {
+                    debug!(
+                        "Received firewall disable request, but firewall management is disabled. \
+                        Skipping processing this update"
+                    );
+                    return;
+                }
 
-    //                         debug!("Disabling firewall configuration");
-    //                         if let Err(err) = self.process_firewall_changes(None) {
-    //                             error!("Failed to disable firewall configuration: {err}");
-    //                         }
-    //                     }
-    //                     _ => warn!("Unsupported kind of update: {update:?}"),
-    //                 }
-    //             }
-    //             Ok(None) => {
-    //                 break;
-    //             }
-    //             Err(err) => {
-    //                 error!(
-    //                     "Disconnected from Defguard gRPC endoint: {}: {err}",
-    //                     self.config.grpc_url
-    //                 );
-    //                 break;
-    //             }
-    //         }
-    //     }
-    // }
-
-    // Starts the gateway process.
-    // * Retrieves configuration and configuration updates from Defguard gRPC server
-    // * Manages the interface according to configuration and updates
-    // * Sends interface statistics to Defguard server periodically
-    // pub async fn start(&mut self) -> Result<(), GatewayError> {
-    //     info!(
-    //         "Starting Defguard gateway version {VERSION} with configuration: {:?}",
-    //         mask!(self.config, token)
-    //     );
-
-    //     // Try to create network interface for WireGuard.
-    //     // FIXME: check if the interface already exists, or somehow be more clever.
-    //     if let Err(err) = self.wgapi.lock().unwrap().create_interface() {
-    //         warn!(
-    //             "Couldn't create network interface {}: {err}. Proceeding anyway.",
-    //             self.config.ifname
-    //         );
-    //     } else {
-    //         #[cfg(target_os = "linux")]
-    //         if !self.config.disable_firewall_management && self.config.masquerade {
-    //             self.firewall_api.begin()?;
-    //             self.firewall_api.setup_nat(self.config.masquerade, &[])?;
-    //             self.firewall_api.commit()?;
-    //         }
-    //     }
-
-    //     info!(
-    //         "Trying to connect to {} and obtain the gateway configuration from Defguard.",
-    //         self.config.grpc_url
-    //     );
-    //     loop {
-    //         let mut updates_stream = self.connect().await;
-    //         if let Some(post_up) = &self.config.post_up {
-    //             debug!("Executing specified POST_UP command: {post_up}");
-    //             execute_command(post_up)?;
-    //         }
-    //         let (version, info) = get_tracing_variables(&self.core_info);
-    //         let span = tracing::info_span!(
-    //             "core_grpc",
-    //             component = %DefguardComponent::Core,
-    //             version = version.to_string(),
-    //             info,
-    //         );
-    //         let _guard = span.enter();
-    //         let stats_stream = self.spawn_stats_thread();
-    //         let client = self.client.clone();
-    //         select! {
-    //             biased;
-    //             () = Self::handle_stats_thread(client, stats_stream) => {
-    //                 error!("Stats stream aborted; reconnecting");
-    //             }
-    //             () = self.handle_updates(&mut updates_stream) => {
-    //                 error!("Updates stream aborted; reconnecting");
-    //             }
-    //         }
-    //     }
-    // }
+                debug!("Disabling firewall configuration");
+                if let Err(err) = self.process_firewall_changes(None) {
+                    error!("Failed to disable firewall configuration: {err}");
+                }
+            }
+            _ => warn!("Unsupported kind of update: {update:?}"),
+        }
+    }
 }
 
 pub struct GatewayServer {
@@ -772,7 +693,7 @@ impl GatewayServer {
     /// * Sends interface statistics to Defguard server periodically
     pub async fn start(self, config: Config) -> Result<(), GatewayError> {
         info!(
-            "Starting Defguard gateway version {VERSION} with configuration: {:?}",
+            "Starting Defguard Gateway version {VERSION} with configuration: {:?}",
             mask!(config, token)
         );
 
@@ -791,11 +712,17 @@ impl GatewayServer {
                 "Couldn't create network interface {}: {err}. Proceeding anyway.",
                 config.ifname
             );
+        } else {
+            #[cfg(target_os = "linux")]
+            if !self.config.disable_firewall_management && self.config.masquerade {
+                self.firewall_api.begin()?;
+                self.firewall_api.setup_nat(self.config.masquerade, &[])?;
+                self.firewall_api.commit()?;
+            }
         }
 
-        // self.get_config();
         if let Some(post_up) = &config.post_up {
-            debug!("Executing specified post-up command: {post_up}");
+            debug!("Executing specified POST_UP command: {post_up}");
             execute_command(post_up)?;
         }
 
@@ -810,6 +737,26 @@ impl GatewayServer {
             .as_ref()
             .and_then(|path| read_to_string(path).ok());
         debug!("Configured certificates for gRPC, cert: {grpc_cert:?}");
+
+        // let (version, info) = get_tracing_variables(&self.core_info);
+        // let span = tracing::info_span!(
+        //     "core_grpc",
+        //     component = %DefguardComponent::Core,
+        //     version = version.to_string(),
+        //     info,
+        // );
+        // let _guard = span.enter();
+        // let stats_stream = self.spawn_stats_thread();
+        // let client = self.client.clone();
+        // select! {
+        //     biased;
+        //     () = Self::handle_stats_thread(client, stats_stream) => {
+        //         error!("Stats stream aborted; reconnecting");
+        //     }
+        //     () = self.handle_updates(&mut updates_stream) => {
+        //         error!("Updates stream aborted; reconnecting");
+        //     }
+        // }
 
         // Build gRPC server.
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
@@ -856,12 +803,12 @@ impl gateway_server::Gateway for GatewayServer {
         info!("Defguard Core gRPC client connected from {address}");
 
         let (tx, rx) = mpsc::unbounded_channel();
-        // First, send configuration request.
         let Ok(hostname) = gethostname().into_string() else {
             error!("Unable to get hostname");
             return Err(Status::internal("failed to get hostname"));
         };
 
+        // First, send configuration request.
         let payload = ConfigurationRequest {
             name: None, // TODO: remove?
             auth_token: self.auth_token.clone(),
@@ -888,7 +835,7 @@ impl gateway_server::Gateway for GatewayServer {
             loop {
                 match stream.message().await {
                     Ok(Some(response)) => {
-                        debug!("Received message from Defguard core: {response:?}");
+                        debug!("Received message from Defguard Core: {response:?}");
                         // Discard empty payloads.
                         if let Some(payload) = response.payload {
                             match payload {
@@ -903,7 +850,7 @@ impl gateway_server::Gateway for GatewayServer {
                                 }
                                 core_response::Payload::Update(update) => match gateway.lock() {
                                     Ok(mut gw) => {
-                                        // gw.handle_update(update);
+                                        gw.handle_updates(update);
                                     }
                                     Err(err) => error!("Lock failed: {err}"),
                                 },
