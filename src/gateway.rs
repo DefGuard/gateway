@@ -15,21 +15,16 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
-use tokio::{
-    sync::mpsc,
-    task::{JoinHandle, spawn},
-    time::{interval, sleep},
-};
+use tokio::{sync::mpsc, time::interval};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     Request, Response, Status, Streaming,
-    codegen::InterceptedService,
     metadata::{Ascii, MetadataValue},
-    service::{Interceptor, InterceptorLayer},
+    service::Interceptor,
     transport::{Identity, Server, ServerTlsConfig},
 };
 use tower::ServiceBuilder;
-use tracing::{Instrument, instrument};
+use tracing::instrument;
 
 use crate::{
     VERSION,
@@ -46,8 +41,6 @@ use crate::{
     },
     version::ensure_core_version_supported,
 };
-
-const TEN_SECS: Duration = Duration::from_secs(10);
 
 // helper struct which stores just the interface config without peers
 #[derive(Clone, PartialEq)]
@@ -107,7 +100,7 @@ impl AuthInterceptor {
 
 impl Interceptor for AuthInterceptor {
     fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
-        // Add auth headers
+        // Add authorisation headers.
         let metadata = request.metadata_mut();
         metadata.insert("authorization", self.token.clone());
         metadata.insert("hostname", self.hostname.clone());
@@ -126,13 +119,10 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<PubKey, Peer>,
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
-    #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_api: FirewallApi,
-    #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
     core_info: Option<ComponentInfo>,
-    // stats_thread: Option<JoinHandle<()>>,
     // TODO: allow only one client.
     pub(super) clients: ClientMap,
 }
@@ -156,7 +146,7 @@ impl Gateway {
         })
     }
 
-    // replace current peer map with a new list of peers
+    // Replace current peer map with a new list of peers.
     fn replace_peers(&mut self, new_peers: Vec<Peer>) {
         debug!("Replacing stored peers with {} new peers", new_peers.len());
         let peers = new_peers
@@ -166,7 +156,7 @@ impl Gateway {
         self.peers = peers;
     }
 
-    // check if new received configuration is different than current one
+    // Check if new received configuration is different than current one.
     fn is_interface_config_changed(
         &self,
         new_interface_configuration: &InterfaceConfiguration,
@@ -179,7 +169,7 @@ impl Gateway {
         true
     }
 
-    // check if new peers are the same as the stored ones
+    // Check if new peers are the same as the stored ones.
     fn is_peer_list_changed(&self, new_peers: &[Peer]) -> bool {
         // check if number of peers is different
         if self.peers.len() != new_peers.len() {
@@ -203,7 +193,7 @@ impl Gateway {
         })
     }
 
-    // /// Starts tokio thread collecting stats and sending them to backend service via gRPC.
+    // /// Starts tokio thread collecting stats and send them to Defguard Code over gRPC.
     // #[instrument(skip_all)]
     // fn spawn_stats_thread(&mut self) -> UnboundedReceiverStream<StatsUpdate> {
     //     if let Some(handle) = self.stats_thread.take() {
@@ -460,7 +450,7 @@ impl Gateway {
             );
         }
 
-        // process received firewall config unless firewall management is disabled
+        // Process received firewall configuration, unless firewall management is disabled.
         if self.config.disable_firewall_management {
             debug!("Firewall management is disabled. Skipping updating firewall configuration");
         } else {
@@ -478,7 +468,7 @@ impl Gateway {
     }
 
     /// Send message to all connected clients.
-    pub fn broadcast_to_clients(&self, message: &CoreRequest) {
+    fn broadcast_to_clients(&self, message: &CoreRequest) {
         for (addr, tx) in &self.clients {
             if tx.send(Ok(message.clone())).is_err() {
                 debug!("Failed to send message to {addr}");
@@ -550,35 +540,6 @@ impl Gateway {
     //         }
     //         sleep(TEN_SECS).await;
     //     }
-    // }
-
-    // fn setup_client(config: &Config) -> Result<GatewayClientType, GatewayError> {
-    //     debug!("Preparing gRPC client configuration");
-    //     let tls = ClientTlsConfig::new();
-    //     // Use CA if provided, otherwise load certificates from system.
-    //     let tls = if let Some(ca) = &config.grpc_ca {
-    //         let ca = read_to_string(ca).map_err(|err| {
-    //             error!("Failed to read CA file: {err}");
-    //             GatewayError::InvalidCaFile
-    //         })?;
-    //         tls.ca_certificate(Certificate::from_pem(ca))
-    //     } else {
-    //         tls.with_enabled_roots()
-    //     };
-    //     let endpoint = Endpoint::from_shared(config.grpc_url.clone())?
-    //         .http2_keep_alive_interval(TEN_SECS)
-    //         .tcp_keepalive(Some(TEN_SECS))
-    //         .keep_alive_while_idle(true)
-    //         .tls_config(tls)?;
-    //     let channel = endpoint.connect_lazy();
-    //     let version_interceptor = ClientVersionInterceptor::new(Version::parse(VERSION)?);
-    //     let auth_interceptor = AuthInterceptor::new(&config.token)?;
-    //     let channel = ServiceBuilder::new()
-    //         .layer(InterceptorLayer::new(version_interceptor))
-    //         .layer(InterceptorLayer::new(auth_interceptor))
-    //         .service(channel);
-    //     let client = GatewayServiceClient::new(channel);
-    //     Ok(client)
     // }
 
     #[instrument(skip_all)]
@@ -699,25 +660,25 @@ impl GatewayServer {
 
         // Try to create network interface for WireGuard.
         // FIXME: check if the interface already exists, or somehow be more clever.
-        if let Err(err) = self
-            .gateway
-            .lock()
-            .unwrap()
-            .wgapi
-            .lock()
-            .unwrap()
-            .create_interface()
         {
-            warn!(
-                "Couldn't create network interface {}: {err}. Proceeding anyway.",
-                config.ifname
-            );
-        } else {
-            #[cfg(target_os = "linux")]
-            if !self.config.disable_firewall_management && self.config.masquerade {
-                self.firewall_api.begin()?;
-                self.firewall_api.setup_nat(self.config.masquerade, &[])?;
-                self.firewall_api.commit()?;
+            let gateway = &self.gateway.lock().expect("gateway mutex poison");
+            if let Err(err) = gateway
+                .wgapi
+                .lock()
+                .expect("wgapi mutex poison")
+                .create_interface()
+            {
+                warn!(
+                    "Couldn't create network interface {}: {err}. Proceeding anyway.",
+                    config.ifname
+                );
+            } else {
+                #[cfg(target_os = "linux")]
+                if !config.disable_firewall_management && config.masquerade {
+                    gateway.firewall_api.begin()?;
+                    gateway.firewall_api.setup_nat(config.masquerade, &[])?;
+                    &gateway.firewall_api.commit()?;
+                }
             }
         }
 
@@ -868,7 +829,7 @@ impl gateway_server::Gateway for GatewayServer {
                     }
                 }
             }
-            info!("Defguard core gRPC stream has been disconnected: {address}");
+            info!("Defguard Core gRPC stream has been disconnected: {address}");
             gateway
                 .lock()
                 .unwrap()
@@ -894,10 +855,10 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
         debug!("Obtaining peer statistics from WireGuard");
         let result = gateway
             .lock()
-            .unwrap()
+            .expect("gateway mutex poison")
             .wgapi
             .lock()
-            .unwrap()
+            .expect("wgapi mutex poison")
             .read_interface_data();
         match result {
             Ok(host) => {
@@ -923,7 +884,10 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
                             payload: Some(payload),
                         };
                         id += 1;
-                        gateway.lock().unwrap().broadcast_to_clients(&message);
+                        gateway
+                            .lock()
+                            .expect("gateway mutex poison")
+                            .broadcast_to_clients(&message);
                         debug!("Sent statistics for peer {}", peer.public_key);
                     } else {
                         debug!(
@@ -938,7 +902,6 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
     }
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use std::{net::Ipv4Addr, slice::from_ref};
@@ -989,19 +952,17 @@ mod tests {
 
         let wgapi = WG::new("wg0").unwrap();
         let config = Config::default();
-        let client = Gateway::setup_client(&config).unwrap();
         let firewall_api = FirewallApi::new("wg0").unwrap();
         let gateway = Gateway {
             config,
             interface_configuration: Some(old_config.clone()),
             peers: old_peers_map,
             wgapi: Arc::new(Mutex::new(wgapi)),
-            connected: Arc::new(AtomicBool::new(false)),
-            client,
-            stats_thread: None,
             firewall_api,
             firewall_config: None,
+            connected: Arc::new(AtomicBool::new(false)),
             core_info: None,
+            clients: ClientMap::new(),
         };
 
         // new config is the same
@@ -1178,18 +1139,16 @@ mod tests {
 
         let wgapi = WG::new("wg0").unwrap();
         let config = Config::default();
-        let client = Gateway::setup_client(&config).unwrap();
         let mut gateway = Gateway {
             config,
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
-            connected: Arc::new(AtomicBool::new(false)),
-            client,
-            stats_thread: None,
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
+            connected: Arc::new(AtomicBool::new(false)),
             core_info: None,
+            clients: ClientMap::new(),
         };
 
         // Gateway has no firewall config, new rules are empty
@@ -1247,18 +1206,16 @@ mod tests {
 
         let wgapi = WG::new("wg0").unwrap();
         let config = Config::default();
-        let client = Gateway::setup_client(&config).unwrap();
         let mut gateway = Gateway {
             config,
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
-            connected: Arc::new(AtomicBool::new(false)),
-            client,
-            stats_thread: None,
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
+            connected: Arc::new(AtomicBool::new(false)),
             core_info: None,
+            clients: ClientMap::new(),
         };
         // Gateway has no config
         gateway.firewall_config = None;
@@ -1309,4 +1266,3 @@ mod tests {
         assert!(gateway.has_firewall_config_changed(&config5));
     }
 }
-*/
