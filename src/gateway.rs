@@ -1,6 +1,5 @@
 use defguard_version::{
-    ComponentInfo, DefguardComponent, Version, client::ClientVersionInterceptor,
-    get_tracing_variables, server::DefguardVersionLayer,
+    ComponentInfo, DefguardComponent, Version, get_tracing_variables, server::DefguardVersionLayer,
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use gethostname::gethostname;
@@ -39,10 +38,10 @@ use crate::{
         Configuration, ConfigurationRequest, CoreRequest, CoreResponse, Peer, Update, core_request,
         core_response, gateway_server, update,
     },
-    version::ensure_core_version_supported,
+    version::is_core_version_supported,
 };
 
-// helper struct which stores just the interface config without peers
+// Helper struct which stores just the interface config without peers.
 #[derive(Clone, PartialEq)]
 struct InterfaceConfiguration {
     name: String,
@@ -70,7 +69,7 @@ impl From<Configuration> for InterfaceConfiguration {
 
 type ClientMap = HashMap<SocketAddr, mpsc::UnboundedSender<Result<CoreRequest, Status>>>;
 
-/// Intercepts all grpc requests adding authentication and version metadata
+/// Intercepts all gRPC requests adding authentication and version metadata.
 struct AuthInterceptor {
     hostname: MetadataValue<Ascii>,
     token: MetadataValue<Ascii>,
@@ -110,9 +109,6 @@ impl Interceptor for AuthInterceptor {
 }
 
 type PubKey = String;
-// type GatewayClientType = GatewayServiceClient<
-//     InterceptedService<InterceptedService<Channel, AuthInterceptor>, ClientVersionInterceptor>,
-// >;
 
 pub struct Gateway {
     config: Config,
@@ -122,7 +118,6 @@ pub struct Gateway {
     firewall_api: FirewallApi,
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
-    core_info: Option<ComponentInfo>,
     // TODO: allow only one client.
     pub(super) clients: ClientMap,
 }
@@ -141,7 +136,6 @@ impl Gateway {
             firewall_api,
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
-            core_info: None,
             clients: ClientMap::new(),
         })
     }
@@ -185,7 +179,7 @@ impl Gateway {
             return true;
         }
 
-        // check if all IPs are the same
+        // Check if all IP addresses are the same.
         !new_peers.iter().all(|peer| {
             self.peers
                 .get(&peer.pubkey)
@@ -193,89 +187,7 @@ impl Gateway {
         })
     }
 
-    // /// Starts tokio thread collecting stats and send them to Defguard Code over gRPC.
-    // #[instrument(skip_all)]
-    // fn spawn_stats_thread(&mut self) -> UnboundedReceiverStream<StatsUpdate> {
-    //     if let Some(handle) = self.stats_thread.take() {
-    //         debug!("Aborting previous stats thread before starting a new one");
-    //         handle.abort();
-    //     }
-    //     // Create an async stream that periodically yields WireGuard interface statistics.
-    //     let period = Duration::from_secs(self.config.stats_period);
-    //     let wgapi = Arc::clone(&self.wgapi);
-    //     let (tx, rx) = mpsc::unbounded_channel();
-    //     debug!("Spawning stats thread");
-    //     let handle = spawn(
-    //         async move {
-    //             // helper map to track if peer data is actually changing
-    //             // and avoid sending duplicate stats
-    //             let mut peer_map = HashMap::new();
-    //             let mut interval = interval(period);
-    //             let mut id = 1;
-    //             'outer: loop {
-    //                 // wait until next iteration
-    //                 interval.tick().await;
-    //                 debug!("Sending active peer stats updates.");
-    //                 let interface_data = wgapi.lock().unwrap().read_interface_data();
-    //                 match interface_data {
-    //                     Ok(host) => {
-    //                         let peers = host.peers;
-    //                         debug!(
-    //                             "Found {} peers configured on WireGuard interface",
-    //                             peers.len()
-    //                         );
-    //                         for peer in peers.into_values().filter(|p| {
-    //                             p.last_handshake
-    //                                 .is_some_and(|lhs| lhs != SystemTime::UNIX_EPOCH)
-    //                         }) {
-    //                             let has_changed = peer_map
-    //                                 .get(&peer.public_key)
-    //                                 .is_none_or(|last_peer| *last_peer != peer);
-    //                             if has_changed {
-    //                                 peer_map.insert(peer.public_key.clone(), peer.clone());
-    //                                 id += 1;
-    //                                 if tx
-    //                                     .send(StatsUpdate {
-    //                                         id,
-    //                                         payload: Some(Payload::PeerStats((&peer).into())),
-    //                                     })
-    //                                     .is_err()
-    //                                 {
-    //                                     debug!("Stats stream disappeared");
-    //                                     break 'outer;
-    //                                 }
-    //                             } else {
-    //                                 debug!(
-    //                                     "Stats for peer {} have not changed. Skipping.",
-    //                                     peer.public_key
-    //                                 );
-    //                             }
-    //                         }
-    //                     }
-    //                     Err(err) => error!("Failed to retrieve WireGuard interface stats: {err}"),
-    //                 }
-    //                 debug!("Sent peer stats updates for all peers.");
-    //             }
-    //         }
-    //         .instrument(tracing::Span::current()),
-    //     );
-    //     self.stats_thread = Some(handle);
-    //     UnboundedReceiverStream::new(rx)
-    // }
-
-    // #[instrument(skip_all)]
-    // async fn handle_stats_thread(
-    //     mut client: GatewayClientType,
-    //     rx: UnboundedReceiverStream<StatsUpdate>,
-    // ) {
-    //     let status = client.stats(rx).await;
-    //     match status {
-    //         Ok(_) => info!("Stats thread terminated successfully."),
-    //         Err(err) => error!("Stats thread terminated with error: {err}"),
-    //     }
-    // }
-
-    /// Checks whether the firewall config changed
+    /// Checks whether the firewall config have changed.
     fn has_firewall_config_changed(&self, new_fw_config: &FirewallConfig) -> bool {
         if let Some(current_config) = &self.firewall_config {
             return current_config.default_policy != new_fw_config.default_policy
@@ -476,72 +388,6 @@ impl Gateway {
         }
     }
 
-    // Continuously tries to connect to gRPC endpoint. Once the connection is established
-    // configures the interface, starts the stats thread, connects and returns the updates stream.
-    // async fn connect(&mut self) -> Streaming<Update> {
-    //     // set diconnected if we are in this function and drop mutex
-    //     self.connected.store(false, Ordering::Relaxed);
-    //     loop {
-    //         debug!(
-    //             "Connecting to Defguard gRPC endpoint: {}",
-    //             self.config.grpc_url
-    //         );
-    //         let (response, stream) = {
-    //             let response = self
-    //                 .client
-    //                 .config(ConfigurationRequest {
-    //                     name: self.config.name.clone(),
-    //                 })
-    //                 .await;
-    //             let stream = self.client.updates(()).await;
-    //             (response, stream)
-    //         };
-    //         match (response, stream) {
-    //             (Ok(response), Ok(stream)) => {
-    //                 self.core_info = ComponentInfo::from_metadata(response.metadata());
-    //                 let (version, info) = get_tracing_variables(&self.core_info);
-    //                 let span = tracing::info_span!(
-    //                     "core_configuration",
-    //                     component = %DefguardComponent::Core,
-    //                     version = version.to_string(),
-    //                     info
-    //                 );
-    //                 let _guard = span.enter();
-
-    //                 // check core version and exit if it's not supported
-    //                 let version = self.core_info.as_ref().map(|info| &info.version);
-    //                 ensure_core_version_supported(version);
-
-    //                 if let Err(err) = self.configure(response.into_inner()) {
-    //                     error!("Interface configuration failed: {err}");
-    //                     continue;
-    //                 }
-    //                 info!(
-    //                     "Connected to Defguard gRPC endpoint: {}",
-    //                     self.config.grpc_url
-    //                 );
-    //                 self.connected.store(true, Ordering::Relaxed);
-    //                 break stream.into_inner();
-    //             }
-    //             (Err(err), _) => {
-    //                 error!(
-    //                     "Couldn't retrieve gateway configuration from the core. Using gRPC URL: \
-    //                     {}. Retrying in 10s. Error: {err}",
-    //                     self.config.grpc_url
-    //                 );
-    //             }
-    //             (_, Err(err)) => {
-    //                 error!(
-    //                     "Couldn't establish streaming connection to the core. Using gRPC URL: \
-    //                     {}. Retrying in 10s. Error: {err}",
-    //                     self.config.grpc_url
-    //                 );
-    //             }
-    //         }
-    //         sleep(TEN_SECS).await;
-    //     }
-    // }
-
     #[instrument(skip_all)]
     fn handle_updates(&mut self, update: Update) {
         debug!("Received update: {update:?}");
@@ -699,26 +545,6 @@ impl GatewayServer {
             .and_then(|path| read_to_string(path).ok());
         debug!("Configured certificates for gRPC, cert: {grpc_cert:?}");
 
-        // let (version, info) = get_tracing_variables(&self.core_info);
-        // let span = tracing::info_span!(
-        //     "core_grpc",
-        //     component = %DefguardComponent::Core,
-        //     version = version.to_string(),
-        //     info,
-        // );
-        // let _guard = span.enter();
-        // let stats_stream = self.spawn_stats_thread();
-        // let client = self.client.clone();
-        // select! {
-        //     biased;
-        //     () = Self::handle_stats_thread(client, stats_stream) => {
-        //         error!("Stats stream aborted; reconnecting");
-        //     }
-        //     () = self.handle_updates(&mut updates_stream) => {
-        //         error!("Updates stream aborted; reconnecting");
-        //     }
-        // }
-
         // Build gRPC server.
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
         info!("gRPC server is listening on {addr}");
@@ -752,16 +578,36 @@ impl GatewayServer {
 impl gateway_server::Gateway for GatewayServer {
     type BidiStream = UnboundedReceiverStream<Result<CoreRequest, Status>>;
 
-    /// Handle bidirectional communication with Defguard core.
+    /// Handle bidirectional communication with Defguard Core.
     async fn bidi(
         &self,
         request: Request<Streaming<CoreResponse>>,
     ) -> Result<Response<Self::BidiStream>, Status> {
         let Some(address) = request.remote_addr() else {
-            error!("Failed to determine client address for request: {request:?}");
-            return Err(Status::internal("Failed to determine client address"));
+            error!("Failed to determine Defguard Core's address for request: {request:?}");
+            return Err(Status::internal(
+                "Failed to determine Defguard Core's address",
+            ));
         };
         info!("Defguard Core gRPC client connected from {address}");
+
+        let core_info = ComponentInfo::from_metadata(request.metadata());
+        let (version, info) = get_tracing_variables(&core_info);
+
+        // Tracing span.
+        let span = tracing::info_span!(
+            "core_communication",
+            component = %DefguardComponent::Core,
+            version = version.to_string(),
+            info
+        );
+        let _guard = span.enter();
+
+        // Check Defguard Core's version and exit if it's not supported.
+        let version = core_info.as_ref().map(|info| &info.version);
+        if !is_core_version_supported(version) {
+            return Err(Status::internal("Unsupported Defguard Core version"));
+        }
 
         let (tx, rx) = mpsc::unbounded_channel();
         let Ok(hostname) = gethostname().into_string() else {
@@ -961,7 +807,6 @@ mod tests {
             firewall_api,
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
-            core_info: None,
             clients: ClientMap::new(),
         };
 
@@ -1128,13 +973,13 @@ mod tests {
         let config1 = FirewallConfig {
             rules: vec![rule1.clone(), rule2.clone()],
             default_policy: Policy::Allow,
-            snat_bindings: vec![],
+            snat_bindings: Vec::new(),
         };
 
         let config_empty = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
-            snat_bindings: vec![],
+            snat_bindings: Vec::new(),
         };
 
         let wgapi = WG::new("wg0").unwrap();
@@ -1147,7 +992,6 @@ mod tests {
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
-            core_info: None,
             clients: ClientMap::new(),
         };
 
@@ -1189,19 +1033,19 @@ mod tests {
         let config1 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
-            snat_bindings: vec![],
+            snat_bindings: Vec::new(),
         };
 
         let config2 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Deny,
-            snat_bindings: vec![],
+            snat_bindings: Vec::new(),
         };
 
         let config3 = FirewallConfig {
             rules: Vec::new(),
             default_policy: Policy::Allow,
-            snat_bindings: vec![],
+            snat_bindings: Vec::new(),
         };
 
         let wgapi = WG::new("wg0").unwrap();
@@ -1214,7 +1058,6 @@ mod tests {
             firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
-            core_info: None,
             clients: ClientMap::new(),
         };
         // Gateway has no config
@@ -1242,7 +1085,7 @@ mod tests {
                 ipv4: true,
             }],
             default_policy: Policy::Allow,
-            snat_bindings: vec![],
+            snat_bindings: Vec::new(),
         };
         gateway.firewall_config = Some(config1);
         assert!(gateway.has_firewall_config_changed(&config4));
@@ -1260,7 +1103,7 @@ mod tests {
                 ipv4: false,
             }],
             default_policy: Policy::Allow,
-            snat_bindings: vec![],
+            snat_bindings: Vec::new(),
         };
         gateway.firewall_config = Some(config4);
         assert!(gateway.has_firewall_config_changed(&config5));
