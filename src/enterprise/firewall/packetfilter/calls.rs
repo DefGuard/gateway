@@ -3,12 +3,12 @@
 use std::{
     ffi::c_void,
     fmt,
-    mem::{size_of, zeroed, MaybeUninit},
+    mem::{MaybeUninit, size_of, zeroed},
     ptr,
 };
 
 use ipnetwork::IpNetwork;
-use libc::{pid_t, uid_t, IFNAMSIZ};
+use libc::{IFNAMSIZ, pid_t, uid_t};
 use nix::{ioctl_none, ioctl_readwrite};
 
 use super::rule::{Action, AddressFamily, Direction, PacketFilterRule, RuleSet, State};

@@ -190,11 +190,7 @@ pub(crate) enum Policy {
 
 impl From<bool> for Policy {
     fn from(allow: bool) -> Self {
-        if allow {
-            Self::Allow
-        } else {
-            Self::Deny
-        }
+        if allow { Self::Allow } else { Self::Deny }
     }
 }
 

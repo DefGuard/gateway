@@ -12,9 +12,9 @@ use netfilter::{
 use nftnl::Batch;
 
 use super::{
+    Address, FirewallError, FirewallRule, Policy, Port, Protocol, SnatBinding,
     api::{FirewallApi, FirewallManagementApi},
     iprange::IpAddrRangeError,
-    Address, FirewallError, FirewallRule, Policy, Port, Protocol, SnatBinding,
 };
 use crate::enterprise::firewall::iprange::IpAddrRange;
 
@@ -273,7 +273,9 @@ impl FirewallManagementApi for FirewallApi {
         masquerade_enabled: bool,
         snat_bindings: &[SnatBinding],
     ) -> Result<(), FirewallError> {
-        debug!("Setting up POSTROUTING chain rules with masquerade status: {masquerade_enabled} and SNAT bindings: {snat_bindings:?}");
+        debug!(
+            "Setting up POSTROUTING chain rules with masquerade status: {masquerade_enabled} and SNAT bindings: {snat_bindings:?}"
+        );
 
         if let Some(batch) = &mut self.batch {
             set_nat_rules(batch, &self.ifname, masquerade_enabled, snat_bindings)?;
