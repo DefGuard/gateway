@@ -507,7 +507,7 @@ impl GatewayServer {
         // Try to create network interface for WireGuard.
         // FIXME: check if the interface already exists, or somehow be more clever.
         {
-            let gateway = &self.gateway.lock().expect("gateway mutex poison");
+            let mut gateway = &self.gateway.lock().expect("gateway mutex poison");
             if let Err(err) = gateway
                 .wgapi
                 .lock()
@@ -616,6 +616,7 @@ impl gateway_server::Gateway for GatewayServer {
         };
 
         // First, send configuration request.
+        #[allow(deprecated)]
         let payload = ConfigurationRequest {
             name: None, // TODO: remove?
             auth_token: self.auth_token.clone(),
