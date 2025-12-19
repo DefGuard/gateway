@@ -591,7 +591,7 @@ dependencies = [
 [[package]]
 name = "defguard_wireguard_rs"
 version = "0.8.1"
-source = "git+https://github.com/DefGuard/wireguard-rs?rev=d3b8d58dd6179f31451129cfbef7bd8468392fee#d3b8d58dd6179f31451129cfbef7bd8468392fee"
+source = "git+https://github.com/DefGuard/wireguard-rs?rev=c00280c868bd12cccc6c50202a80244f3c3832e1#c00280c868bd12cccc6c50202a80244f3c3832e1"
 dependencies = [
  "base64",
  "defguard_boringtun",
