@@ -3,6 +3,8 @@ function defguardgateway_services()
 {
     $services = [];
 
+    $pidfile = (string) (new OPNsense\DefguardGateway\DefguardGateway())->general->PidFile;
+
     $services[] = [
         "description" => "Defguard Gateway",
         "configd" => [
@@ -10,8 +12,8 @@ function defguardgateway_services()
             "restart" => ["defguard_gateway restart"],
             "stop" => ["defguard_gateway stop"],
         ],
+        "pidfile" => empty($pidfile) ? "/var/run/defguard_gateway.pid" : $pidfile,
         "name" => "defguard_gateway",
-        "nocheck" => true,
     ];
 
     return $services;

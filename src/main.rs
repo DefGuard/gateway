@@ -1,8 +1,19 @@
-use std::{fs::File, io::Write, process, sync::Arc};
+use std::{
+    fs::File,
+    io::Write,
+    process,
+    sync::{Arc, Mutex},
+};
 
 use defguard_gateway::{
-    config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
-    execute_command, gateway::Gateway, init_syslog, server::run_server, VERSION,
+    VERSION,
+    config::get_config,
+    enterprise::firewall::api::FirewallApi,
+    error::GatewayError,
+    execute_command,
+    gateway::{Gateway, GatewayServer, run_stats},
+    init_syslog,
+    server::run_server,
 };
 use defguard_version::Version;
 #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
@@ -42,7 +53,7 @@ async fn main() -> Result<(), GatewayError> {
     let ifname = config.ifname.clone();
     let firewall_api = FirewallApi::new(&ifname)?;
 
-    let mut gateway = if config.userspace {
+    let gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
         Gateway::new(config.clone(), wgapi, firewall_api)?
     } else {
@@ -58,7 +69,10 @@ async fn main() -> Result<(), GatewayError> {
         }
     };
 
+    // Keep track of spawned tasks.
     let mut tasks = JoinSet::new();
+
+    // Optionally, launch HTTP server to report gateway's health.
     if let Some(health_port) = config.health_port {
         tasks.spawn(run_server(
             health_port,
@@ -66,7 +80,15 @@ async fn main() -> Result<(), GatewayError> {
             Arc::clone(&gateway.connected),
         ));
     }
-    tasks.spawn(async move { gateway.start().await });
+
+    // Launch statistics gathering task.
+    let gateway = Arc::new(Mutex::new(gateway));
+    tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
+
+    // Launch gRPC server.
+    let gateway_server = GatewayServer::new(config.token.clone(), gateway);
+    tasks.spawn(gateway_server.start(config.clone()));
+
     while let Some(Ok(result)) = tasks.join_next().await {
         result?;
     }

@@ -18,11 +18,11 @@ mod rule;
 
 use std::os::fd::{AsRawFd, RawFd};
 
-use calls::{pf_begin_addrs, IocPoolAddr};
+use calls::{IocPoolAddr, pf_begin_addrs};
 use rule::PacketFilterRule;
 
-use self::calls::{pf_add_rule, Change, IocRule, Rule};
-use super::{api::FirewallApi, FirewallError, FirewallRule};
+use self::calls::{Change, IocRule, Rule, pf_add_rule};
+use super::{FirewallError, FirewallRule, api::FirewallApi};
 use crate::enterprise::firewall::Port;
 
 const ANCHOR_PREFIX: &str = "defguard/";

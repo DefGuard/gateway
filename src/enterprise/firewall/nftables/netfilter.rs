@@ -4,14 +4,14 @@ use std::{
 };
 
 use nftnl::{
+    Batch, Chain, FinalizedBatch, ProtoFamily, Rule, Table,
     expr::{Expression, Immediate, InterfaceName, Nat, NatType, Register},
     nft_expr, nftnl_sys,
     set::{Set, SetKey},
-    Batch, Chain, FinalizedBatch, ProtoFamily, Rule, Table,
 };
 
-use super::{get_set_id, Address, FilterRule, Policy, Port, Protocol, State};
-use crate::enterprise::firewall::{iprange::IpAddrRange, max_address, FirewallError, SnatBinding};
+use super::{Address, FilterRule, Policy, Port, Protocol, State, get_set_id};
+use crate::enterprise::firewall::{FirewallError, SnatBinding, iprange::IpAddrRange, max_address};
 
 const FILTER_TABLE: &str = "filter";
 const NAT_TABLE: &str = "nat";
@@ -98,7 +98,7 @@ fn add_address_to_set(set: *mut nftnl_sys::nftnl_set, ip: &Address) -> Result<()
                     return Err(FirewallError::InvalidConfiguration(format!(
                         "Expected both addresses to be of the same type, got {net:?} and \
                         {upper_bound:?}",
-                    )))
+                    )));
                 }
             }
         }
@@ -308,29 +308,26 @@ impl FirewallRule for FilterRule<'_> {
             // 1 Protocol
             // > 0 Ports
             else if !self.dest_ports.is_empty() {
-                if let Some(protocol) = self.protocols.first() {
-                    if protocol.supports_ports() {
-                        let set = new_anon_set::<InetService>(
-                            chain.get_table(),
-                            ProtoFamily::Inet,
-                            true,
-                        )?;
-                        batch.add(&set, nftnl::MsgType::Add);
+                if let Some(protocol) = self.protocols.first()
+                    && protocol.supports_ports()
+                {
+                    let set =
+                        new_anon_set::<InetService>(chain.get_table(), ProtoFamily::Inet, true)?;
+                    batch.add(&set, nftnl::MsgType::Add);
 
-                        for port in self.dest_ports {
-                            add_port_to_set(set.as_ptr(), port)?;
-                        }
-
-                        // <protocol> dport {x, x-x}
-                        set.elems_iter().for_each(|elem| {
-                            batch.add(&elem, nftnl::MsgType::Add);
-                        });
-
-                        rule.add_expr(&nft_expr!(meta l4proto));
-                        rule.add_expr(&nft_expr!(cmp == *protocol as u8));
-                        rule.add_expr(protocol.as_port_payload_expr()?);
-                        rule.add_expr(&nft_expr!(lookup & set));
+                    for port in self.dest_ports {
+                        add_port_to_set(set.as_ptr(), port)?;
                     }
+
+                    // <protocol> dport {x, x-x}
+                    set.elems_iter().for_each(|elem| {
+                        batch.add(&elem, nftnl::MsgType::Add);
+                    });
+
+                    rule.add_expr(&nft_expr!(meta l4proto));
+                    rule.add_expr(&nft_expr!(cmp == *protocol as u8));
+                    rule.add_expr(protocol.as_port_payload_expr()?);
+                    rule.add_expr(&nft_expr!(lookup & set));
                 }
 
                 debug!(
@@ -876,7 +873,7 @@ pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
             Err(err) => {
                 return Err(FirewallError::NetlinkError(format!(
                     "There was an error while sending netlink messages: {err:?}"
-                )))
+                )));
             }
         };
     }

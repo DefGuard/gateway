@@ -123,12 +123,13 @@ impl Port {
     }
 }
 
+#[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 impl fmt::Display for Port {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Port::Any => Ok(()), // nothing here
             Port::Single(port) => write!(f, "port = {port}"),
-            Port::Range(from, to) => write!(f, "port = {{{from}..{to}}}"),
+            Port::Range(from, to) => write!(f, "port {from}:{to}"),
         }
     }
 }
@@ -189,11 +190,7 @@ pub(crate) enum Policy {
 
 impl From<bool> for Policy {
     fn from(allow: bool) -> Self {
-        if allow {
-            Self::Allow
-        } else {
-            Self::Deny
-        }
+        if allow { Self::Allow } else { Self::Deny }
     }
 }
 

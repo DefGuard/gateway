@@ -1,4 +1,4 @@
-use std::{fs, net::IpAddr, path::PathBuf};
+use std::{fs, net::IpAddr, path::PathBuf, time::Duration};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -36,26 +36,23 @@ pub struct Config {
     #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
     pub name: Option<String>,
 
-    /// defguard server gRPC endpoint URL
-    #[arg(
-        long,
-        short = 'g',
-        required_unless_present = "config_path",
-        env = "DEFGUARD_GRPC_URL",
-        default_value = ""
-    )]
-    #[serde(default)]
-    pub grpc_url: String,
+    /// Gateway gRPC server port.
+    #[arg(long, env = "DEFGUARD_GRPC_PORT", default_value = "50066")]
+    pub(crate) grpc_port: u16,
+
+    /// Gateway gRPC server certificate.
+    #[arg(long, env = "DEFGUARD_GATEWAY_GRPC_CERT")]
+    pub(crate) grpc_cert: Option<String>,
+
+    /// Gateway gRPC server private key.
+    #[arg(long, env = "DEFGUARD_GATEWAY_GRPC_KEY")]
+    pub(crate) grpc_key: Option<String>,
 
     /// Use userspace WireGuard implementation e.g. wireguard-go
     #[arg(long, short = 'u', env = "DEFGUARD_USERSPACE")]
     pub userspace: bool,
 
-    /// Path to CA file
-    #[arg(long, env = "DEFGUARD_GRPC_CA")]
-    pub grpc_ca: Option<PathBuf>,
-
-    /// Defines how often (in seconds) interface statistics are sent to Defguard server
+    /// Defines how often (in seconds) interface statistics are sent to Defguard Core.
     #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "30")]
     pub stats_period: u64,
 
@@ -100,9 +97,9 @@ pub struct Config {
     /// Command to run after bringing down the interface.
     #[arg(long, env = "POST_DOWN")]
     pub post_down: Option<String>,
-    /// A HTTP port that will expose the REST HTTP gateway health status
-    /// 200 Gateway is working and is connected to CORE
-    /// 503 - gateway works but is not connected to CORE
+    /// HTTP port that will expose the REST Gateway health status endpoint.
+    /// 200: Gateway is working and is connected to Core
+    /// 503: Gateway is working, but is not connected to Core
     #[arg(long, env = "HEALTH_PORT")]
     pub health_port: Option<u16>,
 
@@ -125,15 +122,23 @@ pub struct Config {
     pub http_bind_address: Option<IpAddr>,
 }
 
+impl Config {
+    #[must_use]
+    pub fn stats_period(&self) -> Duration {
+        Duration::from_secs(self.stats_period)
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             log_level: "info".into(),
             token: "TOKEN".into(),
             name: None,
-            grpc_url: "http://localhost:50051".into(),
+            grpc_port: 50066,
             userspace: false,
-            grpc_ca: None,
+            grpc_cert: None,
+            grpc_key: None,
             stats_period: 15,
             ifname: "wg0".into(),
             pidfile: None,
