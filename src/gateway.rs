@@ -18,8 +18,6 @@ use tokio::{sync::mpsc, time::interval};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     Request, Response, Status, Streaming,
-    metadata::{Ascii, MetadataValue},
-    service::Interceptor,
     transport::{Identity, Server, ServerTlsConfig},
 };
 use tower::ServiceBuilder;
@@ -68,46 +66,6 @@ impl From<Configuration> for InterfaceConfiguration {
 }
 
 type ClientMap = HashMap<SocketAddr, mpsc::UnboundedSender<Result<CoreRequest, Status>>>;
-
-/// Intercepts all gRPC requests adding authentication and version metadata.
-struct AuthInterceptor {
-    hostname: MetadataValue<Ascii>,
-    token: MetadataValue<Ascii>,
-}
-
-impl Clone for AuthInterceptor {
-    fn clone(&self) -> Self {
-        Self {
-            hostname: self.hostname.clone(),
-            token: self.token.clone(),
-        }
-    }
-}
-
-impl AuthInterceptor {
-    fn new(token: &str) -> Result<Self, GatewayError> {
-        let token = MetadataValue::try_from(token)?;
-        let hostname = MetadataValue::try_from(
-            gethostname()
-                .to_str()
-                .expect("Unable to get current hostname during gRPC connection setup."),
-        )?;
-
-        Ok(Self { hostname, token })
-    }
-}
-
-impl Interceptor for AuthInterceptor {
-    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
-        // Add authorisation headers.
-        let metadata = request.metadata_mut();
-        metadata.insert("authorization", self.token.clone());
-        metadata.insert("hostname", self.hostname.clone());
-
-        Ok(request)
-    }
-}
-
 type PubKey = String;
 
 pub struct Gateway {
@@ -507,6 +465,7 @@ impl GatewayServer {
         // Try to create network interface for WireGuard.
         // FIXME: check if the interface already exists, or somehow be more clever.
         {
+            #[allow(unused)]
             let mut gateway = &self.gateway.lock().expect("gateway mutex poison");
             if let Err(err) = gateway
                 .wgapi
