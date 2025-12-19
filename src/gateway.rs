@@ -676,7 +676,7 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
                 // Filter out never connected peers.
                 for peer in peers.into_values().filter(|p| {
                     p.last_handshake
-                        .map_or(false, |last_hs| last_hs != SystemTime::UNIX_EPOCH)
+                        .is_some_and(|last_hs| last_hs != SystemTime::UNIX_EPOCH)
                 }) {
                     let has_changed = match peer_map.get(&peer.public_key) {
                         Some(last_peer) => *last_peer != peer,
