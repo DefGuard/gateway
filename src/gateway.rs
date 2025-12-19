@@ -466,7 +466,7 @@ impl GatewayServer {
         // FIXME: check if the interface already exists, or somehow be more clever.
         {
             #[allow(unused)]
-            let mut gateway = &self.gateway.lock().expect("gateway mutex poison");
+            let mut gateway = &mut self.gateway.lock().expect("gateway mutex poison");
             if let Err(err) = gateway
                 .wgapi
                 .lock()
@@ -482,7 +482,7 @@ impl GatewayServer {
                 if !config.disable_firewall_management && config.masquerade {
                     gateway.firewall_api.begin()?;
                     gateway.firewall_api.setup_nat(config.masquerade, &[])?;
-                    &gateway.firewall_api.commit()?;
+                    let _ = &gateway.firewall_api.commit()?;
                 }
             }
         }
