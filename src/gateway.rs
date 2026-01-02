@@ -338,10 +338,10 @@ impl Gateway {
 
     /// Send message to the connected client.
     fn send_to_client(&self, message: &CoreRequest) {
-        if let Some(tx) = &self.client_tx {
-            if tx.send(Ok(message.clone())).is_err() {
-                debug!("Failed to send message to Core.");
-            }
+        if let Some(tx) = &self.client_tx
+            && tx.send(Ok(message.clone())).is_err()
+        {
+            debug!("Failed to send message to Core.");
         }
     }
 
