@@ -20,9 +20,7 @@ stats_period = {{ OPNsense.defguardgateway.general.StatsPeriod|default(60) }}
 # Required: name of WireGuard interface
 ifname = "{{ OPNsense.defguardgateway.general.IfName|default("wg0") }}"
 # Optional: write PID to this file
-{% if not helpers.empty('OPNsense.defguardgateway.general.PidFile') %}
-pidfile = "{{ OPNsense.defguardgateway.general.PidFile }}"
-{% endif %}
+pidfile = "{{ OPNsense.defguardgateway.general.PidFile|default("/var/run/defguard_gateway.pid") }}"
 # Required: enable logging to syslog
 {% if OPNsense.defguardgateway.general.UseSyslog == "1" %}
 use_syslog = true

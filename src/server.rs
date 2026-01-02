@@ -1,12 +1,12 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
-use axum::{extract::Extension, http::StatusCode, routing::get, serve, Router};
+use axum::{Router, extract::Extension, http::StatusCode, routing::get, serve};
 use tokio::net::TcpListener;
 
 use crate::error::GatewayError;

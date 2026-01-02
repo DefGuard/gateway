@@ -30,6 +30,7 @@
         <Required>Y</Required>
       </UseSyslog>
       <PidFile type="TextField">
+        <default>/var/run/defguard_gateway.pid</default>
         <Required>N</Required>
       </PidFile>
       <SyslogSocket type="TextField">
