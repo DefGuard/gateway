@@ -120,6 +120,9 @@ pub struct Config {
 
     #[arg(long, env = "DEFGUARD_HTTP_BIND_ADDRESS")]
     pub http_bind_address: Option<IpAddr>,
+
+    #[arg(long, env = "DEFGUARD_FWMARK")]
+    pub fwmark: Option<u32>,
 }
 
 impl Config {
@@ -155,6 +158,7 @@ impl Default for Config {
             fw_priority: None,
             disable_firewall_management: false,
             http_bind_address: None,
+            fwmark: None,
         }
     }
 }

@@ -297,10 +297,10 @@ impl Gateway {
             debug!(
                 "Received configuration is different than the current one. Reconfiguring interface."
             );
-            self.wgapi
-                .lock()
-                .unwrap()
-                .configure_interface(&new_configuration.clone().into())?;
+            let mut config =
+                defguard_wireguard_rs::InterfaceConfiguration::from(new_configuration.clone());
+            config.fwmark = self.config.fwmark;
+            self.wgapi.lock().unwrap().configure_interface(&config)?;
             info!(
                 "Reconfigured WireGuard interface {} (addresses: {:?})",
                 new_configuration.name, new_configuration.addresses
