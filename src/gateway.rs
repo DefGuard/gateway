@@ -46,6 +46,8 @@ struct InterfaceConfiguration {
     prvkey: String,
     addresses: Vec<IpAddrMask>,
     port: u16,
+    mtu: Option<u32>,
+    fwmark: Option<u32>,
 }
 
 impl From<Configuration> for InterfaceConfiguration {
@@ -61,6 +63,8 @@ impl From<Configuration> for InterfaceConfiguration {
             prvkey: config.prvkey,
             addresses,
             port: config.port as u16,
+            mtu: config.mtu,
+            fwmark: config.fwmark,
         }
     }
 }
@@ -297,9 +301,9 @@ impl Gateway {
             debug!(
                 "Received configuration is different than the current one. Reconfiguring interface."
             );
-            let mut config =
+            let config =
                 defguard_wireguard_rs::InterfaceConfiguration::from(new_configuration.clone());
-            config.fwmark = self.config.fwmark;
+
             self.wgapi.lock().unwrap().configure_interface(&config)?;
             info!(
                 "Reconfigured WireGuard interface {} (addresses: {:?})",
@@ -743,6 +747,8 @@ mod tests {
             prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
             addresses: vec!["10.6.1.1/24".parse().unwrap()],
             port: 50051,
+            mtu: None,
+            fwmark: None,
         };
 
         let old_peers = vec![
@@ -790,6 +796,8 @@ mod tests {
             prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
             addresses: vec!["10.6.1.2/24".parse().unwrap()],
             port: 50051,
+            mtu: None,
+            fwmark: None,
         };
         let new_peers = old_peers.clone();
         assert!(gateway.is_interface_config_changed(&new_config, &new_peers));

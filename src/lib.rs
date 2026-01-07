@@ -101,8 +101,8 @@ impl From<proto::gateway::Configuration> for InterfaceConfiguration {
             addresses,
             port: config.port as u16,
             peers,
-            mtu: None,
-            fwmark: None,
+            mtu: config.mtu,
+            fwmark: config.fwmark,
         }
     }
 }
