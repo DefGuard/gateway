@@ -6,7 +6,15 @@ use nftnl::Batch;
 
 use super::{FirewallError, FirewallRule, Policy, SnatBinding};
 
-#[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
+#[cfg(all(
+    test,
+    any(target_os = "freebsd", target_os = "macos", target_os = "netbsd")
+))]
+const DEV_PF: &str = "/dev/null";
+#[cfg(all(
+    not(test),
+    any(target_os = "freebsd", target_os = "macos", target_os = "netbsd")
+))]
 const DEV_PF: &str = "/dev/pf";
 
 #[allow(dead_code)]
