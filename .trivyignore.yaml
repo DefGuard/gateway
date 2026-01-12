@@ -1,0 +1,4 @@
+vulnerabilities:
+  - id: GHSA-585q-cm62-757j
+    expired_at: 2026-02-12
+    statement: "No fixed version available yet. The Mullvad team intends to fix it in the coming weeks: https://github.com/mullvad/mnl-rs/issues/15"
