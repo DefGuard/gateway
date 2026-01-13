@@ -547,9 +547,9 @@ dependencies = [
 
 [[package]]
 name = "defguard_boringtun"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81823fe5700844a2b68c3344f5c414dd1316a69590aea0b3c71b32cbb0e27d45"
+checksum = "e226ae51c414f475137460063382d0bb6b5a1b1b1a2b135d4b3b830ab43f06ec"
 dependencies = [
  "aead",
  "base64",
