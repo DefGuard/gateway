@@ -24,7 +24,7 @@ use config::Config;
 use defguard_wireguard_rs::{InterfaceConfiguration, net::IpAddrMask, peer::Peer};
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
-use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 pub mod enterprise;
 pub mod setup;
@@ -32,8 +32,8 @@ pub mod setup;
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("VERGEN_GIT_SHA"));
 
 type CommsChannel<T> = (
-    Arc<tokio::sync::Mutex<mpsc::Sender<T>>>,
-    Arc<tokio::sync::Mutex<mpsc::Receiver<T>>>,
+    Arc<tokio::sync::Mutex<Option<oneshot::Sender<T>>>>,
+    Arc<tokio::sync::Mutex<oneshot::Receiver<T>>>,
 );
 
 pub const GRPC_CERT_NAME: &str = "gateway_grpc_cert.pem";

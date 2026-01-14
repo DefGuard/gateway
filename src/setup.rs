@@ -7,7 +7,7 @@ use std::{
 };
 
 use defguard_version::{Version, server::DefguardVersionLayer};
-use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tonic::{Request, Response, Status, transport::Server};
 use tower::ServiceBuilder;
 use tracing::instrument;
@@ -21,9 +21,9 @@ use crate::{
 };
 
 static SETUP_CHANNEL: LazyLock<CommsChannel<Option<TlsConfig>>> = LazyLock::new(|| {
-    let (tx, rx) = mpsc::channel(10);
+    let (tx, rx) = oneshot::channel();
     (
-        Arc::new(tokio::sync::Mutex::new(tx)),
+        Arc::new(tokio::sync::Mutex::new(Some(tx))),
         Arc::new(tokio::sync::Mutex::new(rx)),
     )
 });
@@ -70,12 +70,18 @@ impl GatewaySetupServer {
                     .service(gateway_setup_server::GatewaySetupServer::new(self.clone())),
             )
             .serve_with_shutdown(addr, async {
-                let config = SETUP_CHANNEL.1.lock().await.recv().await;
-                if let Some(cfg) = config {
-                    info!("Received Gateway setup configuration from Core");
-                    server_config = cfg;
-                } else {
-                    error!("Setup communication channel closed unexpectedly");
+                let mut rx_guard = SETUP_CHANNEL.1.lock().await;
+                match (&mut *rx_guard).await {
+                    Ok(Some(cfg)) => {
+                        info!("Received Gateway setup configuration from Core");
+                        server_config = Some(cfg);
+                    }
+                    Ok(None) => {
+                        error!("Received empty setup configuration from setup channel");
+                    }
+                    Err(err) => {
+                        error!("Setup communication channel closed unexpectedly: {err}");
+                    }
                 }
             })
             .await?;
@@ -186,18 +192,18 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
             grpc_cert_pem: cert_pem,
         };
 
-        SETUP_CHANNEL
-            .0
-            .lock()
-            .await
-            .send(Some(config))
-            .await
-            .map_err(|err| {
-                error!("Failed to send setup configuration through channel: {err}");
-                Status::internal(format!(
-                    "Failed to send setup configuration through channel: {err}"
-                ))
+        {
+            let Some(sender) = SETUP_CHANNEL.0.lock().await.take() else {
+                error!("Setup channel sender not found");
+                self.setup_in_progress.store(false, Ordering::SeqCst);
+                return Err(Status::internal("Setup channel sender not found"));
+            };
+
+            sender.send(Some(config)).map_err(|_| {
+                error!("Failed to send setup configuration through channel");
+                Status::internal("Failed to send setup configuration through channel")
             })?;
+        }
 
         self.setup_in_progress.store(false, Ordering::SeqCst);
 
