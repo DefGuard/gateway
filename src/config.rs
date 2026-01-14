@@ -22,17 +22,6 @@ pub struct Config {
     #[serde(default = "default_log_level")]
     pub log_level: String,
 
-    /// Token received from Defguard after completing the network wizard
-    #[arg(
-        long,
-        short = 't',
-        required_unless_present = "config_path",
-        env = "DEFGUARD_TOKEN",
-        default_value = ""
-    )]
-    #[serde(default)]
-    pub token: String,
-
     #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
     pub name: Option<String>,
 
@@ -140,7 +129,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             log_level: "info".into(),
-            token: "TOKEN".into(),
             name: None,
             grpc_port: 50066,
             userspace: false,

@@ -448,16 +448,14 @@ impl Gateway {
 }
 
 pub struct GatewayServer {
-    auth_token: String,
     message_id: AtomicU64,
     gateway: Arc<Mutex<Gateway>>,
 }
 
 impl GatewayServer {
     #[must_use]
-    pub fn new(auth_token: String, gateway: Arc<Mutex<Gateway>>) -> Self {
+    pub fn new(gateway: Arc<Mutex<Gateway>>) -> Self {
         Self {
-            auth_token,
             message_id: AtomicU64::new(0),
             gateway,
         }
@@ -470,7 +468,7 @@ impl GatewayServer {
     pub async fn start(self, config: Config) -> Result<(), GatewayError> {
         info!(
             "Starting Defguard Gateway version {VERSION} with configuration: {:?}",
-            mask!(config, token)
+            config
         );
 
         // Try to create network interface for WireGuard.
@@ -610,7 +608,6 @@ impl gateway_server::Gateway for GatewayServer {
         #[allow(deprecated)]
         let payload = ConfigurationRequest {
             name: None, // TODO: remove?
-            auth_token: self.auth_token.clone(),
             hostname,
         };
         let req = CoreRequest {

@@ -123,7 +123,7 @@ async fn main() -> Result<(), GatewayError> {
     };
 
     // Launch gRPC server.
-    let mut gateway_server = GatewayServer::new(config.token.clone(), gateway);
+    let mut gateway_server = GatewayServer::new(gateway);
     gateway_server.set_tls_config(tls_config);
     tasks.spawn(gateway_server.start(config.clone()));
 
