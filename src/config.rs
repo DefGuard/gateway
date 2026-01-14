@@ -120,6 +120,13 @@ pub struct Config {
 
     #[arg(long, env = "DEFGUARD_HTTP_BIND_ADDRESS")]
     pub http_bind_address: Option<IpAddr>,
+
+    #[arg(
+        long,
+        env = "DEFGUARD_GATEWAY_CERT_DIR",
+        default_value = "/etc/defguard/certs"
+    )]
+    pub cert_dir: PathBuf,
 }
 
 impl Config {
@@ -155,6 +162,7 @@ impl Default for Config {
             fw_priority: None,
             disable_firewall_management: false,
             http_bind_address: None,
+            cert_dir: PathBuf::from("/etc/defguard/certs"),
         }
     }
 }

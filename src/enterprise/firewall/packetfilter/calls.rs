@@ -847,12 +847,12 @@ ioctl_readwrite!(pf_rollback, b'D', 83, IocTrans);
 
 #[cfg(test)]
 mod tests {
-    use ipnetwork::{Ipv4Network, Ipv6Network};
-
     use std::{
         mem::align_of,
         net::{Ipv4Addr, Ipv6Addr},
     };
+
+    use ipnetwork::{Ipv4Network, Ipv6Network};
 
     use super::*;
 

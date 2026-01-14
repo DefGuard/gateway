@@ -1,11 +1,5 @@
-use defguard_version::{
-    ComponentInfo, DefguardComponent, Version, get_tracing_variables, server::DefguardVersionLayer,
-};
-use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
-use gethostname::gethostname;
 use std::{
     collections::HashMap,
-    fs::read_to_string,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
     sync::{
@@ -14,6 +8,12 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
+
+use defguard_version::{
+    ComponentInfo, DefguardComponent, Version, get_tracing_variables, server::DefguardVersionLayer,
+};
+use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
+use gethostname::gethostname;
 use tokio::{sync::mpsc, time::interval};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
@@ -71,6 +71,12 @@ impl From<Configuration> for InterfaceConfiguration {
 
 type PubKey = String;
 
+#[derive(Clone, Debug)]
+pub struct TlsConfig {
+    pub grpc_cert_pem: String,
+    pub grpc_key_pem: String,
+}
+
 pub struct Gateway {
     config: Config,
     interface_configuration: Option<InterfaceConfiguration>,
@@ -81,6 +87,7 @@ pub struct Gateway {
     pub connected: Arc<AtomicBool>,
     // Transmission channel. Important: allows only one connected client.
     client_tx: Option<mpsc::UnboundedSender<Result<CoreRequest, Status>>>,
+    pub(crate) tls_config: Option<TlsConfig>,
 }
 
 impl Gateway {
@@ -98,6 +105,7 @@ impl Gateway {
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
+            tls_config: None,
         })
     }
 
@@ -495,17 +503,20 @@ impl GatewayServer {
             execute_command(post_up)?;
         }
 
-        // Optionally, read gRPC TLS certificate and key.
-        debug!("Configuring certificates for gRPC");
-        let grpc_cert = config
-            .grpc_cert
+        let grpc_cert = self
+            .gateway
+            .lock()
+            .unwrap()
+            .tls_config
             .as_ref()
-            .and_then(|path| read_to_string(path).ok());
-        let grpc_key = config
-            .grpc_key
+            .map(|c| c.grpc_cert_pem.clone());
+        let grpc_key = self
+            .gateway
+            .lock()
+            .unwrap()
+            .tls_config
             .as_ref()
-            .and_then(|path| read_to_string(path).ok());
-        debug!("Configured certificates for gRPC, cert: {grpc_cert:?}");
+            .map(|c| c.grpc_key_pem.clone());
 
         // Build gRPC server.
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
@@ -533,6 +544,12 @@ impl GatewayServer {
             .await?;
 
         Ok(())
+    }
+
+    pub fn set_tls_config(&mut self, tls_config: TlsConfig) {
+        if let Ok(mut gateway) = self.gateway.lock() {
+            gateway.tls_config = Some(tls_config);
+        }
     }
 }
 
@@ -783,6 +800,7 @@ mod tests {
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
+            tls_config: None,
         };
 
         // new config is the same
@@ -970,6 +988,7 @@ mod tests {
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
+            tls_config: None,
         };
 
         // Gateway has no firewall config, new rules are empty
@@ -1036,6 +1055,7 @@ mod tests {
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
+            tls_config: None,
         };
         // Gateway has no config
         gateway.firewall_config = None;
