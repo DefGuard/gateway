@@ -20,7 +20,7 @@ use crate::{
     proto::gateway::{DerPayload, InitialSetupInfo, gateway_setup_server},
 };
 
-static SETUP_CHANNEL: LazyLock<CommsChannel<Option<TlsConfig>>> = LazyLock::new(|| {
+static SETUP_CHANNEL: LazyLock<CommsChannel<TlsConfig>> = LazyLock::new(|| {
     let (tx, rx) = oneshot::channel();
     (
         Arc::new(tokio::sync::Mutex::new(Some(tx))),
@@ -72,12 +72,9 @@ impl GatewaySetupServer {
             .serve_with_shutdown(addr, async {
                 let mut rx_guard = SETUP_CHANNEL.1.lock().await;
                 match (&mut *rx_guard).await {
-                    Ok(Some(cfg)) => {
+                    Ok(cfg) => {
                         info!("Received Gateway setup configuration from Core");
                         server_config = Some(cfg);
-                    }
-                    Ok(None) => {
-                        error!("Received empty setup configuration from setup channel");
                     }
                     Err(err) => {
                         error!("Setup communication channel closed unexpectedly: {err}");
@@ -199,7 +196,7 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
                 return Err(Status::internal("Setup channel sender not found"));
             };
 
-            sender.send(Some(config)).map_err(|_| {
+            sender.send(config).map_err(|_| {
                 error!("Failed to send setup configuration through channel");
                 Status::internal("Failed to send setup configuration through channel")
             })?;
