@@ -16,7 +16,7 @@ See the [documentation](https://docs.defguard.net) for more information.
 
 ## Community and Support
 
-Find us on Matrix: [#defguard:teonite.com](https://matrix.to/#/#defguard:teonite.com)
+If you encounter any issues with Defguard, you can reach out to our community for support via [GitHub Discussions](https://github.com/DefGuard/defguard/discussions/new/choose)
 
 ## Contribution
 
@@ -52,4 +52,5 @@ All release assets (binaries, packages, etc.) include SHA256 checksums that are 
    ```
 
 # Legal
+
 WireGuard is [registered trademarks](https://www.wireguard.com/trademark-policy/) of Jason A. Donenfeld.
