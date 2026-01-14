@@ -55,7 +55,6 @@ impl GatewaySetupServer {
         let mut server_builder = Server::builder();
         let mut server_config = None;
 
-        // let own_version = Version::parse(VERSION)?;
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
 
         info!("Starting Gateway setup server on {addr} and awaiting configuration from Core");
