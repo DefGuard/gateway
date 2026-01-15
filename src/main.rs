@@ -107,7 +107,7 @@ async fn main() -> Result<(), GatewayError> {
             "gRPC TLS certificates not found in {}. They will be generated during setup.",
             cert_dir.display()
         );
-        let setup_server = GatewaySetupServer::new();
+        let setup_server = GatewaySetupServer::default();
         let tls_config = setup_server.await_setup(config.clone()).await?;
 
         let cert_path = cert_dir.join(GRPC_CERT_NAME);

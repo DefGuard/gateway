@@ -42,7 +42,14 @@ impl Clone for GatewaySetupServer {
     }
 }
 
+impl Default for GatewaySetupServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GatewaySetupServer {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             key_pair: Arc::new(Mutex::new(None)),
