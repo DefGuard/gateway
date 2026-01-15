@@ -69,7 +69,10 @@ feature-depth = 1
 #db-urls = ["https://github.com/rustsec/advisory-db"]
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
-ignore = [{ id = "RUSTSEC-2024-0436", reason = "Unmaintained" }]
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "Unmaintained" },
+    { id = "RUSTSEC-2025-0142", reason = "Awaiting upstream patch" },
+]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
 # Setting this to true can be helpful if you have special authentication requirements that cargo-deny does not support.
@@ -108,8 +111,15 @@ confidence-threshold = 0.8
 # Allow 1 or more licenses on a per-crate basis, so that particular licenses
 # aren't accepted for every possible crate as with the normal allow list
 exceptions = [
-    { allow = ["AGPL-3.0-or-later"], crate = "defguard-gateway" },
-    { allow = ["AGPL-3.0-or-later"], crate = "defguard_version" }
+    { allow = [
+        "AGPL-3.0-or-later",
+    ], crate = "defguard-gateway" },
+    { allow = [
+        "AGPL-3.0-or-later",
+    ], crate = "defguard_version" },
+    { allow = [
+        "AGPL-3.0-or-later",
+    ], crate = "defguard_certs" },
 ]
 
 # Some crates don't have (easily) machine readable licensing information,

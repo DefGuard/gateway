@@ -50,4 +50,7 @@ pub enum GatewayError {
 
     #[error(transparent)]
     SemverError(#[from] SemverError),
+
+    #[error("Encountered an error during Gateway setup: {0}")]
+    SetupError(String),
 }

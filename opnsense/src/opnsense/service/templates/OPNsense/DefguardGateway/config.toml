@@ -1,5 +1,3 @@
-# NOTE: must replace default with actual value
-token = "{{ OPNsense.defguardgateway.general.Token|default("") }}"
 # Required: defguard server gRPC endpoint URL
 # NOTE: must replace default with actual value
 grpc_url = "{{ OPNsense.defguardgateway.general.GrpcUrl|default("") }}"

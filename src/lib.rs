@@ -18,16 +18,26 @@ pub mod proto {
 #[macro_use]
 extern crate log;
 
-use std::{process::Command, str::FromStr, time::SystemTime};
+use std::{process::Command, str::FromStr, sync::Arc, time::SystemTime};
 
 use config::Config;
 use defguard_wireguard_rs::{InterfaceConfiguration, net::IpAddrMask, peer::Peer};
 use error::GatewayError;
 use syslog::{BasicLogger, Facility, Formatter3164};
+use tokio::sync::oneshot;
 
 pub mod enterprise;
+pub mod setup;
 
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("VERGEN_GIT_SHA"));
+
+type CommsChannel<T> = (
+    Arc<tokio::sync::Mutex<Option<oneshot::Sender<T>>>>,
+    Arc<tokio::sync::Mutex<oneshot::Receiver<T>>>,
+);
+
+pub const GRPC_CERT_NAME: &str = "gateway_grpc_cert.pem";
+pub const GRPC_KEY_NAME: &str = "gateway_grpc_key.pem";
 
 /// Masks object's field with "***" string.
 /// Used to log sensitive/secret objects.

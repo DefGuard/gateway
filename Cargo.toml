@@ -9,6 +9,7 @@ base64 = "0.22"
 clap = { version = "4.5", features = ["derive", "env"] }
 defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "640bae9a0aea1e11395f0a29fb8c84eeefd7f115" }
 defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs", rev = "6444a4e31336c4cdbb18dcb5af07f59ad6ce57ab" }
+defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "290bdee718f51179c71e07f3bce3f8a0cbfb9379" }
 env_logger = "0.11"
 gethostname = "1.0"
 ipnetwork = "0.21"
