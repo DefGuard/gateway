@@ -716,6 +716,7 @@ dependencies = [
 [[package]]
 name = "defguard_certs"
 version = "0.0.0"
+source = "git+https://github.com/DefGuard/defguard.git?rev=290bdee718f51179c71e07f3bce3f8a0cbfb9379#290bdee718f51179c71e07f3bce3f8a0cbfb9379"
 dependencies = [
  "base64",
  "rcgen",
