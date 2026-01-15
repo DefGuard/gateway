@@ -57,7 +57,6 @@ impl GatewaySetupServer {
         }
     }
 
-    #[must_use]
     pub async fn await_setup(&self, config: Config) -> Result<TlsConfig, GatewayError> {
         let mut server_builder = Server::builder();
         let mut server_config = None;
