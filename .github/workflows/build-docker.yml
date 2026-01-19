@@ -60,6 +60,10 @@ jobs:
       - name: Sanitize branch name
         run: echo "SAFE_REF=${GITHUB_REF_NAME//\//-}" >> $GITHUB_ENV
 
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+
       - name: Build container
         uses: docker/build-push-action@v5
         with:
