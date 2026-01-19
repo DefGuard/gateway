@@ -1,6 +1,6 @@
 FROM public.ecr.aws/docker/library/rust:1-slim AS builder
 
-RUN apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
+RUN apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev pkg-config libssl-dev
 WORKDIR /app
 COPY . .
 RUN cargo build --release
