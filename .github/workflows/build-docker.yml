@@ -62,7 +62,14 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+          elif command -v yum >/dev/null 2>&1; then
+            sudo yum update -y && sudo yum install -y pkgconfig openssl-devel
+          else
+            >&2 echo "No supported package manager (apt-get or yum) found on runner"
+            exit 1
+          fi
 
       - name: Build container
         uses: docker/build-push-action@v5
