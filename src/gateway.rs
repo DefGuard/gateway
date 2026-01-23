@@ -46,8 +46,8 @@ struct InterfaceConfiguration {
     prvkey: String,
     addresses: Vec<IpAddrMask>,
     port: u16,
-    mtu: Option<u32>,
-    fwmark: Option<u32>,
+    mtu: u32,
+    fwmark: u32,
 }
 
 impl From<Configuration> for InterfaceConfiguration {
@@ -761,8 +761,8 @@ mod tests {
             prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
             addresses: vec!["10.6.1.1/24".parse().unwrap()],
             port: 50051,
-            mtu: None,
-            fwmark: None,
+            mtu: 1420,
+            fwmark: 0,
         };
 
         let old_peers = vec![
@@ -811,8 +811,8 @@ mod tests {
             prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
             addresses: vec!["10.6.1.2/24".parse().unwrap()],
             port: 50051,
-            mtu: None,
-            fwmark: None,
+            mtu: 1420,
+            fwmark: 0,
         };
         let new_peers = old_peers.clone();
         assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
