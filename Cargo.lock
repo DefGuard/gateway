@@ -425,7 +425,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fac4744fb15ae8337dc853fee7fb3f4e48c0fbaa23d0afe49c447b4fab126118"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -659,6 +661,7 @@ version = "2.0.0"
 dependencies = [
  "axum",
  "base64",
+ "chrono",
  "clap",
  "defguard_certs",
  "defguard_version",
@@ -683,6 +686,7 @@ dependencies = [
  "tonic-prost-build",
  "tower",
  "tracing",
+ "tracing-subscriber",
  "vergen-git2",
  "x25519-dalek",
 ]
@@ -731,7 +735,7 @@ dependencies = [
 [[package]]
 name = "defguard_version"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=640bae9a0aea1e11395f0a29fb8c84eeefd7f115#640bae9a0aea1e11395f0a29fb8c84eeefd7f115"
+source = "git+https://github.com/DefGuard/defguard.git?rev=5be16525f5208739fd79384b30d8ac5056ffdb2f#5be16525f5208739fd79384b30d8ac5056ffdb2f"
 dependencies = [
  "axum",
  "http",

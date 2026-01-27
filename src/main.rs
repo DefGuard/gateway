@@ -13,6 +13,7 @@ use defguard_gateway::{
     execute_command,
     gateway::{Gateway, GatewayServer, TlsConfig, run_stats},
     init_syslog,
+    logging::init_tracing,
     server::run_server,
     setup::GatewaySetupServer,
 };
@@ -20,7 +21,7 @@ use defguard_version::Version;
 #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
 use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
-use tokio::task::JoinSet;
+use tokio::{sync::mpsc, task::JoinSet};
 
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
@@ -35,6 +36,27 @@ async fn main() -> Result<(), GatewayError> {
         file.write_all(pid.to_string().as_bytes())?;
     }
 
+    let cert_dir = &config.cert_dir;
+    if !cert_dir.exists() {
+        tokio::fs::create_dir_all(cert_dir).await?;
+    }
+
+    let (grpc_cert, grpc_key) = (
+        read_to_string(cert_dir.join(GRPC_CERT_NAME)).ok(),
+        read_to_string(cert_dir.join(GRPC_KEY_NAME)).ok(),
+    );
+
+    let needs_setup = grpc_cert.is_none() || grpc_key.is_none();
+
+    // TODO: The channel size may need to be adjusted or some other approach should be used
+    // to avoid dropping log messages.
+    let (logs_tx, logs_rx) = if needs_setup {
+        let (logs_tx, logs_rx) = mpsc::channel(200);
+        (Some(logs_tx), Some(logs_rx))
+    } else {
+        (None, None)
+    };
+
     // setup logging
     if config.use_syslog {
         if let Err(error) = init_syslog(&config, pid) {
@@ -42,8 +64,7 @@ async fn main() -> Result<(), GatewayError> {
             return Err(error);
         }
     } else {
-        let version = Version::parse(VERSION)?;
-        defguard_version::tracing::init(version, &config.log_level)?;
+        init_tracing(&Version::parse(VERSION)?, &config.log_level, logs_tx);
     }
 
     if let Some(pre_up) = &config.pre_up {
@@ -86,28 +107,19 @@ async fn main() -> Result<(), GatewayError> {
     let gateway = Arc::new(Mutex::new(gateway));
     tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
 
-    let cert_dir = &config.cert_dir;
-    if !cert_dir.exists() {
-        tokio::fs::create_dir_all(cert_dir).await?;
-    }
-    let tls_config = if let (Some(cert), Some(key)) = (
-        read_to_string(cert_dir.join(GRPC_CERT_NAME)).ok(),
-        read_to_string(cert_dir.join(GRPC_KEY_NAME)).ok(),
-    ) {
-        log::info!(
-            "Using existing gRPC TLS certificates from {}",
-            cert_dir.display()
-        );
-        TlsConfig {
-            grpc_cert_pem: cert,
-            grpc_key_pem: key,
-        }
-    } else {
+    let tls_config = if needs_setup {
         log::info!(
             "gRPC TLS certificates not found in {}. They will be generated during setup.",
             cert_dir.display()
         );
-        let setup_server = GatewaySetupServer::default();
+
+        let Some(logs_rx) = logs_rx else {
+            return Err(GatewayError::SetupError(
+                "Logs receiver channel is missing during gateway setup".to_string(),
+            ));
+        };
+
+        let setup_server = GatewaySetupServer::new(Arc::new(tokio::sync::Mutex::new(logs_rx)));
         let tls_config = setup_server.await_setup(config.clone()).await?;
 
         let cert_path = cert_dir.join(GRPC_CERT_NAME);
@@ -120,6 +132,19 @@ async fn main() -> Result<(), GatewayError> {
         );
 
         tls_config
+    } else if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
+        log::info!(
+            "Using existing gRPC TLS certificates from {}",
+            cert_dir.display()
+        );
+        TlsConfig {
+            grpc_cert_pem: cert,
+            grpc_key_pem: key,
+        }
+    } else {
+        return Err(GatewayError::SetupError(
+            "gRPC TLS certificates are missing after setup".to_string(),
+        ));
     };
 
     // Launch gRPC server.

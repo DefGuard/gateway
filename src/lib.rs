@@ -27,6 +27,7 @@ use syslog::{BasicLogger, Facility, Formatter3164};
 use tokio::sync::oneshot;
 
 pub mod enterprise;
+pub mod logging;
 pub mod setup;
 
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("VERGEN_GIT_SHA"));
