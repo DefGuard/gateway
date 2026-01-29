@@ -1,0 +1,9 @@
+<acl>
+   <page-services-defguardgateway>
+      <name>Services: Defguard Gateway</name>
+      <patterns>
+         <pattern>ui/defguardgateway/*</pattern>
+         <pattern>api/defguardgateway/*</pattern>
+      </patterns>
+   </page-services-defguardgateway>
+</acl>

@@ -1,20 +1,24 @@
 <?php
 function defguardgateway_services()
 {
+    global $config;
+
     $services = [];
 
     $pidfile = (string) (new OPNsense\DefguardGateway\DefguardGateway())->general->PidFile;
 
-    $services[] = [
-        "description" => "Defguard Gateway",
-        "configd" => [
-            "start" => ["defguard_gateway start"],
-            "restart" => ["defguard_gateway restart"],
-            "stop" => ["defguard_gateway stop"],
-        ],
-        "pidfile" => empty($pidfile) ? "/var/run/defguard_gateway.pid" : $pidfile,
-        "name" => "defguard_gateway",
-    ];
+    if (isset($config['OPNsense']['defguardgateway']['general']['enabled']) && $config['OPNsense']['defguardgateway']['general']['enabled'] == 1) {
+        $services[] = [
+            "description" => "Defguard Gateway",
+            "configd" => [
+                "start" => ["defguardgateway start"],
+                "restart" => ["defguardgateway restart"],
+                "stop" => ["defguardgateway stop"],
+            ],
+            "pidfile" => empty($pidfile) ? "/var/run/defguard_gateway.pid" : $pidfile,
+            "name" => "defguardgateway",
+        ];
+    }
 
     return $services;
 }
