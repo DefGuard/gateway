@@ -2,3 +2,39 @@ vulnerabilities:
   - id: GHSA-585q-cm62-757j
     expired_at: 2026-02-12
     statement: "No fixed version available yet. The Mullvad team intends to fix it in the coming weeks: https://github.com/mullvad/mnl-rs/issues/15"
+  - id: CVE-2025-15467
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2025-69419
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2025-11187
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2025-15468
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2025-15469
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2025-66199
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2025-68160
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2025-69418
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2025-69420
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2025-69421
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2026-22795
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"
+  - id: CVE-2026-22796
+    expired_at: 2026-02-12
+    statement: "Not yet fixed in Debian"

@@ -20,6 +20,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # sccache
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
 
 jobs:
   test:
@@ -46,10 +49,8 @@ jobs:
           severity: "CRITICAL,HIGH,MEDIUM"
           scanners: "vuln"
 
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Install dependencies
         run: apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
