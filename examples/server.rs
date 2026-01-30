@@ -6,11 +6,7 @@ use std::{
 };
 
 use defguard_gateway::proto;
-use defguard_wireguard_rs::{
-    host::{Host, Peer},
-    key::Key,
-    net::IpAddrMask,
-};
+use defguard_wireguard_rs::{host::Host, key::Key, net::IpAddrMask, peer::Peer};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     sync::{
