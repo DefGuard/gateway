@@ -1,6 +1,6 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, Mutex},
 };
 
 use defguard_version::{Version, server::DefguardVersionLayer};
@@ -11,28 +11,38 @@ use tower::ServiceBuilder;
 use tracing::instrument;
 
 use crate::{
-    CommsChannel, VERSION,
-    config::Config,
-    error::GatewayError,
-    gateway::TlsConfig,
-    proto::gateway::{CertificateInfo, DerPayload, LogEntry, gateway_setup_server},
+    config::Config, error::GatewayError, gateway::TlsConfig, proto::gateway::{gateway_setup_server, CertificateInfo, DerPayload, LogEntry}, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION
 };
 
 const AUTH_HEADER: &str = "authorization";
 type LogsReceiver = Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>;
 
-static SETUP_CHANNEL: LazyLock<CommsChannel<TlsConfig>> = LazyLock::new(|| {
-    let (tx, rx) = oneshot::channel();
-    (
-        Arc::new(tokio::sync::Mutex::new(Some(tx))),
-        Arc::new(tokio::sync::Mutex::new(rx)),
-    )
-});
+pub async fn run_setup(
+    config: &Config,
+    cert_dir: &std::path::Path,
+    logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
+) -> Result<TlsConfig, GatewayError> {
+    let setup_server = GatewaySetupServer::new(logs_rx);
+    let tls_config = setup_server.await_setup(config.clone()).await?;
+
+    let cert_path = cert_dir.join(GRPC_CERT_NAME);
+    let key_path = cert_dir.join(GRPC_KEY_NAME);
+    tokio::fs::write(cert_path, &tls_config.grpc_cert_pem).await?;
+    tokio::fs::write(key_path, &tls_config.grpc_key_pem).await?;
+    log::info!(
+        "Generated gRPC TLS certificates have been saved to {}",
+        cert_dir.display()
+    );
+
+    Ok(tls_config)
+}
 
 pub struct GatewaySetupServer {
     key_pair: Arc<Mutex<Option<defguard_certs::RcGenKeyPair>>>,
     logs_rx: LogsReceiver,
     current_session_token: Arc<Mutex<Option<String>>>,
+    setup_tx: Arc<tokio::sync::Mutex<Option<oneshot::Sender<TlsConfig>>>>,
+    setup_rx: Arc<tokio::sync::Mutex<oneshot::Receiver<TlsConfig>>>,
 }
 
 impl Clone for GatewaySetupServer {
@@ -41,6 +51,8 @@ impl Clone for GatewaySetupServer {
             key_pair: Arc::clone(&self.key_pair),
             logs_rx: Arc::clone(&self.logs_rx),
             current_session_token: Arc::clone(&self.current_session_token),
+            setup_tx: Arc::clone(&self.setup_tx),
+            setup_rx: Arc::clone(&self.setup_rx),
         }
     }
 }
@@ -48,16 +60,20 @@ impl Clone for GatewaySetupServer {
 impl GatewaySetupServer {
     #[must_use]
     pub fn new(logs_rx: LogsReceiver) -> Self {
+        let (setup_tx, setup_rx) = oneshot::channel();
         Self {
             key_pair: Arc::new(Mutex::new(None)),
             logs_rx,
             current_session_token: Arc::new(Mutex::new(None)),
+            setup_tx: Arc::new(tokio::sync::Mutex::new(Some(setup_tx))),
+            setup_rx: Arc::new(tokio::sync::Mutex::new(setup_rx)),
         }
     }
 
     pub async fn await_setup(&self, config: Config) -> Result<TlsConfig, GatewayError> {
         let mut server_builder = Server::builder();
         let mut server_config = None;
+        let setup_rx = Arc::clone(&self.setup_rx);
 
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
 
@@ -74,7 +90,7 @@ impl GatewaySetupServer {
                     .service(gateway_setup_server::GatewaySetupServer::new(self.clone())),
             )
             .serve_with_shutdown(addr, async {
-                let mut rx_guard = SETUP_CHANNEL.1.lock().await;
+                let mut rx_guard = setup_rx.lock().await;
                 match (&mut *rx_guard).await {
                     Ok(cfg) => {
                         info!("Received Gateway setup configuration from Core");
@@ -331,7 +347,7 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
             grpc_cert_pem,
         };
 
-        let Some(sender) = SETUP_CHANNEL.0.lock().await.take() else {
+        let Some(sender) = self.setup_tx.lock().await.take() else {
             error!("Setup channel sender not found");
             return Err(Status::internal("Setup channel sender not found"));
         };

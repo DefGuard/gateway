@@ -15,7 +15,7 @@ use defguard_version::{
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use gethostname::gethostname;
-use tokio::{sync::mpsc, time::interval};
+use tokio::{sync::{mpsc, watch}, time::interval};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     Request, Response, Status, Streaming,
@@ -25,20 +25,81 @@ use tower::ServiceBuilder;
 use tracing::instrument;
 
 use crate::{
-    GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
-    config::Config,
-    enterprise::firewall::{
-        FirewallConfig, FirewallRule, SnatBinding,
-        api::{FirewallApi, FirewallManagementApi},
-    },
-    error::GatewayError,
-    execute_command, mask,
-    proto::gateway::{
-        Configuration, ConfigurationRequest, CoreRequest, CoreResponse, Peer, Update, core_request,
-        core_response, gateway_server, update,
-    },
-    version::is_core_version_supported,
+    config::Config, enterprise::firewall::{
+        api::{FirewallApi, FirewallManagementApi}, FirewallConfig, FirewallRule, SnatBinding
+    }, error::GatewayError, execute_command, mask, proto::gateway::{
+        core_request, core_response, gateway_server, update, Configuration, ConfigurationRequest, CoreRequest, CoreResponse, LogEntry, Peer, Update
+    }, setup::run_setup, version::is_core_version_supported, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION
 };
+
+pub async fn run_gateway_loop(
+    config: Config,
+    cert_dir: std::path::PathBuf,
+    gateway: Arc<Mutex<Gateway>>,
+    logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
+    mut tls_config: TlsConfig,
+) -> Result<(), GatewayError> {
+    // This loop keeps the gRPC server running, but allows it to be stopped and
+    // restarted in setup mode when a purge request arrives.
+    loop {
+        // Channel used by the gRPC service to request entering setup mode.
+        // The purge RPC sends on this channel.
+        let (setup_tx, mut setup_rx) = mpsc::channel(1);
+        // Channel used by this loop to tell the gRPC server to shut down.
+        // `serve_with_shutdown` listens on the receiver side.
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        // Build a gRPC server instance wired with the setup and shutdown signals.
+        let mut gateway_server = GatewayServer::new(
+            Arc::clone(&gateway),
+            cert_dir.clone(),
+            setup_tx,
+            shutdown_tx.clone(),
+        );
+        // Ensure the server is started with the current TLS configuration.
+        gateway_server.set_tls_config(tls_config.clone());
+        // Start the gRPC server as a future so we can race it against setup requests.
+        let mut server_future = Box::pin(gateway_server.start(config.clone(), shutdown_rx));
+
+        // These flags track how we exited the select below.
+        let mut enter_setup = false;
+        let mut server_completed = false;
+        tokio::select! {
+            // The server exited on its own (error or normal shutdown).
+            result = &mut server_future => {
+                result?;
+                server_completed = true;
+                // If a purge request was queued right before the server ended,
+                // grab it to decide whether we should re-enter setup mode.
+                enter_setup = setup_rx.try_recv().is_ok();
+            }
+            // The purge RPC requested setup mode.
+            signal = setup_rx.recv() => {
+                enter_setup = signal.is_some();
+            }
+        }
+
+        // If we are not entering setup, finish the server future (if still running)
+        // and exit the loop entirely.
+        if !enter_setup {
+            if !server_completed {
+                server_future.await?;
+            }
+            break;
+        }
+
+        // We are entering setup mode. First, stop the current gRPC server.
+        let _ = shutdown_tx.send(true);
+        if !server_completed {
+            server_future.await?;
+        }
+
+        // Run setup server to obtain new TLS certs, then loop to restart gRPC.
+        log::info!("Restarting setup server after purge request");
+        tls_config = run_setup(&config, &cert_dir, Arc::clone(&logs_rx)).await?;
+    }
+
+    Ok(())
+}
 
 // Helper struct which stores just the interface config without peers.
 #[derive(Clone, PartialEq)]
@@ -452,15 +513,24 @@ pub struct GatewayServer {
     message_id: AtomicU64,
     gateway: Arc<Mutex<Gateway>>,
     cert_dir: PathBuf,
+    setup_tx: mpsc::Sender<()>,
+    shutdown_tx: watch::Sender<bool>,
 }
 
 impl GatewayServer {
     #[must_use]
-    pub fn new(gateway: Arc<Mutex<Gateway>>, cert_dir: PathBuf) -> Self {
+    pub fn new(
+        gateway: Arc<Mutex<Gateway>>,
+        cert_dir: PathBuf,
+        setup_tx: mpsc::Sender<()>,
+        shutdown_tx: watch::Sender<bool>,
+    ) -> Self {
         Self {
             message_id: AtomicU64::new(0),
             gateway,
             cert_dir,
+            setup_tx,
+            shutdown_tx,
         }
     }
 
@@ -468,7 +538,11 @@ impl GatewayServer {
     /// * Retrieves configuration and configuration updates from Defguard gRPC server
     /// * Manages the interface according to configuration and updates
     /// * Sends interface statistics to Defguard server periodically
-    pub async fn start(self, config: Config) -> Result<(), GatewayError> {
+    pub async fn start(
+        self,
+        config: Config,
+        mut shutdown_rx: watch::Receiver<bool>,
+    ) -> Result<(), GatewayError> {
         info!(
             "Starting Defguard Gateway version {VERSION} with configuration: {:?}",
             config
@@ -541,7 +615,18 @@ impl GatewayServer {
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_server::GatewayServer::new(self)),
             )
-            .serve(addr)
+            .serve_with_shutdown(addr, async move {
+                match shutdown_rx.changed().await {
+                    Ok(()) => {
+                        if *shutdown_rx.borrow() {
+                            info!("Shutdown signal received, stopping gRPC server");
+                        }
+                    }
+                    Err(err) => {
+                        warn!("Shutdown channel closed unexpectedly: {err}");
+                    }
+                }
+            })
             .await?;
 
         Ok(())
@@ -717,6 +802,16 @@ impl gateway_server::Gateway for GatewayServer {
         //     error!("Failed to notify reset handler");
         //     return Err(Status::internal("Failed to restart setup process"));
         // }
+
+        if let Err(err) = self.setup_tx.send(()).await {
+            error!("Failed to notify setup handler: {err}");
+            return Err(Status::internal("Failed to enter setup mode"));
+        }
+
+        if self.shutdown_tx.send(true).is_err() {
+            error!("Failed to notify shutdown handler");
+            return Err(Status::internal("Failed to stop gRPC server"));
+        }
 
         info!("Removed gRPC certificate files; entering setup mode");
         Ok(Response::new(()))
