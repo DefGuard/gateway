@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
     str::FromStr,
     sync::{
         Arc, Mutex,
@@ -24,7 +25,7 @@ use tower::ServiceBuilder;
 use tracing::instrument;
 
 use crate::{
-    VERSION,
+    GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
     enterprise::firewall::{
         FirewallConfig, FirewallRule, SnatBinding,
@@ -450,14 +451,16 @@ impl Gateway {
 pub struct GatewayServer {
     message_id: AtomicU64,
     gateway: Arc<Mutex<Gateway>>,
+    cert_dir: PathBuf,
 }
 
 impl GatewayServer {
     #[must_use]
-    pub fn new(gateway: Arc<Mutex<Gateway>>) -> Self {
+    pub fn new(gateway: Arc<Mutex<Gateway>>, cert_dir: PathBuf) -> Self {
         Self {
             message_id: AtomicU64::new(0),
             gateway,
+            cert_dir,
         }
     }
 
@@ -672,6 +675,51 @@ impl gateway_server::Gateway for GatewayServer {
         });
 
         Ok(Response::new(UnboundedReceiverStream::new(rx)))
+    }
+
+    #[instrument(skip(self, _request))]
+    async fn purge(&self, _request: Request<()>) -> Result<Response<()>, Status> {
+        debug!("Received purge request, removing gRPC certificate files");
+        let cert_path = self.cert_dir.join(GRPC_CERT_NAME);
+        let key_path = self.cert_dir.join(GRPC_KEY_NAME);
+
+        if let Err(err) = tokio::fs::remove_file(&cert_path).await
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            error!("Failed to remove gRPC certificate at {cert_path:?}: {err}");
+            return Err(Status::internal("Failed to remove gRPC certificate"));
+        }
+        info!("Removed gRPC certificate at {cert_path:?}");
+
+        if let Err(err) = tokio::fs::remove_file(&key_path).await
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            error!("Failed to remove gRPC key at {:?}: {err}", key_path);
+            return Err(Status::internal("Failed to remove gRPC key"));
+        }
+        info!("Removed gRPC key at {cert_path:?}");
+
+        // *self
+        //     .config
+        //     .lock()
+        //     .expect("Failed to lock config mutex during purge") = None;
+        // *self
+        //     .core_version
+        //     .lock()
+        //     .expect("Failed to lock core_version mutex during purge") = None;
+        // *self
+        //     .cookie_key
+        //     .write()
+        //     .expect("Failed to lock cookie key during purge") = None;
+        // self.connected.store(false, Ordering::Relaxed);
+
+        // if self.reset_tx.send(()).is_err() {
+        //     error!("Failed to notify reset handler");
+        //     return Err(Status::internal("Failed to restart setup process"));
+        // }
+
+        info!("Removed gRPC certificate files; entering setup mode");
+        Ok(Response::new(()))
     }
 }
 
