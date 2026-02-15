@@ -15,7 +15,7 @@ use defguard_version::{
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use gethostname::gethostname;
-use tokio::{sync::{mpsc, watch}, time::interval};
+use tokio::{sync::mpsc, time::interval};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     Request, Response, Status, Streaming,
@@ -44,53 +44,65 @@ pub async fn run_gateway_loop(
     loop {
         // Channel used by the gRPC service to request entering setup mode.
         // The purge RPC sends on this channel.
-        let (setup_tx, mut setup_rx) = mpsc::channel(1);
-        // Channel used by this loop to tell the gRPC server to shut down.
-        // `serve_with_shutdown` listens on the receiver side.
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        // Build a gRPC server instance wired with the setup and shutdown signals.
+        let (reset_tx, mut reset_rx) = mpsc::channel(1);
+        // Build a gRPC server instance wired with the reset signal.
         let mut gateway_server = GatewayServer::new(
             Arc::clone(&gateway),
             cert_dir.clone(),
-            setup_tx,
-            shutdown_tx.clone(),
+            reset_tx,
         );
         // Ensure the server is started with the current TLS configuration.
         gateway_server.set_tls_config(tls_config.clone());
-        // Start the gRPC server as a future so we can race it against setup requests.
-        let mut server_future = Box::pin(gateway_server.start(config.clone(), shutdown_rx));
+        // Start the gRPC server as a task so we can abort it on reset.
+        let mut server_handle = tokio::spawn(gateway_server.start(config.clone()));
 
         // These flags track how we exited the select below.
         let mut enter_setup = false;
         let mut server_completed = false;
         tokio::select! {
             // The server exited on its own (error or normal shutdown).
-            result = &mut server_future => {
-                result?;
+            result = &mut server_handle => {
+                match result {
+                    Ok(Ok(())) => (),
+                    Ok(Err(err)) => return Err(err),
+                    Err(err) => {
+                        return Err(GatewayError::SetupError(
+                            format!("gRPC server task failed: {err}"),
+                        ));
+                    }
+                }
                 server_completed = true;
                 // If a purge request was queued right before the server ended,
                 // grab it to decide whether we should re-enter setup mode.
-                enter_setup = setup_rx.try_recv().is_ok();
+                enter_setup = reset_rx.try_recv().is_ok();
             }
             // The purge RPC requested setup mode.
-            signal = setup_rx.recv() => {
+            signal = reset_rx.recv() => {
                 enter_setup = signal.is_some();
             }
         }
 
-        // If we are not entering setup, finish the server future (if still running)
+        // If we are not entering setup, finish the server task (if still running)
         // and exit the loop entirely.
         if !enter_setup {
             if !server_completed {
-                server_future.await?;
+                match server_handle.await {
+                    Ok(Ok(())) => (),
+                    Ok(Err(err)) => return Err(err),
+                    Err(err) => {
+                        return Err(GatewayError::SetupError(
+                            format!("gRPC server task failed: {err}"),
+                        ));
+                    }
+                }
             }
             break;
         }
 
-        // We are entering setup mode. First, stop the current gRPC server.
-        let _ = shutdown_tx.send(true);
+        // We are entering setup mode. First, stop the current gRPC server task.
         if !server_completed {
-            server_future.await?;
+            server_handle.abort();
+            let _ = server_handle.await;
         }
 
         // Run setup server to obtain new TLS certs, then loop to restart gRPC.
@@ -513,8 +525,7 @@ pub struct GatewayServer {
     message_id: AtomicU64,
     gateway: Arc<Mutex<Gateway>>,
     cert_dir: PathBuf,
-    setup_tx: mpsc::Sender<()>,
-    shutdown_tx: watch::Sender<bool>,
+    reset_tx: mpsc::Sender<()>,
 }
 
 impl GatewayServer {
@@ -522,15 +533,13 @@ impl GatewayServer {
     pub fn new(
         gateway: Arc<Mutex<Gateway>>,
         cert_dir: PathBuf,
-        setup_tx: mpsc::Sender<()>,
-        shutdown_tx: watch::Sender<bool>,
+        reset_tx: mpsc::Sender<()>,
     ) -> Self {
         Self {
             message_id: AtomicU64::new(0),
             gateway,
             cert_dir,
-            setup_tx,
-            shutdown_tx,
+            reset_tx,
         }
     }
 
@@ -541,7 +550,6 @@ impl GatewayServer {
     pub async fn start(
         self,
         config: Config,
-        mut shutdown_rx: watch::Receiver<bool>,
     ) -> Result<(), GatewayError> {
         info!(
             "Starting Defguard Gateway version {VERSION} with configuration: {:?}",
@@ -615,18 +623,7 @@ impl GatewayServer {
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_server::GatewayServer::new(self)),
             )
-            .serve_with_shutdown(addr, async move {
-                match shutdown_rx.changed().await {
-                    Ok(()) => {
-                        if *shutdown_rx.borrow() {
-                            info!("Shutdown signal received, stopping gRPC server");
-                        }
-                    }
-                    Err(err) => {
-                        warn!("Shutdown channel closed unexpectedly: {err}");
-                    }
-                }
-            })
+            .serve(addr)
             .await?;
 
         Ok(())
@@ -803,14 +800,9 @@ impl gateway_server::Gateway for GatewayServer {
         //     return Err(Status::internal("Failed to restart setup process"));
         // }
 
-        if let Err(err) = self.setup_tx.send(()).await {
+        if let Err(err) = self.reset_tx.send(()).await {
             error!("Failed to notify setup handler: {err}");
             return Err(Status::internal("Failed to enter setup mode"));
-        }
-
-        if self.shutdown_tx.send(true).is_err() {
-            error!("Failed to notify shutdown handler");
-            return Err(Status::internal("Failed to stop gRPC server"));
         }
 
         info!("Removed gRPC certificate files; entering setup mode");
