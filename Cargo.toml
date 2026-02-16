@@ -36,7 +36,7 @@ tower = "0.5"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "1a1147271f43b9d7182a114bb056a5224c35d38f" }
-mnl = "0.2"
+mnl = "0.3"
 
 [target.'cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))'.dependencies]
 nix = { version = "0.31", default-features = false, features = ["ioctl"] }

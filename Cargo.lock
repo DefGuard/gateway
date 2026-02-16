@@ -1455,9 +1455,9 @@ dependencies = [
 
 [[package]]
 name = "mnl"
-version = "0.2.3"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f15c13b46a48d07ffae279f54a43ebfb0badee28a59a32aacdddc67effa2c4db"
+checksum = "528ab362254419b09757228dc96e0d834e75392c52870d759df2274753007065"
 dependencies = [
  "libc",
  "log",
