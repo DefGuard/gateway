@@ -11,7 +11,11 @@ use tower::ServiceBuilder;
 use tracing::instrument;
 
 use crate::{
-    config::Config, error::GatewayError, gateway::TlsConfig, proto::gateway::{gateway_setup_server, CertificateInfo, DerPayload, LogEntry}, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION
+    GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
+    config::Config,
+    error::GatewayError,
+    gateway::TlsConfig,
+    proto::gateway::{CertificateInfo, DerPayload, LogEntry, gateway_setup_server},
 };
 
 const AUTH_HEADER: &str = "authorization";

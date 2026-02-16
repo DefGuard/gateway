@@ -86,7 +86,7 @@ pub async fn run_gateway_loop(
                 log::info!("Restarting setup server after purge request");
                 tls_config = run_setup(&config, &cert_dir, Arc::clone(&logs_rx)).await?;
             }
-            // The server exited on its own (error or normal shutdown).
+            // Server exited on its own (error or normal shutdown).
             result = &mut server_handle => {
                 match result {
                     Ok(Ok(())) => (),
@@ -177,7 +177,7 @@ impl Gateway {
 
     /// Prepare the `Gateway` to enter setup mode
     pub(crate) fn purge(&mut self) {
-        // TODO decide what should happen to the interface, firewall etc. when GW is purged
+        // TODO: Decide what should happen to the interface, firewall etc. when GW is purged.
         self.client_tx = None;
         self.connected.store(false, Ordering::Relaxed);
     }
