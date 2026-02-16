@@ -426,7 +426,7 @@ impl Gateway {
         if let Some(tx) = &self.client_tx
             && tx.send(Ok(message.clone())).is_err()
         {
-            warn!("Failed to send message to Core, missing Gateway::client_tx.");
+            warn!("Failed to send message to Core.");
         }
     }
 
