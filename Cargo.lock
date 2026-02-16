@@ -590,9 +590,9 @@ dependencies = [
 
 [[package]]
 name = "defguard_wireguard_rs"
-version = "0.9.1"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "864d0dbfdc94670f23650ea16a8ea3a025d7f844d8740eb8e7a8fa3fe6e902ec"
+checksum = "e500b05aa987a6a52adbebd2be4ff5e666e43d70dd6b8b99e286b002a0564a88"
 dependencies = [
  "base64",
  "defguard_boringtun",
@@ -1523,9 +1523,9 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-wireguard"
-version = "0.2.4"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "598962d9067d3153a00106da10e7b8276cea68f396f4a22f5b4a079270d92e29"
+checksum = "037892b0e01ce41f30398a47be2051e712a2cf1eed9cb7e5e6a92b05c423255b"
 dependencies = [
  "libc",
  "log",
