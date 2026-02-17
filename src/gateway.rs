@@ -15,7 +15,10 @@ use defguard_version::{
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use gethostname::gethostname;
-use tokio::{sync::{mpsc, oneshot}, time::interval};
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::interval,
+};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     Request, Response, Status, Streaming,
@@ -28,7 +31,7 @@ use crate::{
     GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
     enterprise::firewall::{
-        FirewallConfig, FirewallRule, SnatBinding,
+        FirewallConfig, FirewallError, FirewallRule, SnatBinding,
         api::{FirewallApi, FirewallManagementApi},
     },
     error::GatewayError,
@@ -175,9 +178,22 @@ impl Gateway {
         })
     }
 
-    /// Prepare the `Gateway` to enter setup mode
+    /// Purge the `Gateway` and prepare to enter setup mode.
     pub(crate) fn purge(&mut self) {
-        // TODO: Decide what should happen to the interface, firewall etc. when GW is purged.
+        // Drop the interface.
+        if let Err(err) = self
+            .wgapi
+            .lock()
+            .expect("Failed to lock Gateway::wgapi")
+            .remove_interface()
+        {
+            error!("Gateway purge failed to drop the interface: {err}");
+        }
+        // Cleanup the firewall.
+        if let Err(err) = self.cleanup_firewall() {
+            error!("Gateway purge failed to cleanup firewall rules: {err}");
+        }
+        // Reset connection state.
         self.client_tx = None;
         self.connected.store(false, Ordering::Relaxed);
     }
@@ -350,13 +366,19 @@ impl Gateway {
             }
         } else {
             debug!("Received firewall configuration is empty, cleaning up firewall rules...");
-            self.firewall_api.begin()?;
-            self.firewall_api.cleanup()?;
-            self.firewall_api.setup_nat(self.config.masquerade, &[])?;
-            self.firewall_api.commit()?;
-            self.firewall_config = None;
+            self.cleanup_firewall()?;
             debug!("Cleaned up firewall rules");
         }
+
+        Ok(())
+    }
+
+    fn cleanup_firewall(&mut self) -> Result<(), FirewallError> {
+        self.firewall_api.begin()?;
+        self.firewall_api.cleanup()?;
+        self.firewall_api.setup_nat(self.config.masquerade, &[])?;
+        self.firewall_api.commit()?;
+        self.firewall_config = None;
 
         Ok(())
     }
