@@ -796,10 +796,10 @@ impl gateway_server::Gateway for GatewayServer {
         if let Err(err) = tokio::fs::remove_file(&key_path).await
             && err.kind() != std::io::ErrorKind::NotFound
         {
-            error!("Failed to remove gRPC key at {:?}: {err}", key_path);
+            error!("Failed to remove gRPC key at {}: {err}", key_path.display());
             return Err(Status::internal("Failed to remove gRPC key"));
         }
-        info!("Removed gRPC key at {cert_path:?}");
+        info!("Removed gRPC key at {}", cert_path.display());
 
         // Prepare underlying `Gateway` to enter setup mode.
         self.gateway
