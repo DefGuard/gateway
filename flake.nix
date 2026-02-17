@@ -37,6 +37,7 @@
           rustToolchain
           libnftnl
           libmnl
+          trivy
         ];
       };
     });
