@@ -194,6 +194,8 @@ impl Gateway {
             error!("Gateway purge failed to cleanup firewall rules: {err}");
         }
         // Reset connection state.
+        self.interface_configuration = None;
+        self.peers.clear();
         self.client_tx = None;
         self.connected.store(false, Ordering::Relaxed);
     }
