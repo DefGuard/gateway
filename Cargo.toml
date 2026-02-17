@@ -39,11 +39,11 @@ chrono = "0.4.43"
 tracing-subscriber = "0.3.22"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "1a1147271f43b9d7182a114bb056a5224c35d38f" }
-mnl = "0.2"
+nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "f30cbf9c0e081aed7d8d8740eabdf07109a70373" }
+mnl = "0.3"
 
 [target.'cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))'.dependencies]
-nix = { version = "0.30", default-features = false, features = ["ioctl"] }
+nix = { version = "0.31", default-features = false, features = ["ioctl"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
@@ -56,7 +56,7 @@ x25519-dalek = { version = "2.0", features = ["getrandom", "static_secrets"] }
 
 [build-dependencies]
 tonic-prost-build = "0.14"
-vergen-git2 = { version = "1.0", features = ["build"] }
+vergen-git2 = { version = "9.1", features = ["build"] }
 
 [profile.release]
 codegen-units = 1
