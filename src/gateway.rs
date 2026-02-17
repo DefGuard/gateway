@@ -15,7 +15,7 @@ use defguard_version::{
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use gethostname::gethostname;
-use tokio::{sync::mpsc, time::interval};
+use tokio::{sync::{mpsc, oneshot}, time::interval};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     Request, Response, Status, Streaming,
@@ -53,7 +53,7 @@ pub async fn run_gateway_loop(
     loop {
         // Channel used by the gRPC service to request entering setup mode.
         // The purge RPC sends on this channel.
-        let (reset_tx, mut reset_rx) = mpsc::channel(1);
+        let (reset_tx, mut reset_rx) = oneshot::channel();
         // Build and start a gRPC server instance wired with the reset signal.
         let mut gateway_server =
             GatewayServer::new(Arc::clone(&gateway), cert_dir.clone(), reset_tx);
@@ -63,9 +63,9 @@ pub async fn run_gateway_loop(
         tokio::select! {
             biased;
             // The purge RPC requested setup mode.
-            signal = reset_rx.recv() => {
+            signal = &mut reset_rx => {
                 // Handle channel closed event.
-                if signal.is_none() {
+                if signal.is_err() {
                     match server_handle.await {
                         Ok(Ok(())) => (),
                         Ok(Err(err)) => return Err(err),
@@ -524,7 +524,7 @@ pub struct GatewayServer {
     message_id: AtomicU64,
     gateway: Arc<Mutex<Gateway>>,
     cert_dir: PathBuf,
-    reset_tx: mpsc::Sender<()>,
+    reset_tx: Arc<tokio::sync::Mutex<Option<oneshot::Sender<()>>>>,
 }
 
 impl GatewayServer {
@@ -532,13 +532,13 @@ impl GatewayServer {
     pub fn new(
         gateway: Arc<Mutex<Gateway>>,
         cert_dir: PathBuf,
-        reset_tx: mpsc::Sender<()>,
+        reset_tx: oneshot::Sender<()>,
     ) -> Self {
         Self {
             message_id: AtomicU64::new(0),
             gateway,
             cert_dir,
-            reset_tx,
+            reset_tx: Arc::new(tokio::sync::Mutex::new(Some(reset_tx))),
         }
     }
 
@@ -783,8 +783,13 @@ impl gateway_server::Gateway for GatewayServer {
             .expect("Failed to lock GatewayServer::gateway")
             .purge();
 
-        if let Err(err) = self.reset_tx.send(()).await {
-            error!("Failed to notify setup handler: {err}");
+        let Some(sender) = self.reset_tx.lock().await.take() else {
+            error!("Reset channel sender not found");
+            return Err(Status::internal("Failed to enter setup mode"));
+        };
+
+        if sender.send(()).is_err() {
+            error!("Failed to notify setup handler");
             return Err(Status::internal("Failed to enter setup mode"));
         }
 
