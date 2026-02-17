@@ -101,7 +101,7 @@ fn merge_addrs(addrs: Vec<Address>) -> Result<Vec<Address>, IpAddrRangeError> {
                     // push previous address to result and replace with next address
                     merged_addrs.push(previous_address.clone());
                     current_address = Some(next_address);
-                };
+                }
             }
         }
     }
@@ -109,7 +109,7 @@ fn merge_addrs(addrs: Vec<Address>) -> Result<Vec<Address>, IpAddrRangeError> {
     // push last remaining address to results
     if let Some(address) = current_address {
         debug!("Pushing last remaining address into results: {address:?}");
-        merged_addrs.push(address)
+        merged_addrs.push(address);
     }
 
     debug!("Prepared addresses: {merged_addrs:?}");
@@ -136,9 +136,7 @@ fn next_ip(ip: IpAddr) -> IpAddr {
 impl FirewallApi {
     fn add_rule(&mut self, rule: FirewallRule) -> Result<(), FirewallError> {
         debug!("Applying the following Defguard ACL rule: {rule:?}");
-        let batch = if let Some(ref mut batch) = self.batch {
-            batch
-        } else {
+        let Some(ref mut batch) = self.batch else {
             return Err(FirewallError::TransactionNotStarted);
         };
 
@@ -242,9 +240,8 @@ impl FirewallManagementApi for FirewallApi {
     ) -> Result<(), FirewallError> {
         debug!("Initializing firewall, VPN interface: {}", self.ifname);
         if let Some(batch) = &mut self.batch {
-            drop_table(batch, &self.ifname)?;
-            init_firewall(default_policy, priority, batch, &self.ifname)
-                .expect("Failed to setup chains");
+            drop_table(batch, &self.ifname);
+            init_firewall(default_policy, priority, batch, &self.ifname);
             debug!("Allowing all established traffic");
             ignore_unrelated_traffic(batch, &self.ifname)?;
             allow_established_traffic(batch, &self.ifname)?;
@@ -260,7 +257,7 @@ impl FirewallManagementApi for FirewallApi {
     fn cleanup(&mut self) -> Result<(), FirewallError> {
         debug!("Cleaning up all previous firewall rules, if any");
         if let Some(batch) = &mut self.batch {
-            drop_table(batch, &self.ifname)?;
+            drop_table(batch, &self.ifname);
         } else {
             return Err(FirewallError::TransactionNotStarted);
         }
