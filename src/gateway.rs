@@ -832,6 +832,16 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
         // Wait until next iteration.
         interval.tick().await;
 
+        // Skip stats if not connected.
+        if !gateway
+            .lock()
+            .expect("Stats thread failed to lock gateway")
+            .connected
+            .load(Ordering::Relaxed)
+        {
+            continue;
+        }
+
         debug!("Obtaining peer statistics from WireGuard");
         let result = gateway
             .lock()
