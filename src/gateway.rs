@@ -832,6 +832,7 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
         // Wait until next iteration.
         interval.tick().await;
 
+        // FIXME: the whole thread should only run when core is connected
         // Skip stats if not connected.
         if !gateway
             .lock()
