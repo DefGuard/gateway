@@ -839,6 +839,7 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
             .connected
             .load(Ordering::Relaxed)
         {
+            debug!("Gateway disconnected, skipping stats collection");
             continue;
         }
 
