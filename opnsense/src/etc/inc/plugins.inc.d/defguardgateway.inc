@@ -7,7 +7,7 @@ function defguardgateway_services()
 
     $pidfile = (string) (new OPNsense\DefguardGateway\DefguardGateway())->general->PidFile;
 
-    if (isset($config['OPNsense']['defguardgateway']['general']['enabled']) && $config['OPNsense']['defguardgateway']['general']['enabled'] == 1) {
+    if (isset($config['OPNsense']['defguardgateway']['general']['Enabled']) && $config['OPNsense']['defguardgateway']['general']['Enabled'] == 1) {
         $services[] = [
             "description" => "Defguard Gateway",
             "configd" => [
