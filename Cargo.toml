@@ -21,7 +21,7 @@ syslog = "7.0"
 thiserror = "2.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tokio-stream = { version = "0.1", features = [] }
-toml = { version = "0.9", default-features = false, features = [
+toml = { version = "1.0", default-features = false, features = [
     "parse",
     "serde",
 ] }
