@@ -822,7 +822,7 @@ impl Chains {
 }
 
 pub(super) fn apply_filter_rules(
-    rules: Vec<FilterRule>,
+    rules: &[FilterRule],
     batch: &mut Batch,
     ifname: &str,
 ) -> Result<(), FirewallError> {
@@ -832,7 +832,7 @@ pub(super) fn apply_filter_rules(
     let forward_chain = Chains::Forward.to_chain(&table);
     batch.add(&forward_chain, MsgType::Add);
 
-    for rule in rules.iter() {
+    for rule in rules {
         let chain_rule = rule.to_chain_rule(&forward_chain, batch)?;
         batch.add(&chain_rule, MsgType::Add);
     }
@@ -855,11 +855,11 @@ pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
         FirewallError::NetlinkError(format!("Failed reading message from socket: {err:?}"))
     })? {
         let Ok(message) = message else {
-            warn!("Invalid message");
+            warn!("Invalid netlink message");
             continue;
         };
         let Some(seq) = expected_seqs.next() else {
-            error!("Unexpected ACK in seq");
+            warn!("Unexpected ACK in netlink messages");
             continue;
         };
         match mnl::cb_run(message, seq, portid) {

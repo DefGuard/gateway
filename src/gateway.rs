@@ -571,10 +571,7 @@ impl GatewayServer {
     /// * Manages the interface according to configuration and updates
     /// * Sends interface statistics to Defguard server periodically
     pub async fn start(self, config: Config) -> Result<(), GatewayError> {
-        info!(
-            "Starting Defguard Gateway version {VERSION} with configuration: {:?}",
-            config
-        );
+        info!("Starting Defguard Gateway version {VERSION} with configuration: {config:?}");
 
         // Try to create network interface for WireGuard.
         // FIXME: check if the interface already exists, or somehow be more clever.
@@ -596,7 +593,7 @@ impl GatewayServer {
                 if !config.disable_firewall_management && config.masquerade {
                     gateway.firewall_api.begin()?;
                     gateway.firewall_api.setup_nat(config.masquerade, &[])?;
-                    let _ = &gateway.firewall_api.commit()?;
+                    gateway.firewall_api.commit()?;
                 }
             }
         }
@@ -788,10 +785,13 @@ impl gateway_server::Gateway for GatewayServer {
         if let Err(err) = tokio::fs::remove_file(&cert_path).await
             && err.kind() != std::io::ErrorKind::NotFound
         {
-            error!("Failed to remove gRPC certificate at {cert_path:?}: {err}");
+            error!(
+                "Failed to remove gRPC certificate at {}: {err}",
+                cert_path.display()
+            );
             return Err(Status::internal("Failed to remove gRPC certificate"));
         }
-        info!("Removed gRPC certificate at {cert_path:?}");
+        info!("Removed gRPC certificate at {}", cert_path.display());
 
         if let Err(err) = tokio::fs::remove_file(&key_path).await
             && err.kind() != std::io::ErrorKind::NotFound

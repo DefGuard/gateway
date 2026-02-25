@@ -218,7 +218,7 @@ impl FirewallApi {
             }
         }
 
-        apply_filter_rules(filter_rules, batch, &self.ifname)?;
+        apply_filter_rules(&filter_rules, batch, &self.ifname)?;
 
         debug!(
             "Applied firewall rules for Defguard ACL rule ID: {}",
