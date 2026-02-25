@@ -822,7 +822,7 @@ impl Chains {
 }
 
 pub(super) fn apply_filter_rules(
-    rules: Vec<FilterRule>,
+    rules: &[FilterRule],
     batch: &mut Batch,
     ifname: &str,
 ) -> Result<(), FirewallError> {
@@ -832,7 +832,7 @@ pub(super) fn apply_filter_rules(
     let forward_chain = Chains::Forward.to_chain(&table);
     batch.add(&forward_chain, MsgType::Add);
 
-    for rule in rules.iter() {
+    for rule in rules {
         let chain_rule = rule.to_chain_rule(&forward_chain, batch)?;
         batch.add(&chain_rule, MsgType::Add);
     }
@@ -842,17 +842,26 @@ pub(super) fn apply_filter_rules(
 
 pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
     let socket = mnl::Socket::new(mnl::Bus::Netfilter)
-        .map_err(|e| FirewallError::NetlinkError(format!("Failed to create socket: {e:?}")))?;
-    socket.send_all(batch).map_err(|e| {
-        FirewallError::NetlinkError(format!("Failed to send batch through socket: {e:?}"))
+        .map_err(|err| FirewallError::NetlinkError(format!("Failed to create socket: {err:?}")))?;
+    socket.send_all(batch).map_err(|err| {
+        FirewallError::NetlinkError(format!("Failed to send batch through socket: {err:?}"))
     })?;
 
     let portid = socket.portid();
     let mut buffer = vec![0; nft_nlmsg_maxsize() as usize];
 
-    // TODO: Why is it supposed to be 2?
-    let seq = 2;
-    while let Some(message) = socket_recv(&socket, &mut buffer[..])? {
+    let mut expected_seqs = batch.sequence_numbers();
+    for message in socket.recv(&mut buffer).map_err(|err| {
+        FirewallError::NetlinkError(format!("Failed reading message from socket: {err:?}"))
+    })? {
+        let Ok(message) = message else {
+            warn!("Invalid netlink message");
+            continue;
+        };
+        let Some(seq) = expected_seqs.next() else {
+            warn!("Unexpected ACK in netlink messages");
+            continue;
+        };
         match mnl::cb_run(message, seq, portid) {
             Ok(mnl::CbResult::Stop) => {
                 debug!("Received stop signal from netlink callback");
@@ -870,22 +879,6 @@ pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
     }
 
     Ok(())
-}
-
-fn socket_recv<'a>(
-    socket: &mnl::Socket,
-    buf: &'a mut [u8],
-) -> Result<Option<&'a [u8]>, FirewallError> {
-    let ret = socket.recv_raw(buf).map_err(|err| {
-        FirewallError::NetlinkError(format!(
-            "Failed while reading a message from socket: {err:?}"
-        ))
-    })?;
-    if ret > 0 {
-        Ok(Some(&buf[..ret]))
-    } else {
-        Ok(None)
-    }
 }
 
 fn new_anon_set<T>(table: &Table, family: ProtoFamily, interval_set: bool) -> Set<'_, T>
