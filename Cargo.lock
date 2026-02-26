@@ -427,6 +427,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-link",
 ]
@@ -710,12 +711,12 @@ dependencies = [
 [[package]]
 name = "defguard_certs"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=290bdee718f51179c71e07f3bce3f8a0cbfb9379#290bdee718f51179c71e07f3bce3f8a0cbfb9379"
+source = "git+https://github.com/DefGuard/defguard.git?rev=12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d#12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d"
 dependencies = [
  "base64",
+ "chrono",
  "rcgen",
  "rustls-pki-types",
- "serde",
  "sqlx",
  "thiserror 2.0.18",
  "time",
@@ -725,7 +726,7 @@ dependencies = [
 [[package]]
 name = "defguard_version"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=5be16525f5208739fd79384b30d8ac5056ffdb2f#5be16525f5208739fd79384b30d8ac5056ffdb2f"
+source = "git+https://github.com/DefGuard/defguard.git?rev=12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d#12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d"
 dependencies = [
  "axum",
  "http",

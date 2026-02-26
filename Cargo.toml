@@ -7,9 +7,9 @@ edition = "2024"
 axum = "0.8"
 base64 = "0.22"
 clap = { version = "4.5", features = ["derive", "env"] }
-defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "5be16525f5208739fd79384b30d8ac5056ffdb2f" }
+defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d" }
 defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs", rev = "d0b01eabca015ea6c7ddf4e255a0228074684e96" }
-defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "290bdee718f51179c71e07f3bce3f8a0cbfb9379" }
+defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d" }
 env_logger = "0.11"
 gethostname = "1.0"
 ipnetwork = "0.21"
