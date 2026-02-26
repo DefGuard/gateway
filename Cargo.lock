@@ -711,7 +711,7 @@ dependencies = [
 [[package]]
 name = "defguard_certs"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d#12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d"
+source = "git+https://github.com/DefGuard/defguard.git?rev=9c6cbd5108470f9c8dc9b4ee740a9a08f071468c#9c6cbd5108470f9c8dc9b4ee740a9a08f071468c"
 dependencies = [
  "base64",
  "chrono",
@@ -726,7 +726,7 @@ dependencies = [
 [[package]]
 name = "defguard_version"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d#12f3c134f6d814779e8c3ad6d21eeb3c5f999f7d"
+source = "git+https://github.com/DefGuard/defguard.git?rev=9c6cbd5108470f9c8dc9b4ee740a9a08f071468c#9c6cbd5108470f9c8dc9b4ee740a9a08f071468c"
 dependencies = [
  "axum",
  "http",
