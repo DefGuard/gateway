@@ -33,7 +33,7 @@ jobs:
           submodules: recursive
 
       - name: Create SBOM with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           scan-type: 'fs'
           format: 'spdx-json'
@@ -43,7 +43,7 @@ jobs:
           scanners: "vuln"
 
       - name: Create docker image SBOM with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           image-ref: "ghcr.io/defguard/gateway:${{ steps.vars.outputs.VERSION }}"
           scan-type: 'image'
@@ -53,7 +53,7 @@ jobs:
           scanners: "vuln"
 
       - name: Create security advisory file with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           scan-type: 'fs'
           format: 'json'
@@ -63,7 +63,7 @@ jobs:
           scanners: "vuln"
 
       - name: Create docker image security advisory file with Trivy
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           image-ref: "ghcr.io/defguard/gateway:${{ steps.vars.outputs.VERSION }}"
           scan-type: 'image'
