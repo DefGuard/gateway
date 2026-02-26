@@ -1,7 +1,8 @@
+#[cfg(unix)]
+use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 use std::{
-    fs::{File, Permissions, read_to_string},
+    fs::{File, read_to_string},
     io::Write,
-    os::unix::fs::PermissionsExt,
     process,
     sync::{Arc, Mutex},
 };
