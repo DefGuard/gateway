@@ -6,10 +6,11 @@ edition = "2024"
 [dependencies]
 axum = "0.8"
 base64 = "0.22"
+chrono = "0.4"
 clap = { version = "4.5", features = ["derive", "env"] }
-defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "5be16525f5208739fd79384b30d8ac5056ffdb2f" }
+defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "9c6cbd5108470f9c8dc9b4ee740a9a08f071468c" }
 defguard_wireguard_rs = { git = "https://github.com/DefGuard/wireguard-rs", rev = "d0b01eabca015ea6c7ddf4e255a0228074684e96" }
-defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "290bdee718f51179c71e07f3bce3f8a0cbfb9379" }
+defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "9c6cbd5108470f9c8dc9b4ee740a9a08f071468c" }
 env_logger = "0.11"
 gethostname = "1.0"
 ipnetwork = "0.21"
@@ -32,11 +33,10 @@ tonic = { version = "0.14", default-features = false, features = [
     "tls-native-roots",
     "tls-ring",
 ] }
-tracing = "0.1"
 tonic-prost = "0.14"
 tower = "0.5"
-chrono = "0.4.43"
-tracing-subscriber = "0.3.22"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "f30cbf9c0e081aed7d8d8740eabdf07109a70373" }

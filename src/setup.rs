@@ -1,10 +1,15 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::Path,
     sync::{Arc, Mutex},
 };
 
 use defguard_version::{Version, server::DefguardVersionLayer};
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    fs::OpenOptions,
+    io::AsyncWriteExt,
+    sync::{mpsc, oneshot},
+};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{Request, Response, Status, transport::Server};
 use tower::ServiceBuilder;
@@ -23,16 +28,32 @@ type LogsReceiver = Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>;
 
 pub async fn run_setup(
     config: &Config,
-    cert_dir: &std::path::Path,
+    cert_dir: &Path,
     logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
 ) -> Result<TlsConfig, GatewayError> {
     let setup_server = GatewaySetupServer::new(logs_rx);
-    let tls_config = setup_server.await_setup(config.clone()).await?;
+    let tls_config = setup_server.await_setup(config).await?;
 
     let cert_path = cert_dir.join(GRPC_CERT_NAME);
     let key_path = cert_dir.join(GRPC_KEY_NAME);
-    tokio::fs::write(cert_path, &tls_config.grpc_cert_pem).await?;
-    tokio::fs::write(key_path, &tls_config.grpc_key_pem).await?;
+    // Certificate and its key will be accessed only to this process's user.
+    let mut options = OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    options.mode(0o600); // rw-------
+    // Write certificate to a file.
+    options
+        .clone()
+        .open(cert_path)
+        .await?
+        .write_all(tls_config.grpc_cert_pem.as_bytes())
+        .await?;
+    // Write key to a file.
+    options
+        .open(key_path)
+        .await?
+        .write_all(tls_config.grpc_key_pem.as_bytes())
+        .await?;
     log::info!(
         "Generated gRPC TLS certificates have been saved to {}",
         cert_dir.display()
@@ -74,7 +95,7 @@ impl GatewaySetupServer {
         }
     }
 
-    pub async fn await_setup(&self, config: Config) -> Result<TlsConfig, GatewayError> {
+    pub async fn await_setup(&self, config: &Config) -> Result<TlsConfig, GatewayError> {
         let mut server_builder = Server::builder();
         let mut server_config = None;
         let setup_rx = Arc::clone(&self.setup_rx);
@@ -86,10 +107,6 @@ impl GatewaySetupServer {
         server_builder
             .add_service(
                 ServiceBuilder::new()
-                    // .layer(InterceptorLayer::new(CoreVersionInterceptor::new(
-                    //     MIN_CORE_VERSION,
-                    //     incompatible_components,
-                    // )))
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_setup_server::GatewaySetupServer::new(self.clone())),
             )
@@ -251,7 +268,7 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
         };
         debug!("Key pair created");
 
-        let subject_alt_names = vec![setup_info.cert_hostname];
+        let subject_alt_names = [setup_info.cert_hostname];
         debug!("Preparing Certificate Signing Request for hostname: {subject_alt_names:?}",);
 
         let csr = match defguard_certs::Csr::new(
@@ -274,7 +291,10 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
 
         self.key_pair
             .lock()
-            .expect("Failed to acquire lock on key pair during gateway setup when trying to store generated key pair")
+            .expect(
+                "Failed to acquire lock on key pair during gateway setup when trying to store \
+                generated key pair",
+            )
             .replace(key_pair);
 
         debug!("Encoding Certificate Signing Request for transmission");
@@ -331,17 +351,22 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
             let key_pair = self
                 .key_pair
                 .lock()
-                .expect("Failed to acquire lock on key pair during gateway setup when trying to receive certificate")
+                .expect(
+                    "Failed to acquire lock on key pair during gateway setup when trying to \
+                    receive certificate",
+                )
                 .take();
             if let Some(kp) = key_pair {
                 kp
             } else {
                 error!(
-                    "Key pair not found during Gateway setup. Key pair generation step might have failed."
+                    "Key pair not found during Gateway setup. Key pair generation step might have \
+                    failed."
                 );
                 self.clear_setup_session();
                 return Err(Status::internal(
-                    "Key pair not found during Gateway setup. Key pair generation step might have failed.",
+                    "Key pair not found during Gateway setup. Key pair generation step might have \
+                    failed.",
                 ));
             }
         };
