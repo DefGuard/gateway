@@ -1,6 +1,7 @@
 use std::{
-    fs::{File, read_to_string},
+    fs::{File, Permissions, read_to_string},
     io::Write,
+    os::unix::fs::PermissionsExt,
     process,
     sync::{Arc, Mutex},
 };
@@ -39,6 +40,8 @@ async fn main() -> Result<(), GatewayError> {
     let cert_dir = &config.cert_dir;
     if !cert_dir.exists() {
         tokio::fs::create_dir_all(cert_dir).await?;
+        #[cfg(unix)]
+        tokio::fs::set_permissions(cert_dir, Permissions::from_mode(0o700)).await?;
     }
 
     let (grpc_cert, grpc_key) = (
