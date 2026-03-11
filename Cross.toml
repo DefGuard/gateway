@@ -18,7 +18,6 @@ pre-build = [
     "unzip protoc-$PB_VERSION-linux-x86_64.zip bin/protoc include/google/* -d /usr",
 ]
 
-
 [target.aarch64-unknown-linux-gnu]
 image = "ghcr.io/defguard/cross:aarch64-unknown-linux-gnu"
 pre-build = [
