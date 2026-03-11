@@ -20,6 +20,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # sccache
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
 
 jobs:
   test:
@@ -29,12 +32,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Scan code with Trivy
-        uses: aquasecurity/trivy-action@0.34.1
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -43,10 +46,8 @@ jobs:
           severity: "CRITICAL,HIGH,MEDIUM"
           scanners: "vuln"
 
-      - name: Cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Install dependencies
         run: apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
