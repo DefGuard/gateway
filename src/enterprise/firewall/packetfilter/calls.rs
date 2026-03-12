@@ -195,6 +195,7 @@ impl RuleAddr {
             op,
             #[cfg(target_os = "macos")]
             _padding: [0; 3],
+            #[cfg(any(target_os = "freebsd", target_os = "netbsd"))]
             neg: 0,
         }
     }
