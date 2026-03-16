@@ -688,18 +688,15 @@ pub(super) fn set_nat_rules(
         batch.add(&snat_rule, MsgType::Add);
     }
 
-    // add MASQUERADE rule
-    let masquerade_rule = MasqueradeRule {
-        oifname: LOOPBACK_IFACE.to_string(),
-        negated_oifname: true,
-        counter: true,
-    }
-    .to_chain_rule(&nat_chain, batch)?;
-
     if masquerade_enabled {
+        let masquerade_rule = MasqueradeRule {
+            oifname: LOOPBACK_IFACE.to_string(),
+            negated_oifname: true,
+            counter: true,
+        }
+        .to_chain_rule(&nat_chain, batch)?;
+
         batch.add(&masquerade_rule, MsgType::Add);
-    } else {
-        batch.add(&masquerade_rule, MsgType::Del);
     }
 
     Ok(())
