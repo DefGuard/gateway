@@ -21,6 +21,9 @@
       <GrpcPort type="IntegerField">
         <default>50066</default>
         <Required>Y</Required>
+        <MinimumValue>1</MinimumValue>
+        <MaximumValue>65535</MaximumValue>
+        <ValidationMessage>please specify a valid TCP/UDP port between 1 and 65535</ValidationMessage>
       </GrpcPort>
       <UseSyslog type="BooleanField">
         <default>0</default>
