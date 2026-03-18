@@ -11,20 +11,17 @@
         <default>0</default>
         <Required>Y</Required>
       </Userspace>
-      <Token type="TextField">
+      <LogLevel type="TextField">
+        <default>info</default>
         <Required>Y</Required>
-        <ValidationMessage>please add authorization token</ValidationMessage>
-      </Token>
-      <GrpcUrl type="TextField">
-        <Required>Y</Required>
-        <ValidationMessage>please specify Defguard Core gRPC URL</ValidationMessage>
-      </GrpcUrl>
-      <GrpcCertPath type="TextField">
-        <Required>N</Required>
-      </GrpcCertPath>
+      </LogLevel>
       <Name type="TextField">
         <Required>N</Required>
       </Name>
+      <GrpcPort type="IntegerField">
+        <default>50066</default>
+        <Required>Y</Required>
+      </GrpcPort>
       <UseSyslog type="BooleanField">
         <default>0</default>
         <Required>Y</Required>
@@ -44,10 +41,12 @@
       <IfName type="TextField">
         <Required>Y</Required>
         <default>wg0</default>
+        <Mask>/^wg[0-9]*$/</Mask>
+        <ValidationMessage>please specify a valid interface name starting with wg</ValidationMessage>
       </IfName>
       <StatsPeriod type="IntegerField">
         <Required>Y</Required>
-        <default>60</default>
+        <default>30</default>
       </StatsPeriod>
       <PreUp type="TextField">
         <Required>N</Required>
@@ -61,6 +60,30 @@
       <PostDown type="TextField">
         <Required>N</Required>
       </PostDown>
+      <HealthPort type="IntegerField">
+        <Required>N</Required>
+      </HealthPort>
+      <Masquerade type="BooleanField">
+        <default>0</default>
+        <Required>Y</Required>
+      </Masquerade>
+      <FwPriority type="IntegerField">
+        <Required>N</Required>
+      </FwPriority>
+      <DisableFirewallManagement type="BooleanField">
+        <default>0</default>
+        <Required>Y</Required>
+      </DisableFirewallManagement>
+      <HttpBindAddress type="NetworkField">
+        <Required>N</Required>
+        <NetMaskAllowed>N</NetMaskAllowed>
+        <NetMaskRequired>N</NetMaskRequired>
+        <ValidationMessage>please specify a valid IP address</ValidationMessage>
+      </HttpBindAddress>
+      <CertDir type="TextField">
+        <default>/etc/defguard/certs</default>
+        <Required>Y</Required>
+      </CertDir>
     </general>
   </items>
 </model>

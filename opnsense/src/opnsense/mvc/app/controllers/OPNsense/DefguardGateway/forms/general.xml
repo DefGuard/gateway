@@ -6,29 +6,25 @@
     <help>Check to enable Defguard Gateway service.</help>
   </field>
   <field>
-    <id>defguardgateway.general.Token</id>
-    <label>Defguard VPN Location Auth Token</label>
+    <id>defguardgateway.general.LogLevel</id>
+    <label>Log level</label>
     <type>text</type>
-    <help>Required: Token obtained from Defguard Core after network creation.</help>
-  </field>
-  <field>
-    <id>defguardgateway.general.GrpcUrl</id>
-    <label>Defguard Core gRPC URL</label>
-    <type>text</type>
-    <help>Required: URL of Defguard Core's gRPC service.</help>
-  </field>
-  <field>
-    <id>defguardgateway.general.GrpcCertPath</id>
-    <label>Path to custom SSL CA cerficiate</label>
-    <type>text</type>
-    <help>Required if custom SSL CA has been enabled in Defguard Core; more details here: https://docs.defguard.net/admin-and-features/setting-up-your-instance/grpc-ssl-communication#custom-ssl-ca-and-certificates.</help>
+    <help>Set the application log level used when syslog is disabled.</help>
+    <hint>Default value: info</hint>
   </field>
   <field>
     <id>defguardgateway.general.Name</id>
     <label>Gateway name</label>
     <type>text</type>
-    <help>Name that will be displayed in Defguard</help>
+    <help>Name that will be displayed in Defguard.</help>
     <hint>Gateway OPNsense</hint>
+  </field>
+  <field>
+    <id>defguardgateway.general.GrpcPort</id>
+    <label>Gateway gRPC port</label>
+    <type>text</type>
+    <help>Port used by the gateway gRPC server.</help>
+    <hint>Default value: 50066</hint>
   </field>
   <field>
     <id>defguardgateway.general.UseSyslog</id>
@@ -61,15 +57,15 @@
     <id>defguardgateway.general.IfName</id>
     <label>Network interface</label>
     <type>text</type>
-    <help>Specify the WireGuard interface name</help>
+    <help>Specify the WireGuard interface name. It must start with wg.</help>
     <hint>Default value: wg0</hint>
   </field>
   <field>
     <id>defguardgateway.general.StatsPeriod</id>
     <label>Stats gathering period</label>
     <type>text</type>
-    <help>Specify the stats period in seconds</help>
-    <hint>Default value: 60.</hint>
+    <help>Specify how often interface statistics are sent, in seconds.</help>
+    <hint>Default value: 30</hint>
   </field>
   <field>
     <id>defguardgateway.general.Userspace</id>
@@ -100,5 +96,42 @@
     <label>Post down</label>
     <type>text</type>
     <help>Command to run after bringing down the interface.</help>
+  </field>
+  <field>
+    <id>defguardgateway.general.HealthPort</id>
+    <label>Health port</label>
+    <type>text</type>
+    <help>Optional HTTP port exposing the gateway health endpoint.</help>
+  </field>
+  <field>
+    <id>defguardgateway.general.Masquerade</id>
+    <label>Enable masquerade</label>
+    <type>checkbox</type>
+    <help>Automatically apply outbound masquerading rules in the firewall.</help>
+  </field>
+  <field>
+    <id>defguardgateway.general.FwPriority</id>
+    <label>Firewall priority</label>
+    <type>text</type>
+    <help>Optional priority for the Defguard forward chain.</help>
+  </field>
+  <field>
+    <id>defguardgateway.general.DisableFirewallManagement</id>
+    <label>Disable firewall management</label>
+    <type>checkbox</type>
+    <help>Disable Defguard-managed firewall changes for incompatible hardware or custom setups.</help>
+  </field>
+  <field>
+    <id>defguardgateway.general.HttpBindAddress</id>
+    <label>HTTP bind address</label>
+    <type>text</type>
+    <help>Optional IPv4 or IPv6 address used by the health endpoint.</help>
+  </field>
+  <field>
+    <id>defguardgateway.general.CertDir</id>
+    <label>Certificate directory</label>
+    <type>text</type>
+    <help>Directory where the gateway stores generated gRPC certificates.</help>
+    <hint>Default value: /etc/defguard/certs</hint>
   </field>
 </form>

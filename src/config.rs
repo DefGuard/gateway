@@ -4,7 +4,7 @@ use clap::Parser;
 use serde::Deserialize;
 use toml;
 
-use crate::error::GatewayError;
+use crate::{VERSION, error::GatewayError};
 
 fn default_log_level() -> String {
     String::from("info")
@@ -16,7 +16,7 @@ fn default_syslog_socket() -> PathBuf {
 
 #[derive(Debug, Parser, Clone, Deserialize)]
 #[clap(about = "Defguard VPN gateway service")]
-#[command(version)]
+#[command(version = VERSION)]
 pub struct Config {
     #[arg(long, short = 'l', env = "DEFGUARD_LOG_LEVEL", default_value = "info")]
     #[serde(default = "default_log_level")]

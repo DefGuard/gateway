@@ -12,10 +12,15 @@ $( document ).ready(function() {
             updateServiceControlUI("defguardgateway");
     		ajaxCall(url="/api/defguardgateway/service/reconfigure", sendData={}, callback=function(data, status) {
     			$("#responseMsg").html(data["status"]);
-      		});
-    		ajaxCall(url="/api/defguardgateway/service/restart", sendData={}, callback=function(data, status) {
-    			updateServiceControlUI("defguardgateway");
-    		});
+                if (status !== "success" || data["status"] !== "ok") {
+                    return;
+                }
+
+                ajaxCall(url="/api/defguardgateway/service/restart", sendData={}, callback=function(data, status) {
+                    $("#responseMsg").html(data['status']);
+                    updateServiceControlUI("defguardgateway");
+                });
+            });
         });
     });
 
@@ -30,7 +35,22 @@ $( document ).ready(function() {
                     $("#startAct").removeClass("fa fa-spinner fa-pulse");
     				$("#responseMsg").html(data['status']);
     				updateServiceControlUI("defguardgateway");
-          		});
+            });
+        });
+    });
+
+    $("#stopAct").click(function () {
+        stdDialogConfirm(
+            '{{ lang._("Confirm gateway stop") }}',
+            '{{ lang._("Do you want to stop Defguard Gateway?") }}',
+            '{{ lang._("Yes") }}', '{{ lang._("Cancel") }}', function () {
+                $("#stopAct").addClass("fa fa-spinner");
+                $("#responseMsg").removeClass("hidden");
+                ajaxCall(url="/api/defguardgateway/service/stop", sendData={}, callback=function(data, status) {
+                    $("#stopAct").removeClass("fa fa-spinner fa-pulse");
+                    $("#responseMsg").html(data['status']);
+                    updateServiceControlUI("defguardgateway");
+                });
         });
     });
 });
@@ -45,4 +65,5 @@ $( document ).ready(function() {
 <div class="col-md-12">
 	<button class="btn btn-primary" id="saveAct" type="button"><b>{{ lang._('Save') }}</b></button>
 	<button class="btn btn-primary" id="startAct" type="button"><b>{{ lang._('Start/Restart') }}</b></button>
+	<button class="btn btn-default" id="stopAct" type="button"><b>{{ lang._('Stop') }}</b></button>
 </div>

@@ -1,47 +1,62 @@
-# Required: defguard server gRPC endpoint URL
-# NOTE: must replace default with actual value
-grpc_url = "{{ OPNsense.defguardgateway.general.GrpcUrl|default("") }}"
+# Log level used when syslog is disabled
+log_level = "{{ OPNsense.defguardgateway.general.LogLevel|default("info") }}"
 # Optional: gateway name which will be displayed in defguard web UI
-name = "{{ OPNsense.defguardgateway.general.Name|default("Gateway A") }}"
-# Required: use userspace WireGuard implementation (e.g. wireguard-go)
+{% if not helpers.empty('OPNsense.defguardgateway.general.Name') %}
+name = "{{ OPNsense.defguardgateway.general.Name }}"
+{% endif %}
+# Gateway gRPC server port
+grpc_port = {{ OPNsense.defguardgateway.general.GrpcPort|default(50066) }}
+# Use userspace WireGuard implementation (e.g. wireguard-go)
 {% if OPNsense.defguardgateway.general.Userspace == "1" %}
 userspace = true
 {% else %}
 userspace = false
 {% endif %}
-# Optional: path to TLS cert file
-{% if not helpers.empty('OPNsense.defguardgateway.general.GrpcCertPath') %}
-grpc_ca = "{{ OPNsense.defguardgateway.general.GrpcCertPath }}"
-{% endif %}
-# Required: how often should interface stat updates be sent to defguard server (in seconds)
-stats_period = {{ OPNsense.defguardgateway.general.StatsPeriod|default(60) }}
-# Required: name of WireGuard interface
+# How often interface statistics are sent to Defguard Core (in seconds)
+stats_period = {{ OPNsense.defguardgateway.general.StatsPeriod|default(30) }}
+# Name of WireGuard interface
 ifname = "{{ OPNsense.defguardgateway.general.IfName|default("wg0") }}"
 # Optional: write PID to this file
 pidfile = "{{ OPNsense.defguardgateway.general.PidFile|default("/var/run/defguard_gateway.pid") }}"
-# Required: enable logging to syslog
+# Enable logging to syslog
 {% if OPNsense.defguardgateway.general.UseSyslog == "1" %}
 use_syslog = true
 {% else %}
 use_syslog = false
 {% endif %}
-# Required: which syslog facility to use
+# Syslog facility
 syslog_facility = "{{ OPNsense.defguardgateway.general.SyslogFacility|default("LOG_USER") }}"
-# Required: which socket to use for logging
+# Syslog socket path
 syslog_socket = "{{ OPNsense.defguardgateway.general.SyslogSocket|default("/var/run/log") }}"
-
 {% if not helpers.empty('OPNsense.defguardgateway.general.PreUp') %}
 pre_up = "{{ OPNsense.defguardgateway.general.PreUp }}"
 {% endif %}
-
 {% if not helpers.empty('OPNsense.defguardgateway.general.PreDown') %}
 pre_down = "{{ OPNsense.defguardgateway.general.PreDown }}"
 {% endif %}
-
 {% if not helpers.empty('OPNsense.defguardgateway.general.PostUp') %}
 post_up = "{{ OPNsense.defguardgateway.general.PostUp }}"
 {% endif %}
-
 {% if not helpers.empty('OPNsense.defguardgateway.general.PostDown') %}
 post_down = "{{ OPNsense.defguardgateway.general.PostDown }}"
 {% endif %}
+{% if not helpers.empty('OPNsense.defguardgateway.general.HealthPort') %}
+health_port = {{ OPNsense.defguardgateway.general.HealthPort }}
+{% endif %}
+{% if OPNsense.defguardgateway.general.Masquerade == "1" %}
+masquerade = true
+{% else %}
+masquerade = false
+{% endif %}
+{% if not helpers.empty('OPNsense.defguardgateway.general.FwPriority') %}
+fw_priority = {{ OPNsense.defguardgateway.general.FwPriority }}
+{% endif %}
+{% if OPNsense.defguardgateway.general.DisableFirewallManagement == "1" %}
+disable_firewall_management = true
+{% else %}
+disable_firewall_management = false
+{% endif %}
+{% if not helpers.empty('OPNsense.defguardgateway.general.HttpBindAddress') %}
+http_bind_address = "{{ OPNsense.defguardgateway.general.HttpBindAddress }}"
+{% endif %}
+cert_dir = "{{ OPNsense.defguardgateway.general.CertDir|default("/etc/defguard/certs") }}"
