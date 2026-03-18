@@ -7,7 +7,7 @@ function defguardgateway_services()
 
     $pidfile = (string) (new OPNsense\DefguardGateway\DefguardGateway())->general->PidFile;
 
-    if (isset($config['OPNsense']['defguardgateway']['general']['enabled']) && $config['OPNsense']['defguardgateway']['general']['enabled'] == 1) {
+    if (isset($config['OPNsense']['defguardgateway']['general']['Enabled']) && $config['OPNsense']['defguardgateway']['general']['Enabled'] == 1) {
         $services[] = [
             "description" => "Defguard Gateway",
             "configd" => [
@@ -41,24 +41,23 @@ function defguardgateway_interfaces()
 
 function defguardgateway_devices()
 {
-    $names = [];
-
     $interface = (new OPNsense\DefguardGateway\DefguardGateway())->general
         ->IfName;
+    $interface = empty((string) $interface) ? 'wg0' : (string) $interface;
 
     $devices[] = [
         "configurable" => false,
-        "pattern" => "^wg",
+        "pattern" => sprintf("^%s$", preg_quote($interface, '/')),
         "type" => "wireguard",
         "volatile" => true,
         "names" => [
-            (string) $interface => [
+            $interface => [
                 "descr" => sprintf(
                     "%s (Defguard Gateway)",
-                    (string) $interface
+                    $interface
                 ),
                 "ifdescr" => "WireGuard interface used by Defguard Gateway",
-                "name" => (string) $interface,
+                "name" => $interface,
             ],
         ],
     ];
