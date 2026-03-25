@@ -338,8 +338,6 @@ impl Gateway {
     /// - If the main config changed (default policy), reconfigure the whole firewall.
     /// - If only the rules changed, apply the new rules. Currently also reconfigures the whole
     ///   firewall but that should be temporary.
-    ///
-    /// TODO: Reduce cloning here
     fn process_firewall_changes(
         &mut self,
         fw_config: Option<&FirewallConfig>,
@@ -356,7 +354,7 @@ impl Gateway {
                     .setup(fw_config.default_policy, self.config.fw_priority)?;
                 self.firewall_api
                     .setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
-                self.firewall_api.add_rules(fw_config.rules.clone())?;
+                self.firewall_api.add_rules(&fw_config.rules)?;
                 self.firewall_api.commit()?;
                 self.firewall_config = Some(fw_config.clone());
                 info!("Reconfigured firewall with new configuration");
@@ -741,7 +739,9 @@ impl gateway_server::Gateway for GatewayServer {
                                     match gateway.lock() {
                                         Ok(mut gw) => {
                                             gw.connected.store(true, Ordering::Relaxed);
-                                            let _ = gw.configure(configuration);
+                                            if let Err(err) = gw.configure(configuration) {
+                                                error!("Failed to configure: {err}");
+                                            }
                                         }
                                         Err(err) => error!("Lock failed: {err}"),
                                     }

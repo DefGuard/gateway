@@ -51,7 +51,7 @@ pub(crate) trait FirewallManagementApi {
     fn cleanup(&mut self) -> Result<(), FirewallError>;
 
     /// Add firewall rules.
-    fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError>;
+    fn add_rules(&mut self, rules: &[FirewallRule]) -> Result<(), FirewallError>;
 
     /// Setup Network Address Translation using POSTROUTING chain rules
     fn setup_nat(

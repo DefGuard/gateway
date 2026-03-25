@@ -26,10 +26,10 @@ impl FirewallManagementApi for FirewallApi {
     }
 
     /// Add firewall `rules`.
-    fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError> {
+    fn add_rules(&mut self, rules: &[FirewallRule]) -> Result<(), FirewallError> {
         let anchor = &self.anchor();
         // Begin transaction.
-        debug!("Begin pf transaction.");
+        debug!("Begin pf transaction");
         let mut elements = [IocTransElement::new(RuleSet::Filter, anchor)];
         let mut ioc_trans = IocTrans::new(elements.as_mut_slice());
         // This will create an anchor if it doesn't exist.
@@ -42,8 +42,8 @@ impl FirewallManagementApi for FirewallApi {
 
         // Create first rule from the default policy.
         if let Err(err) = self.add_rule_policy(ticket, pool_ticket, anchor) {
-            error!("Default policy rule can't be added.");
-            debug!("Rollback pf transaction.");
+            error!("Default policy rule can't be added");
+            debug!("Rollback pf transaction");
             // Rule cannot be added, so rollback.
             unsafe {
                 pf_rollback(self.fd(), &raw mut ioc_trans)?;
@@ -51,10 +51,10 @@ impl FirewallManagementApi for FirewallApi {
             }
         }
 
-        for mut rule in rules {
-            if let Err(err) = self.add_rule(&mut rule, ticket, pool_ticket, anchor) {
-                error!("Firewall rule {} can't be added.", &rule.id);
-                debug!("Rollback pf transaction.");
+        for rule in rules {
+            if let Err(err) = self.add_rule(rule, ticket, pool_ticket, anchor) {
+                error!("Firewall rule {} can't be added", &rule.id);
+                debug!("Rollback pf transaction");
                 // Rule cannot be added, so rollback.
                 unsafe {
                     pf_rollback(self.fd(), &raw mut ioc_trans)?;
@@ -64,7 +64,7 @@ impl FirewallManagementApi for FirewallApi {
         }
 
         // Commit transaction.
-        debug!("Commit pf transaction.");
+        debug!("Commit pf transaction");
         unsafe {
             pf_commit(self.file.as_raw_fd(), &raw mut ioc_trans).unwrap();
         }

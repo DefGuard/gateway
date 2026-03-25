@@ -849,7 +849,10 @@ pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
 
     let mut expected_seqs = batch.sequence_numbers();
     for message in socket.recv(&mut buffer).map_err(|err| {
-        FirewallError::NetlinkError(format!("Failed reading message from socket: {err:?}"))
+        FirewallError::NetlinkError(format!(
+            "Failed reading message from socket: {err:?}, {}",
+            nft_nlmsg_maxsize()
+        ))
     })? {
         let Ok(message) = message else {
             warn!("Invalid netlink message");

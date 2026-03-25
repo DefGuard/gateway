@@ -1,4 +1,4 @@
-pub mod netfilter;
+mod netfilter;
 
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -134,7 +134,7 @@ fn next_ip(ip: IpAddr) -> IpAddr {
 }
 
 impl FirewallApi {
-    fn add_rule(&mut self, rule: FirewallRule) -> Result<(), FirewallError> {
+    fn add_rule(&mut self, rule: &FirewallRule) -> Result<(), FirewallError> {
         debug!("Applying the following Defguard ACL rule: {rule:?}");
         let Some(ref mut batch) = self.batch else {
             return Err(FirewallError::TransactionNotStarted);
@@ -146,8 +146,8 @@ impl FirewallApi {
             destination ports and protocols."
         );
 
-        let source_addrs = merge_addrs(rule.source_addrs)?;
-        let dest_addrs = merge_addrs(rule.destination_addrs)?;
+        let source_addrs = merge_addrs(rule.source_addrs.clone())?;
+        let dest_addrs = merge_addrs(rule.destination_addrs.clone())?;
 
         if rule.destination_ports.is_empty() {
             debug!(
@@ -284,7 +284,7 @@ impl FirewallManagementApi for FirewallApi {
         Ok(())
     }
 
-    fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError> {
+    fn add_rules(&mut self, rules: &[FirewallRule]) -> Result<(), FirewallError> {
         debug!("Applying the following Defguard ACL rules: {rules:?}");
         for rule in rules {
             self.add_rule(rule)?;
@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_merge_addrs_empty() {
-        let addrs: Vec<Address> = vec![];
+        let addrs = Vec::new();
         let result = merge_addrs(addrs).unwrap();
         assert!(result.is_empty());
     }

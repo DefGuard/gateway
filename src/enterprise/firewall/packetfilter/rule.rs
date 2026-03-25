@@ -53,7 +53,7 @@ impl fmt::Display for Action {
             Self::Redirect => "rdr",
             Self::NoRedirect => "block rdr",
         };
-        write!(f, "{action}")
+        f.write_str(action)
     }
 }
 
@@ -87,7 +87,7 @@ impl fmt::Display for Direction {
             Self::In => "in",
             Self::Out => "out",
         };
-        write!(f, "{direction}")
+        f.write_str(direction)
     }
 }
 
@@ -146,7 +146,7 @@ impl fmt::Display for State {
             Self::Modulate => "modulate state",
             Self::SynProxy => "synproxy state",
         };
-        write!(f, "{state}")
+        f.write_str(state)
     }
 }
 
@@ -237,7 +237,7 @@ impl PacketFilterRule {
     }
 
     /// Expand `FirewallRule` into a set of `PacketFilterRule`s.
-    pub(super) fn from_firewall_rule(ifname: &str, fr: &mut FirewallRule) -> Vec<Self> {
+    pub(super) fn from_firewall_rule(ifname: &str, fr: &FirewallRule) -> Vec<Self> {
         let mut rules = Vec::new();
         let (action, state) = match fr.verdict {
             Policy::Allow => (Action::Pass, State::Normal),
@@ -276,18 +276,23 @@ impl PacketFilterRule {
             }
         }
 
-        if fr.destination_ports.is_empty() {
-            fr.destination_ports.push(Port::Any);
-        }
-
-        if fr.protocols.is_empty() {
-            fr.protocols.push(Protocol::Any);
-        }
+        // Packet filter needs "any port" when ports are absent.
+        let destination_ports = if fr.destination_ports.is_empty() {
+            &[Port::Any]
+        } else {
+            fr.destination_ports.as_slice()
+        };
+        // Packet filter needs "any protocol" when protocols are absent.
+        let protocols = if fr.protocols.is_empty() {
+            &[Protocol::Any]
+        } else {
+            fr.protocols.as_slice()
+        };
 
         for from in &from_addrs {
             for to in &to_addrs {
-                for to_port in &fr.destination_ports {
-                    for proto in &fr.protocols {
+                for to_port in destination_ports {
+                    for proto in protocols {
                         let rule = Self {
                             from: *from,
                             from_port: Port::Any,
@@ -295,7 +300,7 @@ impl PacketFilterRule {
                             to_port: *to_port,
                             action,
                             direction: Direction::In,
-                            // Enable quick to match NFTables behaviour.
+                            // Enable "quick" to match NFTables behaviour.
                             quick: true,
                             log: PF_LOG,
                             state,
@@ -322,7 +327,7 @@ impl fmt::Display for PacketFilterRule {
         write!(f, "{} {}", self.action, self.direction)?;
         // TODO: log
         if self.quick {
-            write!(f, " quick")?;
+            f.write_str(" quick")?;
         }
         if let Some(interface) = &self.interface {
             write!(f, " on {interface}")?;
@@ -331,13 +336,13 @@ impl fmt::Display for PacketFilterRule {
         if let Some(from) = self.from {
             write!(f, " {from}")?;
         } else {
-            write!(f, " any")?;
+            f.write_str(" any")?;
         }
         write!(f, " {} to", self.from_port)?;
         if let Some(to) = self.to {
             write!(f, " {to}")?;
         } else {
-            write!(f, " any")?;
+            f.write_str(" any")?;
         }
         // TODO: tcp_flags/tcp_flags_set
         write!(f, " {} {}", self.to_port, self.state)?;
