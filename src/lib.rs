@@ -4,13 +4,32 @@ pub mod gateway;
 pub mod server;
 mod version;
 
+pub mod generated {
+    pub mod defguard {
+        pub mod gateway {
+            pub mod v2 {
+
+                tonic::include_proto!("defguard.gateway.v2");
+            }
+        }
+        pub mod enterprise {
+            pub mod firewall {
+                pub mod v2 {
+
+                    tonic::include_proto!("defguard.enterprise.firewall.v2");
+                }
+            }
+        }
+    }
+}
+
 pub mod proto {
     pub mod gateway {
-        tonic::include_proto!("gateway");
+        pub use crate::generated::defguard::gateway::v2::*;
     }
     pub mod enterprise {
         pub mod firewall {
-            tonic::include_proto!("enterprise.firewall");
+            pub use crate::generated::defguard::enterprise::firewall::v2::*;
         }
     }
 }
