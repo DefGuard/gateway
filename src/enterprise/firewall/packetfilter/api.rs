@@ -80,16 +80,4 @@ impl FirewallManagementApi for FirewallApi {
     ) -> Result<(), FirewallError> {
         Ok(())
     }
-
-    /// Begin rule transaction.
-    fn begin(&mut self) -> Result<(), FirewallError> {
-        // TODO: remove this no-op.
-        Ok(())
-    }
-
-    /// Commit rule transaction.
-    fn commit(&mut self) -> Result<(), FirewallError> {
-        // TODO: remove this no-op.
-        Ok(())
-    }
 }

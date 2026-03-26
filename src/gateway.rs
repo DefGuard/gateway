@@ -151,7 +151,6 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<PubKey, Peer>,
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
-    firewall_api: FirewallApi,
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
     // Transmission channel. Important: allows only one connected client.
@@ -163,14 +162,12 @@ impl Gateway {
     pub fn new(
         config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
-        firewall_api: FirewallApi,
     ) -> Result<Self, GatewayError> {
         Ok(Self {
             config,
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_api,
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
@@ -349,13 +346,10 @@ impl Gateway {
                     "Received firewall configuration is different than current one. \
                     Reconfiguring firewall..."
                 );
-                self.firewall_api.begin()?;
-                self.firewall_api
-                    .setup(fw_config.default_policy, self.config.fw_priority)?;
-                self.firewall_api
-                    .setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
-                self.firewall_api.add_rules(&fw_config.rules)?;
-                self.firewall_api.commit()?;
+                let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
+                firewall_api.setup(fw_config.default_policy, self.config.fw_priority)?;
+                firewall_api.setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
+                firewall_api.add_rules(&fw_config.rules)?;
                 self.firewall_config = Some(fw_config.clone());
                 info!("Reconfigured firewall with new configuration");
             } else {
@@ -374,10 +368,9 @@ impl Gateway {
     }
 
     fn cleanup_firewall(&mut self) -> Result<(), FirewallError> {
-        self.firewall_api.begin()?;
-        self.firewall_api.cleanup()?;
-        self.firewall_api.setup_nat(self.config.masquerade, &[])?;
-        self.firewall_api.commit()?;
+        let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
+        firewall_api.cleanup()?;
+        firewall_api.setup_nat(self.config.masquerade, &[])?;
         self.firewall_config = None;
 
         Ok(())
@@ -589,9 +582,8 @@ impl GatewayServer {
             } else {
                 #[cfg(target_os = "linux")]
                 if !config.disable_firewall_management && config.masquerade {
-                    gateway.firewall_api.begin()?;
-                    gateway.firewall_api.setup_nat(config.masquerade, &[])?;
-                    gateway.firewall_api.commit()?;
+                    let mut firewall_api = FirewallApi::new(&config.ifname)?;
+                    firewall_api.setup_nat(config.masquerade, &[])?;
                 }
             }
         }
@@ -896,7 +888,10 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
 
 #[cfg(test)]
 mod tests {
-    use std::{net::Ipv4Addr, slice::from_ref};
+    use std::{
+        net::{IpAddr, Ipv4Addr},
+        slice::from_ref,
+    };
 
     #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
     use defguard_wireguard_rs::Kernel;
@@ -946,13 +941,11 @@ mod tests {
 
         let wgapi = WG::new("wg0").unwrap();
         let config = Config::default();
-        let firewall_api = FirewallApi::new("wg0").unwrap();
         let gateway = Gateway {
             config,
             interface_configuration: Some(old_config.clone()),
             peers: old_peers_map,
             wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_api,
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
@@ -1074,8 +1067,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_firewall_rules_comparison() {
-        use std::net::IpAddr;
-
         let rule1 = FirewallRule {
             comment: Some("Rule 1".to_string()),
             destination_addrs: vec![Address::Network(
@@ -1140,7 +1131,6 @@ mod tests {
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
@@ -1207,7 +1197,6 @@ mod tests {
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,

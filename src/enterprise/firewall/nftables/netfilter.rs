@@ -820,26 +820,28 @@ impl Chains {
 
 pub(super) fn apply_filter_rules(
     rules: &[FilterRule],
-    batch: &mut Batch,
     ifname: &str,
+    socket: &mnl::Socket,
 ) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
+    let mut batch = Batch::new();
     batch.add(&table, MsgType::Add);
 
     let forward_chain = Chains::Forward.to_chain(&table);
     batch.add(&forward_chain, MsgType::Add);
 
     for rule in rules {
-        let chain_rule = rule.to_chain_rule(&forward_chain, batch)?;
+        let chain_rule = rule.to_chain_rule(&forward_chain, &mut batch)?;
         batch.add(&chain_rule, MsgType::Add);
     }
 
-    Ok(())
+    send_batch(&batch.finalize(), socket)
 }
 
-pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
-    let socket = mnl::Socket::new(mnl::Bus::Netfilter)
-        .map_err(|err| FirewallError::NetlinkError(format!("Failed to create socket: {err:?}")))?;
+pub(crate) fn send_batch(
+    batch: &FinalizedBatch,
+    socket: &mnl::Socket,
+) -> Result<(), FirewallError> {
     socket.send_all(batch).map_err(|err| {
         FirewallError::NetlinkError(format!("Failed to send batch through socket: {err:?}"))
     })?;

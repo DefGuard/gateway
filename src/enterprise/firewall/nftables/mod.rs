@@ -136,9 +136,6 @@ fn next_ip(ip: IpAddr) -> IpAddr {
 impl FirewallApi {
     fn add_rule(&mut self, rule: &FirewallRule) -> Result<(), FirewallError> {
         debug!("Applying the following Defguard ACL rule: {rule:?}");
-        let Some(ref mut batch) = self.batch else {
-            return Err(FirewallError::TransactionNotStarted);
-        };
 
         let mut filter_rules = Vec::new();
         debug!(
@@ -218,7 +215,7 @@ impl FirewallApi {
             }
         }
 
-        apply_filter_rules(&filter_rules, batch, &self.ifname)?;
+        apply_filter_rules(&filter_rules, &self.ifname, &self.socket)?;
 
         debug!(
             "Applied firewall rules for Defguard ACL rule ID: {}",
@@ -230,37 +227,32 @@ impl FirewallApi {
 
 impl FirewallManagementApi for FirewallApi {
     /// Sets up the firewall with the given default policy and priority. Drops the previous table.
-    ///
-    /// This function also begins a batch of operations which can be applied later using the [`apply`] method.
-    /// This allows for making atomic changes to the firewall rules.
     fn setup(
         &mut self,
         default_policy: Policy,
         priority: Option<i32>,
     ) -> Result<(), FirewallError> {
         debug!("Initializing firewall, VPN interface: {}", self.ifname);
-        if let Some(batch) = &mut self.batch {
-            drop_table(batch, &self.ifname);
-            init_firewall(default_policy, priority, batch, &self.ifname);
-            debug!("Allowing all established traffic");
-            ignore_unrelated_traffic(batch, &self.ifname)?;
-            allow_established_traffic(batch, &self.ifname)?;
-            debug!("Allowed all established traffic");
-            debug!("Initialized firewall");
-            Ok(())
-        } else {
-            Err(FirewallError::TransactionNotStarted)
-        }
+        let mut batch = Batch::new();
+        drop_table(&mut batch, &self.ifname);
+        init_firewall(default_policy, priority, &mut batch, &self.ifname);
+        debug!("Allowing all established traffic");
+        ignore_unrelated_traffic(&mut batch, &self.ifname)?;
+        allow_established_traffic(&mut batch, &self.ifname)?;
+        send_batch(&batch.finalize(), &self.socket)?;
+        debug!("Allowed all established traffic");
+        debug!("Initialized firewall");
+
+        Ok(())
     }
 
     /// Cleans up the whole Defguard table.
     fn cleanup(&mut self) -> Result<(), FirewallError> {
         debug!("Cleaning up all previous firewall rules, if any");
-        if let Some(batch) = &mut self.batch {
-            drop_table(batch, &self.ifname);
-        } else {
-            return Err(FirewallError::TransactionNotStarted);
-        }
+        let mut batch = Batch::new();
+        drop_table(&mut batch, &self.ifname);
+        send_batch(&batch.finalize(), &self.socket)?;
+
         debug!("Cleaned up all previous firewall rules");
         Ok(())
     }
@@ -271,14 +263,12 @@ impl FirewallManagementApi for FirewallApi {
         snat_bindings: &[SnatBinding],
     ) -> Result<(), FirewallError> {
         debug!(
-            "Setting up POSTROUTING chain rules with masquerade status: {masquerade_enabled} and SNAT bindings: {snat_bindings:?}"
+            "Setting up POSTROUTING chain rules with masquerade status: {masquerade_enabled} and \
+            SNAT bindings: {snat_bindings:?}"
         );
 
-        if let Some(batch) = &mut self.batch {
-            set_nat_rules(batch, &self.ifname, masquerade_enabled, snat_bindings)?;
-        } else {
-            return Err(FirewallError::TransactionNotStarted);
-        }
+        let mut batch = Batch::new();
+        set_nat_rules(&mut batch, &self.ifname, masquerade_enabled, snat_bindings)?;
 
         debug!("Finished POSTROUTING chain rules setup");
         Ok(())
@@ -291,36 +281,6 @@ impl FirewallManagementApi for FirewallApi {
         }
         debug!("Applied all Defguard ACL rules");
         Ok(())
-    }
-
-    fn begin(&mut self) -> Result<(), FirewallError> {
-        if self.batch.is_none() {
-            debug!("Starting new firewall transaction");
-            let batch = Batch::new();
-            self.batch = Some(batch);
-            debug!("Firewall transaction successfully started");
-            Ok(())
-        } else {
-            Err(FirewallError::TransactionFailed(
-                "There is another firewall transaction already in progress. Commit or \
-                rollback it before starting a new one."
-                    .to_string(),
-            ))
-        }
-    }
-
-    /// Apply whole firewall configuration and send it in one go to the kernel.
-    fn commit(&mut self) -> Result<(), FirewallError> {
-        if let Some(batch) = self.batch.take() {
-            debug!("Committing firewall transaction");
-            let finalized = batch.finalize();
-            debug!("Firewall batch finalized, sending to kernel");
-            send_batch(&finalized)?;
-            debug!("Firewall transaction successfully committed to kernel");
-            Ok(())
-        } else {
-            Err(FirewallError::TransactionNotStarted)
-        }
     }
 }
 

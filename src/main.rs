@@ -10,7 +10,6 @@ use std::{
 use defguard_gateway::{
     GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::get_config,
-    enterprise::firewall::api::FirewallApi,
     error::GatewayError,
     execute_command,
     gateway::{Gateway, TlsConfig, run_gateway_loop, run_stats},
@@ -73,16 +72,14 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     let ifname = config.ifname.clone();
-    let firewall_api = FirewallApi::new(&ifname)?;
-
     let gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
-        Gateway::new(config.clone(), wgapi, firewall_api)?
+        Gateway::new(config.clone(), wgapi)?
     } else {
         #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
         {
             let wgapi = WGApi::<Kernel>::new(ifname)?;
-            Gateway::new(config.clone(), wgapi, firewall_api)?
+            Gateway::new(config.clone(), wgapi)?
         }
         #[cfg(any(target_os = "macos", target_os = "netbsd"))]
         {
