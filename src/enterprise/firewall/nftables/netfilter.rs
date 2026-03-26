@@ -848,32 +848,31 @@ pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
     let mut buffer = vec![0; nft_nlmsg_maxsize() as usize];
 
     let mut expected_seqs = batch.sequence_numbers();
-    for message in socket.recv(&mut buffer).map_err(|err| {
-        FirewallError::NetlinkError(format!(
-            "Failed reading message from socket: {err:?}, {}",
-            nft_nlmsg_maxsize()
-        ))
-    })? {
-        let Ok(message) = message else {
-            warn!("Invalid netlink message");
-            continue;
-        };
-        let Some(seq) = expected_seqs.next() else {
-            warn!("Unexpected ACK in netlink messages");
-            continue;
-        };
-        match mnl::cb_run(message, seq, portid) {
-            Ok(mnl::CbResult::Stop) => {
-                debug!("Received stop signal from netlink callback");
-                break;
-            }
-            Ok(mnl::CbResult::Ok) => {
-                debug!("Received OK signal from netlink callback");
-            }
-            Err(err) => {
-                return Err(FirewallError::NetlinkError(format!(
-                    "There was an error while sending netlink messages: {err:?}"
-                )));
+    while !expected_seqs.is_empty() {
+        for message in socket.recv(&mut buffer).map_err(|err| {
+            FirewallError::NetlinkError(format!("Failed reading message from socket: {err:?}"))
+        })? {
+            let Ok(message) = message else {
+                warn!("Invalid netlink message");
+                continue;
+            };
+            let Some(seq) = expected_seqs.next() else {
+                warn!("Unexpected ACK in netlink messages");
+                continue;
+            };
+            match mnl::cb_run(message, seq, portid) {
+                Ok(mnl::CbResult::Stop) => {
+                    debug!("Received stop signal from netlink callback");
+                    break;
+                }
+                Ok(mnl::CbResult::Ok) => {
+                    debug!("Received OK signal from netlink callback");
+                }
+                Err(err) => {
+                    return Err(FirewallError::NetlinkError(format!(
+                        "Failed to receive netlink callback: {err:?}"
+                    )));
+                }
             }
         }
     }
