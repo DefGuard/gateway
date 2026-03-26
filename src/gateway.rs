@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
     str::FromStr,
     sync::{
@@ -609,7 +608,7 @@ impl GatewayServer {
             .map(|c| c.grpc_key_pem.clone());
 
         // Build gRPC server.
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
+        let addr = config.grpc_socket();
         info!("gRPC server is listening on {addr}");
         let mut builder = if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
             let identity = Identity::from_pem(cert, key);
@@ -623,10 +622,6 @@ impl GatewayServer {
         builder
             .add_service(
                 ServiceBuilder::new()
-                    // .layer(InterceptorLayer::new(CoreVersionInterceptor::new(
-                    //     MIN_CORE_VERSION,
-                    //     incompatible_components,
-                    // )))
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_server::GatewayServer::new(self)),
             )
@@ -636,7 +631,7 @@ impl GatewayServer {
         Ok(())
     }
 
-    pub fn set_tls_config(&mut self, tls_config: TlsConfig) {
+    pub(crate) fn set_tls_config(&mut self, tls_config: TlsConfig) {
         if let Ok(mut gateway) = self.gateway.lock() {
             gateway.tls_config = Some(tls_config);
         }

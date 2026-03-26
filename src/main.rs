@@ -15,7 +15,7 @@ use defguard_gateway::{
     gateway::{Gateway, TlsConfig, run_gateway_loop, run_stats},
     init_syslog,
     logging::init_tracing,
-    server::run_server,
+    server::run_http_server,
     setup::run_setup,
 };
 use defguard_version::Version;
@@ -88,22 +88,6 @@ async fn main() -> Result<(), GatewayError> {
         }
     };
 
-    // Keep track of spawned tasks.
-    let mut tasks = JoinSet::new();
-
-    // Optionally, launch HTTP server to report gateway's health.
-    if let Some(health_port) = config.health_port {
-        tasks.spawn(run_server(
-            health_port,
-            config.http_bind_address,
-            Arc::clone(&gateway.connected),
-        ));
-    }
-
-    // Launch statistics gathering task.
-    let gateway = Arc::new(Mutex::new(gateway));
-    tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
-
     let tls_config = if needs_setup {
         log::info!(
             "gRPC TLS certificates not found in {}. They will be generated during setup.",
@@ -124,6 +108,22 @@ async fn main() -> Result<(), GatewayError> {
             "gRPC TLS certificates are missing after setup".to_string(),
         ));
     };
+
+    // Keep track of spawned tasks.
+    let mut tasks = JoinSet::new();
+
+    // Optionally, launch HTTP server to report gateway's health.
+    if let Some(health_port) = config.health_port {
+        tasks.spawn(run_http_server(
+            health_port,
+            config.http_bind_address,
+            Arc::clone(&gateway.connected),
+        ));
+    }
+
+    // Launch statistics gathering task.
+    let gateway = Arc::new(Mutex::new(gateway));
+    tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
 
     // Launch gRPC server (with purge-triggered setup loop).
     tasks.spawn(run_gateway_loop(

@@ -1,4 +1,9 @@
-use std::{fs, net::IpAddr, path::PathBuf, time::Duration};
+use std::{
+    fs,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
+    time::Duration,
+};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -122,6 +127,12 @@ impl Config {
     #[must_use]
     pub fn stats_period(&self) -> Duration {
         Duration::from_secs(self.stats_period)
+    }
+
+    /// Return [`SocketAddr`] for gRPC to listen on.
+    #[must_use]
+    pub(crate) fn grpc_socket(&self) -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), self.grpc_port)
     }
 }
 

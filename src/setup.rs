@@ -1,5 +1,4 @@
 use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -100,8 +99,7 @@ impl GatewaySetupServer {
         let mut server_config = None;
         let setup_rx = Arc::clone(&self.setup_rx);
 
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
-
+        let addr = config.grpc_socket();
         info!("Starting Gateway setup server on {addr} and awaiting configuration from Core");
 
         server_builder
@@ -338,11 +336,10 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
             match defguard_certs::der_to_pem(&cert_der, defguard_certs::PemLabel::Certificate) {
                 Ok(pem) => pem,
                 Err(err) => {
-                    error!("Failed to convert certificate DER to PEM: {err}");
+                    let msg = format!("Failed to convert certificate DER to PEM: {err}");
+                    error!("{msg}");
                     self.clear_setup_session();
-                    return Err(Status::internal(format!(
-                        "Failed to convert certificate DER to PEM: {err}"
-                    )));
+                    return Err(Status::internal(msg));
                 }
             };
         debug!("Certificate processed successfully");
@@ -359,15 +356,11 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
             if let Some(kp) = key_pair {
                 kp
             } else {
-                error!(
-                    "Key pair not found during Gateway setup. Key pair generation step might have \
-                    failed."
-                );
+                let msg = "Key pair not found during Gateway setup. Key pair generation step might \
+                    have failed.";
+                error!("{msg}");
                 self.clear_setup_session();
-                return Err(Status::internal(
-                    "Key pair not found during Gateway setup. Key pair generation step might have \
-                    failed.",
-                ));
+                return Err(Status::internal(msg));
             }
         };
 
@@ -382,8 +375,9 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
         };
 
         sender.send(configuration).map_err(|_| {
-            error!("Failed to send setup configuration through channel");
-            Status::internal("Failed to send setup configuration through channel")
+            let msg = "Failed to send setup configuration through channel";
+            error!("{msg}");
+            Status::internal(msg)
         })?;
 
         debug!("Setup process completed successfully, cleaning up temporary session");
