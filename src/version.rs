@@ -1,6 +1,6 @@
 use defguard_version::{Version, is_version_lower};
 
-const MIN_CORE_VERSION: Version = Version::new(1, 6, 0);
+const MIN_CORE_VERSION: Version = Version::new(2, 0, 0);
 
 /// Checks if Defguard Core's version meets minimum version requirements.
 pub(crate) fn is_core_version_supported(core_version: Option<&Version>) -> bool {
