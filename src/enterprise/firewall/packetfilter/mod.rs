@@ -49,7 +49,7 @@ impl FirewallApi {
     }
 
     fn add_rule_policy(
-        &mut self,
+        &self,
         ticket: u32,
         pool_ticket: u32,
         anchor: &str,
@@ -68,8 +68,8 @@ impl FirewallApi {
 
     /// Add a single firewall `rule`.
     fn add_rule(
-        &mut self,
-        rule: &mut FirewallRule,
+        &self,
+        rule: &FirewallRule,
         ticket: u32,
         pool_ticket: u32,
         anchor: &str,

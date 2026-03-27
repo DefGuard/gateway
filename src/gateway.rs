@@ -124,9 +124,6 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<PubKey, Peer>,
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
-    #[cfg_attr(not(target_os = "linux"), allow(unused))]
-    firewall_api: FirewallApi,
-    #[cfg_attr(not(target_os = "linux"), allow(unused))]
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
     client: GatewayClientType,
@@ -138,7 +135,6 @@ impl Gateway {
     pub fn new(
         config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
-        firewall_api: FirewallApi,
     ) -> Result<Self, GatewayError> {
         let client = Self::setup_client(&config)?;
         Ok(Self {
@@ -149,7 +145,6 @@ impl Gateway {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
-            firewall_api,
             firewall_config: None,
             core_info: None,
         })
@@ -388,13 +383,10 @@ impl Gateway {
                     "Received firewall configuration is different than current one. \
                     Reconfiguring firewall..."
                 );
-                self.firewall_api.begin()?;
-                self.firewall_api
-                    .setup(fw_config.default_policy, self.config.fw_priority)?;
-                self.firewall_api
-                    .setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
-                self.firewall_api.add_rules(fw_config.rules.clone())?;
-                self.firewall_api.commit()?;
+                let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
+                firewall_api.setup(fw_config.default_policy, self.config.fw_priority)?;
+                firewall_api.setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
+                firewall_api.add_rules(&fw_config.rules)?;
                 self.firewall_config = Some(fw_config.clone());
                 info!("Reconfigured firewall with new configuration");
             } else {
@@ -405,10 +397,9 @@ impl Gateway {
             }
         } else {
             debug!("Received firewall configuration is empty, cleaning up firewall rules...");
-            self.firewall_api.begin()?;
-            self.firewall_api.cleanup()?;
-            self.firewall_api.setup_nat(self.config.masquerade, &[])?;
-            self.firewall_api.commit()?;
+            let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
+            firewall_api.cleanup()?;
+            firewall_api.setup_nat(self.config.masquerade, &[])?;
             self.firewall_config = None;
             debug!("Cleaned up firewall rules");
         }
@@ -701,9 +692,8 @@ impl Gateway {
         } else {
             #[cfg(target_os = "linux")]
             if !self.config.disable_firewall_management && self.config.masquerade {
-                self.firewall_api.begin()?;
-                self.firewall_api.setup_nat(self.config.masquerade, &[])?;
-                self.firewall_api.commit()?;
+                let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
+                firewall_api.setup_nat(self.config.masquerade, &[])?;
             }
         }
 
@@ -791,7 +781,6 @@ mod tests {
         let wgapi = WG::new("wg0").unwrap();
         let config = Config::default();
         let client = Gateway::setup_client(&config).unwrap();
-        let firewall_api = FirewallApi::new("wg0").unwrap();
         let gateway = Gateway {
             config,
             interface_configuration: Some(old_config.clone()),
@@ -800,7 +789,6 @@ mod tests {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
-            firewall_api,
             firewall_config: None,
             core_info: None,
         };
@@ -988,7 +976,6 @@ mod tests {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
-            firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
             core_info: None,
         };
@@ -1057,7 +1044,6 @@ mod tests {
             connected: Arc::new(AtomicBool::new(false)),
             client,
             stats_thread: None,
-            firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
             core_info: None,
         };

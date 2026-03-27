@@ -328,6 +328,19 @@ impl Pool {
 
         unsafe { uninit.assume_init() }
     }
+
+    /// Insert `PoolAddr` at the end of the list. Take ownership of the given `PoolAddr`.
+    pub(super) fn insert_pool_addr(&mut self, pool_addr: &mut PoolAddr) {
+        // TODO: Traverse tail queue; for now assume empty tail queue.
+        assert!(
+            self.list.tqh_first.is_null(),
+            "Expected one entry in PoolAddr TailQueue."
+        );
+        self.list.tqh_first = &raw mut *pool_addr;
+        self.list.tqh_last = &raw mut pool_addr.entries.tqe_next;
+        pool_addr.entries.tqe_next = ptr::null_mut();
+        pool_addr.entries.tqe_prev = &raw mut self.list.tqh_first;
+    }
 }
 
 impl Drop for Pool {
@@ -835,12 +848,12 @@ ioctl_readwrite!(pf_rollback, b'D', 83, IocTrans);
 
 #[cfg(test)]
 mod tests {
-    use ipnetwork::{Ipv4Network, Ipv6Network};
-
     use std::{
         mem::align_of,
         net::{Ipv4Addr, Ipv6Addr},
     };
+
+    use ipnetwork::{Ipv4Network, Ipv6Network};
 
     use super::*;
 

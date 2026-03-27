@@ -1,8 +1,8 @@
 use std::{fs::File, io::Write, process, sync::Arc};
 
 use defguard_gateway::{
-    VERSION, config::get_config, enterprise::firewall::api::FirewallApi, error::GatewayError,
-    execute_command, gateway::Gateway, init_syslog, server::run_server,
+    VERSION, config::get_config, error::GatewayError, execute_command, gateway::Gateway,
+    init_syslog, server::run_server,
 };
 use defguard_version::Version;
 #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
@@ -40,16 +40,15 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     let ifname = config.ifname.clone();
-    let firewall_api = FirewallApi::new(&ifname)?;
 
     let mut gateway = if config.userspace {
         let wgapi = WGApi::<Userspace>::new(ifname)?;
-        Gateway::new(config.clone(), wgapi, firewall_api)?
+        Gateway::new(config.clone(), wgapi)?
     } else {
         #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
         {
             let wgapi = WGApi::<Kernel>::new(ifname)?;
-            Gateway::new(config.clone(), wgapi, firewall_api)?
+            Gateway::new(config.clone(), wgapi)?
         }
         #[cfg(any(target_os = "macos", target_os = "netbsd"))]
         {

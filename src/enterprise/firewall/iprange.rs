@@ -24,10 +24,10 @@ pub enum IpAddrRangeError {
 
 impl fmt::Display for IpAddrRangeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MixedTypes => write!(f, "mixed IPv4 and IPv6 addresses"),
-            Self::WrongOrder => write!(f, "wrong order: higher address preceeds lower"),
-        }
+        f.write_str(match self {
+            Self::MixedTypes => "mixed IPv4 and IPv6 addresses",
+            Self::WrongOrder => "wrong order: higher address preceeds lower",
+        })
     }
 }
 

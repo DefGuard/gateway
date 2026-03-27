@@ -177,7 +177,7 @@ impl fmt::Display for Protocol {
             Self::Udp => "udp",
             Self::IcmpV6 => "icmp6",
         };
-        write!(f, "{protocol}")
+        f.write_str(protocol)
     }
 }
 
