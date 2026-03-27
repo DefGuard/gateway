@@ -104,14 +104,16 @@ async fn main() -> Result<(), GatewayError> {
     let gateway = Arc::new(Mutex::new(gateway));
     tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
 
-    let config_clone = config.clone();
+    // Clone for later.
+    let post_down_clone = config.post_down.clone();
+
     tasks.spawn(async move {
         let tls_config = if needs_setup {
             log::info!(
                 "gRPC TLS certificates not found in {}. They will be generated during setup.",
                 config.cert_dir.display()
             );
-            run_setup(&config_clone, Arc::clone(&logs_rx)).await?
+            run_setup(&config, Arc::clone(&logs_rx)).await?
         } else if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
             log::info!(
                 "Using existing gRPC TLS certificates from {}",
@@ -128,14 +130,14 @@ async fn main() -> Result<(), GatewayError> {
         };
 
         // Launch gRPC server (with purge-triggered setup loop).
-        run_gateway_loop(config_clone, gateway, Arc::clone(&logs_rx), tls_config).await
+        run_gateway_loop(config, gateway, Arc::clone(&logs_rx), tls_config).await
     });
 
     while let Some(Ok(result)) = tasks.join_next().await {
         result?;
     }
 
-    if let Some(post_down) = &config.post_down {
+    if let Some(post_down) = &post_down_clone {
         log::info!("Executing specified POST_DOWN command: {post_down}");
         execute_command(post_down)?;
     }
