@@ -9,17 +9,11 @@ pub enum GatewayError {
     #[error("Command {command} execution failed. Error: {error}")]
     CommandExecutionFailed { command: String, error: String },
 
-    #[error("WireGuard key error")]
-    KeyDecode(#[from] base64::DecodeError),
-
     #[error("Logger error")]
     Logger(#[from] log::SetLoggerError),
 
     #[error("Syslog error")]
     Syslog(#[from] syslog::Error),
-
-    #[error("Token parsing error")]
-    Token(#[from] tonic::metadata::errors::InvalidMetadataValue),
 
     #[error("Tonic error")]
     Tonic(#[from] tonic::transport::Error),
@@ -32,9 +26,6 @@ pub enum GatewayError {
 
     #[error("WireGuard error {0}")]
     WireguardError(#[from] WireguardInterfaceError),
-
-    #[error("HTTP error")]
-    HttpServer(String),
 
     #[error("Invalid CA file. Error")]
     InvalidCaFile,

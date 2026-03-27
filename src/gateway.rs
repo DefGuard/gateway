@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
     str::FromStr,
     sync::{
@@ -48,7 +47,6 @@ use crate::{
 /// restarted in setup mode when a purge request arrives.
 pub async fn run_gateway_loop(
     config: Config,
-    cert_dir: std::path::PathBuf,
     gateway: Arc<Mutex<Gateway>>,
     logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
     mut tls_config: TlsConfig,
@@ -59,7 +57,7 @@ pub async fn run_gateway_loop(
         let (reset_tx, mut reset_rx) = oneshot::channel();
         // Build and start a gRPC server instance wired with the reset signal.
         let mut gateway_server =
-            GatewayServer::new(Arc::clone(&gateway), cert_dir.clone(), reset_tx);
+            GatewayServer::new(Arc::clone(&gateway), config.cert_dir.clone(), reset_tx);
         gateway_server.set_tls_config(tls_config.clone());
         let mut server_handle = tokio::spawn(gateway_server.start(config.clone()));
 
@@ -87,7 +85,7 @@ pub async fn run_gateway_loop(
 
                 // Run setup server to obtain new TLS certs, then loop to restart gRPC.
                 log::info!("Restarting setup server after purge request");
-                tls_config = run_setup(&config, &cert_dir, Arc::clone(&logs_rx)).await?;
+                tls_config = run_setup(&config, Arc::clone(&logs_rx)).await?;
             }
             // Server exited on its own (error or normal shutdown).
             result = &mut server_handle => {
@@ -609,7 +607,7 @@ impl GatewayServer {
             .map(|c| c.grpc_key_pem.clone());
 
         // Build gRPC server.
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
+        let addr = config.grpc_socket();
         info!("gRPC server is listening on {addr}");
         let mut builder = if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
             let identity = Identity::from_pem(cert, key);
@@ -623,10 +621,6 @@ impl GatewayServer {
         builder
             .add_service(
                 ServiceBuilder::new()
-                    // .layer(InterceptorLayer::new(CoreVersionInterceptor::new(
-                    //     MIN_CORE_VERSION,
-                    //     incompatible_components,
-                    // )))
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_server::GatewayServer::new(self)),
             )
@@ -636,7 +630,7 @@ impl GatewayServer {
         Ok(())
     }
 
-    pub fn set_tls_config(&mut self, tls_config: TlsConfig) {
+    pub(crate) fn set_tls_config(&mut self, tls_config: TlsConfig) {
         if let Ok(mut gateway) = self.gateway.lock() {
             gateway.tls_config = Some(tls_config);
         }

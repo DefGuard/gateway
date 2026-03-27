@@ -15,7 +15,7 @@ use defguard_gateway::{
     gateway::{Gateway, TlsConfig, run_gateway_loop, run_stats},
     init_syslog,
     logging::init_tracing,
-    server::run_server,
+    server::run_http_server,
     setup::run_setup,
 };
 use defguard_version::Version;
@@ -93,7 +93,7 @@ async fn main() -> Result<(), GatewayError> {
 
     // Optionally, launch HTTP server to report gateway's health.
     if let Some(health_port) = config.health_port {
-        tasks.spawn(run_server(
+        tasks.spawn(run_http_server(
             health_port,
             config.http_bind_address,
             Arc::clone(&gateway.connected),
@@ -104,41 +104,40 @@ async fn main() -> Result<(), GatewayError> {
     let gateway = Arc::new(Mutex::new(gateway));
     tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
 
-    let tls_config = if needs_setup {
-        log::info!(
-            "gRPC TLS certificates not found in {}. They will be generated during setup.",
-            cert_dir.display()
-        );
-        run_setup(&config, cert_dir, Arc::clone(&logs_rx)).await?
-    } else if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
-        log::info!(
-            "Using existing gRPC TLS certificates from {}",
-            cert_dir.display()
-        );
-        TlsConfig {
-            grpc_cert_pem: cert,
-            grpc_key_pem: key,
-        }
-    } else {
-        return Err(GatewayError::SetupError(
-            "gRPC TLS certificates are missing after setup".to_string(),
-        ));
-    };
+    // Clone for later.
+    let post_down_clone = config.post_down.clone();
 
-    // Launch gRPC server (with purge-triggered setup loop).
-    tasks.spawn(run_gateway_loop(
-        config.clone(),
-        cert_dir.clone(),
-        gateway,
-        Arc::clone(&logs_rx),
-        tls_config,
-    ));
+    tasks.spawn(async move {
+        let tls_config = if needs_setup {
+            log::info!(
+                "gRPC TLS certificates not found in {}. They will be generated during setup.",
+                config.cert_dir.display()
+            );
+            run_setup(&config, Arc::clone(&logs_rx)).await?
+        } else if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
+            log::info!(
+                "Using existing gRPC TLS certificates from {}",
+                config.cert_dir.display()
+            );
+            TlsConfig {
+                grpc_cert_pem: cert,
+                grpc_key_pem: key,
+            }
+        } else {
+            return Err(GatewayError::SetupError(
+                "gRPC TLS certificates are missing after setup".to_string(),
+            ));
+        };
+
+        // Launch gRPC server (with purge-triggered setup loop).
+        run_gateway_loop(config, gateway, Arc::clone(&logs_rx), tls_config).await
+    });
 
     while let Some(Ok(result)) = tasks.join_next().await {
         result?;
     }
 
-    if let Some(post_down) = &config.post_down {
+    if let Some(post_down) = &post_down_clone {
         log::info!("Executing specified POST_DOWN command: {post_down}");
         execute_command(post_down)?;
     }
