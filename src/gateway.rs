@@ -47,7 +47,6 @@ use crate::{
 /// restarted in setup mode when a purge request arrives.
 pub async fn run_gateway_loop(
     config: Config,
-    cert_dir: std::path::PathBuf,
     gateway: Arc<Mutex<Gateway>>,
     logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
     mut tls_config: TlsConfig,
@@ -58,7 +57,7 @@ pub async fn run_gateway_loop(
         let (reset_tx, mut reset_rx) = oneshot::channel();
         // Build and start a gRPC server instance wired with the reset signal.
         let mut gateway_server =
-            GatewayServer::new(Arc::clone(&gateway), cert_dir.clone(), reset_tx);
+            GatewayServer::new(Arc::clone(&gateway), config.cert_dir.clone(), reset_tx);
         gateway_server.set_tls_config(tls_config.clone());
         let mut server_handle = tokio::spawn(gateway_server.start(config.clone()));
 
@@ -86,7 +85,7 @@ pub async fn run_gateway_loop(
 
                 // Run setup server to obtain new TLS certs, then loop to restart gRPC.
                 log::info!("Restarting setup server after purge request");
-                tls_config = run_setup(&config, &cert_dir, Arc::clone(&logs_rx)).await?;
+                tls_config = run_setup(&config, Arc::clone(&logs_rx)).await?;
             }
             // Server exited on its own (error or normal shutdown).
             result = &mut server_handle => {

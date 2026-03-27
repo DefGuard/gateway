@@ -1,7 +1,4 @@
-use std::{
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use defguard_version::{Version, server::DefguardVersionLayer};
 use tokio::{
@@ -27,9 +24,9 @@ type LogsReceiver = Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>;
 
 pub async fn run_setup(
     config: &Config,
-    cert_dir: &Path,
     logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
 ) -> Result<TlsConfig, GatewayError> {
+    let cert_dir = &config.cert_dir;
     let setup_server = GatewaySetupServer::new(logs_rx);
     let tls_config = setup_server.await_setup(config).await?;
 
