@@ -27,9 +27,6 @@ pub struct Config {
     #[serde(default = "default_log_level")]
     pub log_level: String,
 
-    #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
-    pub name: Option<String>,
-
     /// Gateway gRPC server port.
     #[arg(long, env = "DEFGUARD_GRPC_PORT", default_value = "50066")]
     pub(crate) grpc_port: u16,
@@ -140,7 +137,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             log_level: "info".into(),
-            name: None,
             grpc_port: 50066,
             userspace: false,
             grpc_cert: None,
