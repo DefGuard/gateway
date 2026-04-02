@@ -11,17 +11,17 @@ concurrency:
 jobs:
   build-docker-release:
     # Ignore tags with -, like v1.0.0-alpha
+    # This job will build the docker container with the "latest" tag which
+    # is a tag used in production, thus it should only be run for full releases.
     if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-')
     name: Build Release Docker image
     uses: ./.github/workflows/build-docker.yml
     with:
       tags: |
+        type=raw,value=latest
         type=semver,pattern={{version}}
         type=semver,pattern={{major}}.{{minor}}
         type=sha
-      # Explicitly disable latest tag. It will be added otherwise.
-      flavor: |
-        latest=false
 
   build-docker-prerelease:
     # Only build tags with -, like v1.0.0-alpha
@@ -92,14 +92,14 @@ jobs:
           echo Version: $VERSION
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Install Rust stable
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: 1.89.0 # "stable" causes rust-lld: error on aarch64-linux
           target: ${{ matrix.target }}
           override: true
 
@@ -118,7 +118,7 @@ jobs:
         run: mv target/${{ matrix.target }}/release/defguard-gateway ${{ matrix.asset_name }}-${{ github.ref_name }}
 
       - name: Tar
-        uses: a7ul/tar-action@v1.1.0
+        uses: a7ul/tar-action@v1.2.0
         with:
           command: c
           files: |
