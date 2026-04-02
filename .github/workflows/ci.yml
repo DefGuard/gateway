@@ -38,12 +38,9 @@ jobs:
 
       - name: Scan code with Trivy
         uses: aquasecurity/trivy-action@0.35.0
-        env:
-          TRIVY_SHOW_SUPPRESSED: 1
-          TRIVY_IGNOREFILE: "./.trivyignore.yaml"
         with:
-          scan-type: "fs"
-          scan-ref: "."
+          scan-type: 'fs'
+          scan-ref: '.'
           exit-code: "1"
           ignore-unfixed: true
           severity: "CRITICAL,HIGH,MEDIUM"
@@ -65,10 +62,13 @@ jobs:
           rustup component add clippy
           cargo clippy --all-targets --all-features -- -D warnings
 
+      - name: Install cargo extensions
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
       - name: Run cargo deny
-        run: |
-          cargo install cargo-deny
-          cargo deny check
+        run: cargo deny check
 
       - name: Run tests
         run: cargo test --locked --no-fail-fast
