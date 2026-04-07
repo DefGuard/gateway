@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // compiling protos using path on build time
         .compile_protos(
             &[
-                "proto/v2/wireguard/gateway.proto",
+                "proto/v2/gateway.proto",
                 "proto/enterprise/v2/firewall/firewall.proto",
             ],
             &["proto"],
