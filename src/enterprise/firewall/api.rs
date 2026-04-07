@@ -1,9 +1,6 @@
 #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
 use std::fs::{File, OpenOptions};
 
-#[cfg(target_os = "linux")]
-use nftnl::Batch;
-
 use super::{FirewallError, FirewallRule, Policy, SnatBinding};
 
 #[cfg(all(
@@ -18,18 +15,21 @@ const DEV_PF: &str = "/dev/null";
 const DEV_PF: &str = "/dev/pf";
 
 #[allow(dead_code)]
-pub struct FirewallApi {
+pub(crate) struct FirewallApi {
     pub(crate) ifname: String,
     #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
     pub(crate) file: File,
     #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
     pub(crate) default_policy: Policy,
     #[cfg(target_os = "linux")]
-    pub(crate) batch: Option<Batch>,
+    pub(crate) socket: mnl::Socket,
 }
 
 impl FirewallApi {
-    pub fn new<S: Into<String>>(ifname: S) -> Result<Self, FirewallError> {
+    pub(crate) fn new<S>(ifname: S) -> Result<Self, FirewallError>
+    where
+        S: Into<String>,
+    {
         Ok(Self {
             ifname: ifname.into(),
             #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
@@ -37,7 +37,9 @@ impl FirewallApi {
             #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
             default_policy: Policy::Deny,
             #[cfg(target_os = "linux")]
-            batch: None,
+            socket: mnl::Socket::new(mnl::Bus::Netfilter).map_err(|err| {
+                FirewallError::NetlinkError(format!("Failed to create socket: {err:?}"))
+            })?,
         })
     }
 }
@@ -51,7 +53,7 @@ pub(crate) trait FirewallManagementApi {
     fn cleanup(&mut self) -> Result<(), FirewallError>;
 
     /// Add firewall rules.
-    fn add_rules(&mut self, rules: Vec<FirewallRule>) -> Result<(), FirewallError>;
+    fn add_rules(&mut self, rules: &[FirewallRule]) -> Result<(), FirewallError>;
 
     /// Setup Network Address Translation using POSTROUTING chain rules
     fn setup_nat(
@@ -59,10 +61,4 @@ pub(crate) trait FirewallManagementApi {
         masquerade_enabled: bool,
         snat_bindings: &[SnatBinding],
     ) -> Result<(), FirewallError>;
-
-    /// Begin rule transaction.
-    fn begin(&mut self) -> Result<(), FirewallError>;
-
-    /// Commit rule transaction.
-    fn commit(&mut self) -> Result<(), FirewallError>;
 }

@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::PathBuf,
     str::FromStr,
     sync::{
@@ -48,7 +47,6 @@ use crate::{
 /// restarted in setup mode when a purge request arrives.
 pub async fn run_gateway_loop(
     config: Config,
-    cert_dir: std::path::PathBuf,
     gateway: Arc<Mutex<Gateway>>,
     logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
     mut tls_config: TlsConfig,
@@ -59,7 +57,7 @@ pub async fn run_gateway_loop(
         let (reset_tx, mut reset_rx) = oneshot::channel();
         // Build and start a gRPC server instance wired with the reset signal.
         let mut gateway_server =
-            GatewayServer::new(Arc::clone(&gateway), cert_dir.clone(), reset_tx);
+            GatewayServer::new(Arc::clone(&gateway), config.cert_dir.clone(), reset_tx);
         gateway_server.set_tls_config(tls_config.clone());
         let mut server_handle = tokio::spawn(gateway_server.start(config.clone()));
 
@@ -87,7 +85,7 @@ pub async fn run_gateway_loop(
 
                 // Run setup server to obtain new TLS certs, then loop to restart gRPC.
                 log::info!("Restarting setup server after purge request");
-                tls_config = run_setup(&config, &cert_dir, Arc::clone(&logs_rx)).await?;
+                tls_config = run_setup(&config, Arc::clone(&logs_rx)).await?;
             }
             // Server exited on its own (error or normal shutdown).
             result = &mut server_handle => {
@@ -151,7 +149,6 @@ pub struct Gateway {
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<PubKey, Peer>,
     wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
-    firewall_api: FirewallApi,
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
     // Transmission channel. Important: allows only one connected client.
@@ -163,14 +160,12 @@ impl Gateway {
     pub fn new(
         config: Config,
         wgapi: impl WireguardInterfaceApi + Send + Sync + 'static,
-        firewall_api: FirewallApi,
     ) -> Result<Self, GatewayError> {
         Ok(Self {
             config,
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_api,
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
@@ -338,8 +333,6 @@ impl Gateway {
     /// - If the main config changed (default policy), reconfigure the whole firewall.
     /// - If only the rules changed, apply the new rules. Currently also reconfigures the whole
     ///   firewall but that should be temporary.
-    ///
-    /// TODO: Reduce cloning here
     fn process_firewall_changes(
         &mut self,
         fw_config: Option<&FirewallConfig>,
@@ -351,13 +344,10 @@ impl Gateway {
                     "Received firewall configuration is different than current one. \
                     Reconfiguring firewall..."
                 );
-                self.firewall_api.begin()?;
-                self.firewall_api
-                    .setup(fw_config.default_policy, self.config.fw_priority)?;
-                self.firewall_api
-                    .setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
-                self.firewall_api.add_rules(fw_config.rules.clone())?;
-                self.firewall_api.commit()?;
+                let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
+                firewall_api.setup(fw_config.default_policy, self.config.fw_priority)?;
+                firewall_api.setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
+                firewall_api.add_rules(&fw_config.rules)?;
                 self.firewall_config = Some(fw_config.clone());
                 info!("Reconfigured firewall with new configuration");
             } else {
@@ -376,10 +366,9 @@ impl Gateway {
     }
 
     fn cleanup_firewall(&mut self) -> Result<(), FirewallError> {
-        self.firewall_api.begin()?;
-        self.firewall_api.cleanup()?;
-        self.firewall_api.setup_nat(self.config.masquerade, &[])?;
-        self.firewall_api.commit()?;
+        let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
+        firewall_api.cleanup()?;
+        firewall_api.setup_nat(self.config.masquerade, &[])?;
         self.firewall_config = None;
 
         Ok(())
@@ -591,9 +580,8 @@ impl GatewayServer {
             } else {
                 #[cfg(target_os = "linux")]
                 if !config.disable_firewall_management && config.masquerade {
-                    gateway.firewall_api.begin()?;
-                    gateway.firewall_api.setup_nat(config.masquerade, &[])?;
-                    gateway.firewall_api.commit()?;
+                    let mut firewall_api = FirewallApi::new(&config.ifname)?;
+                    firewall_api.setup_nat(config.masquerade, &[])?;
                 }
             }
         }
@@ -619,7 +607,7 @@ impl GatewayServer {
             .map(|c| c.grpc_key_pem.clone());
 
         // Build gRPC server.
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), config.grpc_port);
+        let addr = config.grpc_socket();
         info!("gRPC server is listening on {addr}");
         let mut builder = if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
             let identity = Identity::from_pem(cert, key);
@@ -633,10 +621,6 @@ impl GatewayServer {
         builder
             .add_service(
                 ServiceBuilder::new()
-                    // .layer(InterceptorLayer::new(CoreVersionInterceptor::new(
-                    //     MIN_CORE_VERSION,
-                    //     incompatible_components,
-                    // )))
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_server::GatewayServer::new(self)),
             )
@@ -646,7 +630,7 @@ impl GatewayServer {
         Ok(())
     }
 
-    pub fn set_tls_config(&mut self, tls_config: TlsConfig) {
+    pub(crate) fn set_tls_config(&mut self, tls_config: TlsConfig) {
         if let Ok(mut gateway) = self.gateway.lock() {
             gateway.tls_config = Some(tls_config);
         }
@@ -741,7 +725,9 @@ impl gateway_server::Gateway for GatewayServer {
                                     match gateway.lock() {
                                         Ok(mut gw) => {
                                             gw.connected.store(true, Ordering::Relaxed);
-                                            let _ = gw.configure(configuration);
+                                            if let Err(err) = gw.configure(configuration) {
+                                                error!("Failed to configure: {err}");
+                                            }
                                         }
                                         Err(err) => error!("Lock failed: {err}"),
                                     }
@@ -896,7 +882,10 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
 
 #[cfg(test)]
 mod tests {
-    use std::{net::Ipv4Addr, slice::from_ref};
+    use std::{
+        net::{IpAddr, Ipv4Addr},
+        slice::from_ref,
+    };
 
     #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
     use defguard_wireguard_rs::Kernel;
@@ -946,13 +935,11 @@ mod tests {
 
         let wgapi = WG::new("wg0").unwrap();
         let config = Config::default();
-        let firewall_api = FirewallApi::new("wg0").unwrap();
         let gateway = Gateway {
             config,
             interface_configuration: Some(old_config.clone()),
             peers: old_peers_map,
             wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_api,
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
@@ -1074,8 +1061,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_firewall_rules_comparison() {
-        use std::net::IpAddr;
-
         let rule1 = FirewallRule {
             comment: Some("Rule 1".to_string()),
             destination_addrs: vec![Address::Network(
@@ -1140,7 +1125,6 @@ mod tests {
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
@@ -1207,7 +1191,6 @@ mod tests {
             interface_configuration: None,
             peers: HashMap::new(),
             wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_api: FirewallApi::new("test_interface").unwrap(),
             firewall_config: None,
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,

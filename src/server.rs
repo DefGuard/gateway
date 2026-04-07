@@ -21,7 +21,8 @@ async fn healthcheck<'a>(
     }
 }
 
-pub async fn run_server(
+/// Launch HTTP server with the health check.
+pub async fn run_http_server(
     http_port: u16,
     http_bind_address: Option<IpAddr>,
     connected: Arc<AtomicBool>,
@@ -35,9 +36,13 @@ pub async fn run_server(
         http_bind_address.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
         http_port,
     );
-    let listener = TcpListener::bind(&addr).await?;
+    let listener = TcpListener::bind(&addr).await.inspect_err(|err| {
+        error!("Failed to bind to {addr}: {err}");
+    })?;
     info!("Health check listening on {addr}");
-    serve(listener, app.into_make_service())
-        .await
-        .map_err(|err| GatewayError::HttpServer(err.to_string()))
+
+    // From axum docs: this future will never actually complete or return an error.
+    let _ = serve(listener, app.into_make_service()).await;
+
+    Ok(())
 }

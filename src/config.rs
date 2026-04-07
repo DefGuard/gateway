@@ -1,4 +1,9 @@
-use std::{fs, net::IpAddr, path::PathBuf, time::Duration};
+use std::{
+    fs,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
+    time::Duration,
+};
 
 use clap::Parser;
 use serde::Deserialize;
@@ -21,9 +26,6 @@ pub struct Config {
     #[arg(long, short = 'l', env = "DEFGUARD_LOG_LEVEL", default_value = "info")]
     #[serde(default = "default_log_level")]
     pub log_level: String,
-
-    #[arg(long, env = "DEFGUARD_GATEWAY_NAME")]
-    pub name: Option<String>,
 
     /// Gateway gRPC server port.
     #[arg(long, env = "DEFGUARD_GRPC_PORT", default_value = "50066")]
@@ -123,13 +125,18 @@ impl Config {
     pub fn stats_period(&self) -> Duration {
         Duration::from_secs(self.stats_period)
     }
+
+    /// Return [`SocketAddr`] for gRPC to listen on.
+    #[must_use]
+    pub(crate) fn grpc_socket(&self) -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), self.grpc_port)
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             log_level: "info".into(),
-            name: None,
             grpc_port: 50066,
             userspace: false,
             grpc_cert: None,

@@ -820,26 +820,28 @@ impl Chains {
 
 pub(super) fn apply_filter_rules(
     rules: &[FilterRule],
-    batch: &mut Batch,
     ifname: &str,
+    socket: &mnl::Socket,
 ) -> Result<(), FirewallError> {
     let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
+    let mut batch = Batch::new();
     batch.add(&table, MsgType::Add);
 
     let forward_chain = Chains::Forward.to_chain(&table);
     batch.add(&forward_chain, MsgType::Add);
 
     for rule in rules {
-        let chain_rule = rule.to_chain_rule(&forward_chain, batch)?;
+        let chain_rule = rule.to_chain_rule(&forward_chain, &mut batch)?;
         batch.add(&chain_rule, MsgType::Add);
     }
 
-    Ok(())
+    send_batch(&batch.finalize(), socket)
 }
 
-pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
-    let socket = mnl::Socket::new(mnl::Bus::Netfilter)
-        .map_err(|err| FirewallError::NetlinkError(format!("Failed to create socket: {err:?}")))?;
+pub(crate) fn send_batch(
+    batch: &FinalizedBatch,
+    socket: &mnl::Socket,
+) -> Result<(), FirewallError> {
     socket.send_all(batch).map_err(|err| {
         FirewallError::NetlinkError(format!("Failed to send batch through socket: {err:?}"))
     })?;
@@ -848,29 +850,31 @@ pub(crate) fn send_batch(batch: &FinalizedBatch) -> Result<(), FirewallError> {
     let mut buffer = vec![0; nft_nlmsg_maxsize() as usize];
 
     let mut expected_seqs = batch.sequence_numbers();
-    for message in socket.recv(&mut buffer).map_err(|err| {
-        FirewallError::NetlinkError(format!("Failed reading message from socket: {err:?}"))
-    })? {
-        let Ok(message) = message else {
-            warn!("Invalid netlink message");
-            continue;
-        };
-        let Some(seq) = expected_seqs.next() else {
-            warn!("Unexpected ACK in netlink messages");
-            continue;
-        };
-        match mnl::cb_run(message, seq, portid) {
-            Ok(mnl::CbResult::Stop) => {
-                debug!("Received stop signal from netlink callback");
-                break;
-            }
-            Ok(mnl::CbResult::Ok) => {
-                debug!("Received OK signal from netlink callback");
-            }
-            Err(err) => {
-                return Err(FirewallError::NetlinkError(format!(
-                    "There was an error while sending netlink messages: {err:?}"
-                )));
+    while !expected_seqs.is_empty() {
+        for message in socket.recv(&mut buffer).map_err(|err| {
+            FirewallError::NetlinkError(format!("Failed reading message from socket: {err:?}"))
+        })? {
+            let Ok(message) = message else {
+                warn!("Invalid netlink message");
+                continue;
+            };
+            let Some(seq) = expected_seqs.next() else {
+                warn!("Unexpected ACK in netlink messages");
+                continue;
+            };
+            match mnl::cb_run(message, seq, portid) {
+                Ok(mnl::CbResult::Stop) => {
+                    debug!("Received stop signal from netlink callback");
+                    break;
+                }
+                Ok(mnl::CbResult::Ok) => {
+                    debug!("Received OK signal from netlink callback");
+                }
+                Err(err) => {
+                    return Err(FirewallError::NetlinkError(format!(
+                        "Failed to receive netlink callback: {err:?}"
+                    )));
+                }
             }
         }
     }
