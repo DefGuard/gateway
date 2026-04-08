@@ -16,7 +16,10 @@ use crate::{
     config::Config,
     error::GatewayError,
     gateway::TlsConfig,
-    proto::gateway::{CertificateInfo, DerPayload, LogEntry, gateway_setup_server},
+    proto::{
+        common::{CertificateInfo, DerPayload, LogEntry},
+        gateway::gateway_setup_server,
+    },
 };
 
 const AUTH_HEADER: &str = "authorization";

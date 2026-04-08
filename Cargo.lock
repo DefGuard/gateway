@@ -589,7 +589,6 @@ dependencies = [
  "defguard_version",
  "defguard_wireguard_rs",
  "env_logger",
- "gethostname",
  "ipnetwork",
  "libc",
  "log",
@@ -597,6 +596,7 @@ dependencies = [
  "nftnl",
  "nix 0.31.2",
  "prost",
+ "prost-types",
  "serde",
  "syslog",
  "thiserror 2.0.18",
@@ -938,16 +938,6 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
-]
-
-[[package]]
-name = "gethostname"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8"
-dependencies = [
- "rustix",
- "windows-link",
 ]
 
 [[package]]

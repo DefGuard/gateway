@@ -3,7 +3,7 @@ use tokio::sync::mpsc::Sender;
 use tracing::{Event, Subscriber};
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::proto::gateway::LogEntry;
+use crate::proto::common::LogEntry;
 
 pub fn init_tracing(own_version: &Version, level: &str, logs_tx: Option<Sender<LogEntry>>) {
     let subscriber = tracing_subscriber::registry();

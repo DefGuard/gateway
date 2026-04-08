@@ -13,7 +13,6 @@ use defguard_version::{
     ComponentInfo, DefguardComponent, Version, get_tracing_variables, server::DefguardVersionLayer,
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
-use gethostname::gethostname;
 use tokio::{
     sync::{mpsc, oneshot},
     time::interval,
@@ -35,9 +34,12 @@ use crate::{
     },
     error::GatewayError,
     execute_command, mask,
-    proto::gateway::{
-        Configuration, ConfigurationRequest, CoreRequest, CoreResponse, LogEntry, Peer, Update,
-        core_request, core_response, gateway_server, update,
+    proto::{
+        common::LogEntry,
+        gateway::{
+            Configuration, CoreRequest, CoreResponse, Peer, Update, core_request, core_response,
+            gateway_server, update,
+        },
     },
     setup::run_setup,
     version::is_core_version_supported,
@@ -685,20 +687,11 @@ impl gateway_server::Gateway for GatewayServer {
         }
 
         let (tx, rx) = mpsc::unbounded_channel();
-        let Ok(hostname) = gethostname().into_string() else {
-            error!("Unable to get hostname");
-            return Err(Status::internal("failed to get hostname"));
-        };
 
         // First, send configuration request.
-        #[allow(deprecated)]
-        let payload = ConfigurationRequest {
-            name: None, // TODO: remove?
-            hostname,
-        };
         let req = CoreRequest {
             id: self.message_id.fetch_add(1, Ordering::Relaxed),
-            payload: Some(core_request::Payload::ConfigRequest(payload)),
+            payload: Some(core_request::Payload::ConfigRequest(())),
         };
 
         match tx.send(Ok(req)) {
