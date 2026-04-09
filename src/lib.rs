@@ -130,7 +130,7 @@ impl From<proto::gateway::Configuration> for InterfaceConfiguration {
             .collect();
         InterfaceConfiguration {
             name: config.name,
-            prvkey: config.prvkey,
+            prvkey: config.private_key,
             addresses,
             port: config.port as u16,
             peers,

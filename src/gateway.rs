@@ -112,7 +112,7 @@ pub async fn run_gateway_loop(
 #[derive(Clone, PartialEq)]
 struct InterfaceConfiguration {
     name: String,
-    prvkey: String,
+    private_key: String,
     addresses: Vec<IpAddrMask>,
     port: u16,
     mtu: u32,
@@ -129,7 +129,7 @@ impl From<Configuration> for InterfaceConfiguration {
             .collect();
         Self {
             name: config.name,
-            prvkey: config.prvkey,
+            private_key: config.private_key,
             addresses,
             port: config.port as u16,
             mtu: config.mtu,
@@ -386,7 +386,7 @@ impl Gateway {
         );
         trace!(
             "Received configuration: {:?}",
-            mask!(new_configuration, prvkey)
+            mask!(new_configuration, private_key)
         );
 
         // check if new configuration is different than current one
@@ -407,7 +407,7 @@ impl Gateway {
             );
             trace!(
                 "Reconfigured WireGuard interface. Configuration: {:?}",
-                mask!(new_configuration, prvkey)
+                mask!(new_configuration, private_key)
             );
             // store new configuration and peers
             self.interface_configuration = Some(new_interface_configuration);
@@ -899,7 +899,7 @@ mod tests {
     async fn test_configuration_comparison() {
         let old_config = InterfaceConfiguration {
             name: "gateway".to_string(),
-            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
+            private_key: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
             addresses: vec!["10.6.1.1/24".parse().unwrap()],
             port: 50051,
             mtu: 1420,
@@ -947,7 +947,7 @@ mod tests {
         // only interface config is different
         let new_config = InterfaceConfiguration {
             name: "gateway".to_string(),
-            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
+            private_key: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
             addresses: vec!["10.6.1.2/24".parse().unwrap()],
             port: 50051,
             mtu: 1420,
