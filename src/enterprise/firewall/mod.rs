@@ -14,6 +14,7 @@ use std::{
 use ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
 use iprange::{IpAddrRange, IpAddrRangeError};
 use thiserror::Error;
+use tracing::error;
 
 use crate::proto;
 
@@ -161,7 +162,7 @@ impl Protocol {
             proto::enterprise::firewall::Protocol::Udp => Ok(Self::Udp),
             proto::enterprise::firewall::Protocol::Icmp => Ok(Self::Icmp),
             // TODO: IcmpV6
-            proto::enterprise::firewall::Protocol::Invalid => {
+            proto::enterprise::firewall::Protocol::Unspecified => {
                 Err(FirewallError::UnsupportedProtocol(proto as u8))
             }
         }
@@ -196,10 +197,14 @@ impl From<bool> for Policy {
 
 impl Policy {
     #[must_use]
-    pub const fn from_proto(verdict: proto::enterprise::firewall::FirewallPolicy) -> Self {
+    pub fn from_proto(verdict: proto::enterprise::firewall::FirewallPolicy) -> Self {
         match verdict {
             proto::enterprise::firewall::FirewallPolicy::Allow => Self::Allow,
             proto::enterprise::firewall::FirewallPolicy::Deny => Self::Deny,
+            proto::enterprise::firewall::FirewallPolicy::Unspecified => {
+                error!("Received invalid gRPC FirewallPolicy. Falling back to Deny.");
+                Self::Deny
+            }
         }
     }
 }

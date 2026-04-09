@@ -11,10 +11,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // compiling protos using path on build time
         .compile_protos(
             &[
-                "proto/wireguard/gateway.proto",
-                "proto/enterprise/firewall/firewall.proto",
+                "proto/v2/gateway.proto",
+                "proto/enterprise/v2/firewall/firewall.proto",
             ],
-            &["proto/wireguard", "proto/enterprise/firewall"],
+            &["proto"],
         )?;
     println!("cargo:rerun-if-changed=proto");
     Ok(())

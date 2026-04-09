@@ -4,13 +4,40 @@ pub mod gateway;
 pub mod server;
 mod version;
 
+pub mod generated {
+    pub mod defguard {
+        pub mod common {
+            pub mod v2 {
+                tonic::include_proto!("defguard.common.v2");
+            }
+        }
+        pub mod gateway {
+            pub mod v2 {
+
+                tonic::include_proto!("defguard.gateway.v2");
+            }
+        }
+        pub mod enterprise {
+            pub mod firewall {
+                pub mod v2 {
+
+                    tonic::include_proto!("defguard.enterprise.firewall.v2");
+                }
+            }
+        }
+    }
+}
+
 pub mod proto {
+    pub mod common {
+        pub use crate::generated::defguard::common::v2::*;
+    }
     pub mod gateway {
-        tonic::include_proto!("gateway");
+        pub use crate::generated::defguard::gateway::v2::*;
     }
     pub mod enterprise {
         pub mod firewall {
-            tonic::include_proto!("enterprise.firewall");
+            pub use crate::generated::defguard::enterprise::firewall::v2::*;
         }
     }
 }
@@ -23,6 +50,7 @@ use std::{process::Command, str::FromStr, time::SystemTime};
 use config::Config;
 use defguard_wireguard_rs::{InterfaceConfiguration, net::IpAddrMask, peer::Peer};
 use error::GatewayError;
+use prost_types::Timestamp;
 use syslog::{BasicLogger, Facility, Formatter3164};
 
 pub mod enterprise;
@@ -102,7 +130,7 @@ impl From<proto::gateway::Configuration> for InterfaceConfiguration {
             .collect();
         InterfaceConfiguration {
             name: config.name,
-            prvkey: config.prvkey,
+            prvkey: config.private_key,
             addresses,
             port: config.port as u16,
             peers,
@@ -150,9 +178,13 @@ impl From<&Peer> for proto::gateway::PeerStats {
                 .endpoint
                 .map_or(String::new(), |endpoint| endpoint.to_string()),
             allowed_ips: peer.allowed_ips.iter().map(ToString::to_string).collect(),
-            latest_handshake: peer.last_handshake.map_or(0, |ts| {
+            latest_handshake: peer.last_handshake.and_then(|ts| {
                 ts.duration_since(SystemTime::UNIX_EPOCH)
-                    .map_or(0, |duration| duration.as_secs())
+                    .ok()
+                    .map(|d| Timestamp {
+                        seconds: d.as_secs() as i64,
+                        nanos: d.subsec_nanos() as i32,
+                    })
             }),
             download: peer.rx_bytes,
             upload: peer.tx_bytes,

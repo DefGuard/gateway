@@ -13,7 +13,6 @@ use defguard_version::{
     ComponentInfo, DefguardComponent, Version, get_tracing_variables, server::DefguardVersionLayer,
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
-use gethostname::gethostname;
 use tokio::{
     sync::{mpsc, oneshot},
     time::interval,
@@ -35,9 +34,12 @@ use crate::{
     },
     error::GatewayError,
     execute_command, mask,
-    proto::gateway::{
-        Configuration, ConfigurationRequest, CoreRequest, CoreResponse, LogEntry, Peer, Update,
-        core_request, core_response, gateway_server, update,
+    proto::{
+        common::LogEntry,
+        gateway::{
+            Configuration, CoreRequest, CoreResponse, Peer, Update, core_request, core_response,
+            gateway_server, update,
+        },
     },
     setup::run_setup,
     version::is_core_version_supported,
@@ -110,7 +112,7 @@ pub async fn run_gateway_loop(
 #[derive(Clone, PartialEq)]
 struct InterfaceConfiguration {
     name: String,
-    prvkey: String,
+    private_key: String,
     addresses: Vec<IpAddrMask>,
     port: u16,
     mtu: u32,
@@ -127,7 +129,7 @@ impl From<Configuration> for InterfaceConfiguration {
             .collect();
         Self {
             name: config.name,
-            prvkey: config.prvkey,
+            private_key: config.private_key,
             addresses,
             port: config.port as u16,
             mtu: config.mtu,
@@ -384,7 +386,7 @@ impl Gateway {
         );
         trace!(
             "Received configuration: {:?}",
-            mask!(new_configuration, prvkey)
+            mask!(new_configuration, private_key)
         );
 
         // check if new configuration is different than current one
@@ -405,7 +407,7 @@ impl Gateway {
             );
             trace!(
                 "Reconfigured WireGuard interface. Configuration: {:?}",
-                mask!(new_configuration, prvkey)
+                mask!(new_configuration, private_key)
             );
             // store new configuration and peers
             self.interface_configuration = Some(new_interface_configuration);
@@ -685,20 +687,11 @@ impl gateway_server::Gateway for GatewayServer {
         }
 
         let (tx, rx) = mpsc::unbounded_channel();
-        let Ok(hostname) = gethostname().into_string() else {
-            error!("Unable to get hostname");
-            return Err(Status::internal("failed to get hostname"));
-        };
 
         // First, send configuration request.
-        #[allow(deprecated)]
-        let payload = ConfigurationRequest {
-            name: None, // TODO: remove?
-            hostname,
-        };
         let req = CoreRequest {
             id: self.message_id.fetch_add(1, Ordering::Relaxed),
-            payload: Some(core_request::Payload::ConfigRequest(payload)),
+            payload: Some(core_request::Payload::ConfigRequest(())),
         };
 
         match tx.send(Ok(req)) {
@@ -906,7 +899,7 @@ mod tests {
     async fn test_configuration_comparison() {
         let old_config = InterfaceConfiguration {
             name: "gateway".to_string(),
-            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
+            private_key: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
             addresses: vec!["10.6.1.1/24".parse().unwrap()],
             port: 50051,
             mtu: 1420,
@@ -954,7 +947,7 @@ mod tests {
         // only interface config is different
         let new_config = InterfaceConfiguration {
             name: "gateway".to_string(),
-            prvkey: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
+            private_key: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
             addresses: vec!["10.6.1.2/24".parse().unwrap()],
             port: 50051,
             mtu: 1420,

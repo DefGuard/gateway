@@ -12,11 +12,11 @@ defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "0195
 defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "01957186101fc105803d56f1190efbdb5102df2f" }
 defguard_wireguard_rs = "0.9"
 env_logger = "0.11"
-gethostname = "1.0"
 ipnetwork = "0.21"
 libc = { version = "0.2", default-features = false }
 log = "0.4"
 prost = "0.14"
+prost-types = "0.14"
 serde = { version = "1.0", features = ["derive"] }
 syslog = "7.0"
 thiserror = "2.0"
