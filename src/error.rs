@@ -24,7 +24,7 @@ pub enum GatewayError {
     #[error("Invalid config file. Error: {0}")]
     InvalidConfigFile(String),
 
-    #[error("WireGuard error {0}")]
+    #[error("WireGuard error: {0}")]
     WireguardError(#[from] WireguardInterfaceError),
 
     #[error("Invalid CA file. Error")]
