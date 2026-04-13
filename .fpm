@@ -1,6 +1,6 @@
 -s dir
 --name defguard-gateway
---description "defguard VPN gateway service"
+--description "Defguard VPN gateway service"
 --url "https://defguard.net/"
---maintainer "teonite"
+--maintainer "Defguard"
 --config-files /etc/defguard/gateway.toml.sample
