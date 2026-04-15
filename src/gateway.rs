@@ -14,6 +14,7 @@ use defguard_version::{
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use tokio::{
+    fs::remove_file,
     sync::{mpsc, oneshot},
     time::interval,
 };
@@ -26,7 +27,7 @@ use tower::ServiceBuilder;
 use tracing::instrument;
 
 use crate::{
-    GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
+    CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
     enterprise::firewall::{
         FirewallConfig, FirewallError, FirewallRule, SnatBinding,
@@ -764,8 +765,10 @@ impl gateway_server::Gateway for GatewayServer {
         debug!("Received purge request, removing gRPC certificate files");
         let cert_path = self.cert_dir.join(GRPC_CERT_NAME);
         let key_path = self.cert_dir.join(GRPC_KEY_NAME);
+        let ca_cert_path = self.cert_dir.join(GRPC_CA_CERT_NAME);
+        let core_client_cert_path = self.cert_dir.join(CORE_CLIENT_CERT_NAME);
 
-        if let Err(err) = tokio::fs::remove_file(&cert_path).await
+        if let Err(err) = remove_file(&cert_path).await
             && err.kind() != std::io::ErrorKind::NotFound
         {
             error!(
@@ -776,13 +779,38 @@ impl gateway_server::Gateway for GatewayServer {
         }
         info!("Removed gRPC certificate at {}", cert_path.display());
 
-        if let Err(err) = tokio::fs::remove_file(&key_path).await
+        if let Err(err) = remove_file(&key_path).await
             && err.kind() != std::io::ErrorKind::NotFound
         {
             error!("Failed to remove gRPC key at {}: {err}", key_path.display());
             return Err(Status::internal("Failed to remove gRPC key"));
         }
-        info!("Removed gRPC key at {}", cert_path.display());
+        info!("Removed gRPC key at {}", key_path.display());
+
+        if let Err(err) = remove_file(&ca_cert_path).await
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            error!(
+                "Failed to remove CA certificate at {}: {err}",
+                ca_cert_path.display()
+            );
+            return Err(Status::internal("Failed to remove CA certificate"));
+        }
+        info!("Removed CA certificate at {}", ca_cert_path.display());
+
+        if let Err(err) = remove_file(&core_client_cert_path).await
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            error!(
+                "Failed to remove Core client certificate at {}: {err}",
+                core_client_cert_path.display()
+            );
+            return Err(Status::internal("Failed to remove Core client certificate"));
+        }
+        info!(
+            "Removed Core client certificate at {}",
+            core_client_cert_path.display()
+        );
 
         // Prepare underlying `Gateway` to enter setup mode.
         self.gateway
