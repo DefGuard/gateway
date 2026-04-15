@@ -144,6 +144,10 @@ type PubKey = String;
 pub struct TlsConfig {
     pub grpc_cert_pem: String,
     pub grpc_key_pem: String,
+    /// PEM-encoded CA certificate used to verify Core's mTLS client certificate chain.
+    pub grpc_ca_cert_pem: String,
+    /// DER-encoded Core client certificate; used to extract and pin the expected serial.
+    pub core_client_cert_der: Vec<u8>,
 }
 
 pub struct Gateway {

@@ -61,6 +61,8 @@ pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("VERGEN_G
 
 pub const GRPC_CERT_NAME: &str = "gateway_grpc_cert.pem";
 pub const GRPC_KEY_NAME: &str = "gateway_grpc_key.pem";
+pub const GRPC_CA_CERT_NAME: &str = "grpc_ca_cert.pem";
+pub const CORE_CLIENT_CERT_NAME: &str = "core_client_cert.pem";
 
 /// Masks object's field with "***" string.
 /// Used to log sensitive/secret objects.

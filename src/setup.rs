@@ -12,12 +12,12 @@ use tower::ServiceBuilder;
 use tracing::instrument;
 
 use crate::{
-    GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
+    CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
     error::GatewayError,
     gateway::TlsConfig,
     proto::{
-        common::{CertificateInfo, DerPayload, LogEntry},
+        common::{CertBundle, CertificateInfo, DerPayload, LogEntry},
         gateway::gateway_setup_server,
     },
 };
@@ -49,9 +49,32 @@ pub async fn run_setup(
         .await?;
     // Write key to a file.
     options
+        .clone()
         .open(key_path)
         .await?
         .write_all(tls_config.grpc_key_pem.as_bytes())
+        .await?;
+    // Write CA certificate to a file.
+    options
+        .clone()
+        .open(cert_dir.join(GRPC_CA_CERT_NAME))
+        .await?
+        .write_all(tls_config.grpc_ca_cert_pem.as_bytes())
+        .await?;
+    // Write Core client certificate (PEM-encoded) to a file for serial pinning on restart.
+    let core_client_cert_pem = defguard_certs::der_to_pem(
+        &tls_config.core_client_cert_der,
+        defguard_certs::PemLabel::Certificate,
+    )
+    .map_err(|err| {
+        GatewayError::SetupError(format!(
+            "Failed to PEM-encode Core client certificate: {err}"
+        ))
+    })?;
+    options
+        .open(cert_dir.join(CORE_CLIENT_CERT_NAME))
+        .await?
+        .write_all(core_client_cert_pem.as_bytes())
         .await?;
     log::info!(
         "Generated gRPC TLS certificates have been saved to {}",
@@ -309,8 +332,8 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
     }
 
     #[instrument(skip(self, request))]
-    async fn send_cert(&self, request: Request<DerPayload>) -> Result<Response<()>, Status> {
-        debug!("Core sending back signed certificate for installation");
+    async fn send_cert(&self, request: Request<CertBundle>) -> Result<Response<()>, Status> {
+        debug!("Core sending back signed certificate bundle for installation");
         let token = request
             .metadata()
             .get(AUTH_HEADER)
@@ -324,25 +347,48 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
             return Err(Status::unauthenticated("Invalid session token"));
         }
 
-        let der_payload = request.into_inner();
-        let cert_der = der_payload.der_data;
-        debug!(
-            "Received signed certificate from Core ({} bytes)",
-            cert_der.len()
-        );
+        let bundle = request.into_inner();
 
-        debug!("Parsing received certificate DER data");
-        let grpc_cert_pem =
-            match defguard_certs::der_to_pem(&cert_der, defguard_certs::PemLabel::Certificate) {
-                Ok(pem) => pem,
-                Err(err) => {
-                    let msg = format!("Failed to convert certificate DER to PEM: {err}");
-                    error!("{msg}");
-                    self.clear_setup_session();
-                    return Err(Status::internal(msg));
-                }
-            };
-        debug!("Certificate processed successfully");
+        debug!(
+            "Received component certificate from Core ({} bytes)",
+            bundle.component_cert_der.len()
+        );
+        debug!("Parsing component certificate DER data");
+        let grpc_cert_pem = match defguard_certs::der_to_pem(
+            &bundle.component_cert_der,
+            defguard_certs::PemLabel::Certificate,
+        ) {
+            Ok(pem) => pem,
+            Err(err) => {
+                let msg = format!("Failed to convert component certificate DER to PEM: {err}");
+                error!("{msg}");
+                self.clear_setup_session();
+                return Err(Status::internal(msg));
+            }
+        };
+
+        debug!(
+            "Received CA certificate from Core ({} bytes)",
+            bundle.ca_cert_der.len()
+        );
+        debug!("Parsing CA certificate DER data");
+        let grpc_ca_cert_pem = match defguard_certs::der_to_pem(
+            &bundle.ca_cert_der,
+            defguard_certs::PemLabel::Certificate,
+        ) {
+            Ok(pem) => pem,
+            Err(err) => {
+                let msg = format!("Failed to convert CA certificate DER to PEM: {err}");
+                error!("{msg}");
+                self.clear_setup_session();
+                return Err(Status::internal(msg));
+            }
+        };
+
+        debug!(
+            "Received Core client certificate ({} bytes); will pin serial for mTLS",
+            bundle.core_client_cert_der.len()
+        );
 
         let key_pair = {
             let key_pair = self
@@ -367,6 +413,8 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
         let configuration = TlsConfig {
             grpc_key_pem: key_pair.serialize_pem(),
             grpc_cert_pem,
+            grpc_ca_cert_pem,
+            core_client_cert_der: bundle.core_client_cert_der,
         };
 
         let Some(sender) = self.setup_tx.lock().await.take() else {
