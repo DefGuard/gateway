@@ -151,7 +151,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu=/usr/bin/defguard-gateway
             defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
             example-config.toml=/etc/defguard/gateway.toml.sample"
-          fpm_opts: "--architecture arm64 --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-freebsd.rpm --after-install after-install.sh"
+          fpm_opts: "--architecture arm64 --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu.rpm --after-install after-install.sh"
 
       - name: Build FreeBSD package
         uses: defGuard/fpm-action@main
