@@ -8,7 +8,7 @@ use std::{
 };
 
 use defguard_gateway::{
-    GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
+    CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::get_config,
     error::GatewayError,
     execute_command,
@@ -44,12 +44,17 @@ async fn main() -> Result<(), GatewayError> {
         tokio::fs::set_permissions(cert_dir, Permissions::from_mode(0o700)).await?;
     }
 
-    let (grpc_cert, grpc_key) = (
+    let (grpc_cert, grpc_key, grpc_ca_cert, core_client_cert_pem) = (
         read_to_string(cert_dir.join(GRPC_CERT_NAME)).ok(),
         read_to_string(cert_dir.join(GRPC_KEY_NAME)).ok(),
+        read_to_string(cert_dir.join(GRPC_CA_CERT_NAME)).ok(),
+        read_to_string(cert_dir.join(CORE_CLIENT_CERT_NAME)).ok(),
     );
 
-    let needs_setup = grpc_cert.is_none() || grpc_key.is_none();
+    let needs_setup = grpc_cert.is_none()
+        || grpc_key.is_none()
+        || grpc_ca_cert.is_none()
+        || core_client_cert_pem.is_none();
 
     // TODO: The channel size may need to be adjusted or some other approach should be used
     // to avoid dropping log messages.
@@ -114,14 +119,23 @@ async fn main() -> Result<(), GatewayError> {
                 config.cert_dir.display()
             );
             run_setup(&config, Arc::clone(&logs_rx)).await?
-        } else if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
+        } else if let (Some(cert), Some(key), Some(ca_cert), Some(client_cert_pem)) =
+            (grpc_cert, grpc_key, grpc_ca_cert, core_client_cert_pem)
+        {
             log::info!(
                 "Using existing gRPC TLS certificates from {}",
                 config.cert_dir.display()
             );
+            let core_client_cert_der = defguard_certs::parse_pem_certificate(&client_cert_pem)
+                .map_err(|e| {
+                    GatewayError::SetupError(format!("Failed to parse Core client cert: {e}"))
+                })?
+                .to_vec();
             TlsConfig {
                 grpc_cert_pem: cert,
                 grpc_key_pem: key,
+                grpc_ca_cert_pem: ca_cert,
+                core_client_cert_der,
             }
         } else {
             return Err(GatewayError::SetupError(
