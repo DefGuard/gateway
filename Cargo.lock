@@ -597,6 +597,8 @@ dependencies = [
  "nix 0.31.2",
  "prost",
  "prost-types",
+ "rustls-pki-types",
+ "rustls-webpki",
  "serde",
  "syslog",
  "thiserror 2.0.18",

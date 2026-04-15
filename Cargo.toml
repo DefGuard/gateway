@@ -10,6 +10,8 @@ chrono = "0.4"
 clap = { version = "4.6", features = ["derive", "env"] }
 defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "564dc72c" }
 defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "7d28f46e" }
+rustls-webpki = { version = "0.103", features = ["ring", "std"] }
+rustls-pki-types = "1"
 defguard_wireguard_rs = "0.9"
 env_logger = "0.11"
 ipnetwork = "0.21"
