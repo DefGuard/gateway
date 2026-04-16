@@ -16,7 +16,7 @@ fn default_log_level() -> String {
 }
 
 fn default_adoption_timeout() -> u64 {
-    5
+    10
 }
 
 fn default_syslog_socket() -> PathBuf {
@@ -123,13 +123,13 @@ pub struct Config {
     )]
     pub cert_dir: PathBuf,
 
-    /// Time limit in minutes for the auto-adoption process. After this time, gateway
-    /// will reject adoption attempts until restarted.
+    /// Time limit in minutes for the auto-adoption process.
+    /// After this time, gateway will reject adoption attempts until restarted.
     #[arg(
         long,
         short = 't',
         env = "DEFGUARD_ADOPTION_TIMEOUT",
-        default_value = "5"
+        default_value = "10"
     )]
     #[serde(default = "default_adoption_timeout")]
     pub adoption_timeout: u64,
