@@ -15,6 +15,10 @@ fn default_log_level() -> String {
     String::from("info")
 }
 
+fn default_adoption_timeout() -> u64 {
+    5
+}
+
 fn default_syslog_socket() -> PathBuf {
     PathBuf::from("/var/run/log")
 }
@@ -118,12 +122,28 @@ pub struct Config {
         default_value = "/etc/defguard/certs"
     )]
     pub cert_dir: PathBuf,
+
+    /// Time limit in minutes for the auto-adoption process. After this time, gateway
+    /// will reject adoption attempts until restarted.
+    #[arg(
+        long,
+        short = 't',
+        env = "DEFGUARD_ADOPTION_TIMEOUT",
+        default_value = "5"
+    )]
+    #[serde(default = "default_adoption_timeout")]
+    pub adoption_timeout: u64,
 }
 
 impl Config {
     #[must_use]
     pub fn stats_period(&self) -> Duration {
         Duration::from_secs(self.stats_period)
+    }
+
+    #[must_use]
+    pub fn adoption_timeout(&self) -> Duration {
+        Duration::from_secs(self.adoption_timeout * 60)
     }
 
     /// Return [`SocketAddr`] for gRPC to listen on.
@@ -158,6 +178,7 @@ impl Default for Config {
             disable_firewall_management: false,
             http_bind_address: None,
             cert_dir: PathBuf::from("/etc/defguard/certs"),
+            adoption_timeout: 5,
         }
     }
 }
