@@ -897,7 +897,7 @@ dependencies = [
 [[package]]
 name = "defguard_common"
 version = "2.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=9e1054e3#9e1054e34b479dd978baec19bb8024ee15865f22"
+source = "git+https://github.com/DefGuard/defguard.git?rev=cb7231f5#cb7231f5f0e72ddead5aa162e09047939fa1939f"
 dependencies = [
  "anyhow",
  "argon2",
@@ -937,7 +937,7 @@ dependencies = [
 [[package]]
 name = "defguard_grpc_tls"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=9e1054e3#9e1054e34b479dd978baec19bb8024ee15865f22"
+source = "git+https://github.com/DefGuard/defguard.git?rev=cb7231f5#cb7231f5f0e72ddead5aa162e09047939fa1939f"
 dependencies = [
  "defguard_common",
  "http",
@@ -2314,7 +2314,7 @@ dependencies = [
 [[package]]
 name = "model_derive"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=9e1054e3#9e1054e34b479dd978baec19bb8024ee15865f22"
+source = "git+https://github.com/DefGuard/defguard.git?rev=cb7231f5#cb7231f5f0e72ddead5aa162e09047939fa1939f"
 dependencies = [
  "quote",
  "syn",

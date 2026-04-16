@@ -636,9 +636,9 @@ impl GatewayServer {
         builder
             .add_service(
                 ServiceBuilder::new()
-                    .layer(InterceptorLayer::new(certificate_serial_interceptor(Some(
+                    .layer(InterceptorLayer::new(certificate_serial_interceptor(
                         expected_serial,
-                    ))))
+                    )))
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_server::GatewayServer::new(self)),
             )
