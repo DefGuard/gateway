@@ -836,6 +836,7 @@ dependencies = [
  "nix 0.31.2",
  "prost",
  "prost-types",
+ "rustls",
  "rustls-pki-types",
  "rustls-webpki",
  "serde",

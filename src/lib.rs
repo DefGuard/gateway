@@ -57,6 +57,9 @@ pub mod enterprise;
 pub mod logging;
 pub mod setup;
 
+#[cfg(test)]
+mod tests;
+
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("VERGEN_GIT_SHA"));
 
 pub const GRPC_CERT_NAME: &str = "gateway_grpc_cert.pem";
