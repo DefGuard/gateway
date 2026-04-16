@@ -20,7 +20,6 @@ use super::mock_wgapi::NullWgApi;
 use crate::{
     config::Config,
     gateway::{Gateway, GatewayServer, TlsConfig},
-    proto::gateway::CoreResponse,
     proto::gateway::gateway_client::GatewayClient,
 };
 
@@ -44,7 +43,7 @@ impl TestCerts {
 
         // Gateway server cert: ServerAuth EKU, IP SAN 127.0.0.1
         let gw_key = generate_key_pair().unwrap();
-        let gw_csr = Csr::new(&gw_key, &["127.0.0.1".to_string()], vec![]).unwrap();
+        let gw_csr = Csr::new(&gw_key, &["127.0.0.1".to_string()], Vec::new()).unwrap();
         let gw_server_cert = ca.sign_server_cert(&gw_csr).unwrap();
         let gateway_cert_pem = cert_der_to_pem(gw_server_cert.der()).unwrap();
         let gateway_key_pem = der_to_pem(gw_key.serialized_der(), PemLabel::PrivateKey).unwrap();
@@ -160,7 +159,7 @@ async fn connect(
 /// The stream body is irrelevant — we only care whether the mTLS + serial-pin
 /// interceptors accept or reject the connection.
 async fn call_bidi(client: &mut GatewayClient<Channel>) -> tonic::Status {
-    let empty: Vec<CoreResponse> = vec![];
+    let empty = Vec::new();
     match client.bidi(Request::new(stream_iter(empty))).await {
         Ok(_) => tonic::Status::ok("accepted"),
         Err(status) => status,
@@ -230,7 +229,7 @@ async fn no_client_cert_rejected() {
         return;
     };
 
-    let empty: Vec<CoreResponse> = vec![];
+    let empty = Vec::new();
     let result = client.bidi(Request::new(stream_iter(empty))).await;
 
     assert!(
@@ -289,7 +288,7 @@ async fn rogue_ca_client_rejected() {
         return;
     };
 
-    let empty: Vec<CoreResponse> = vec![];
+    let empty = Vec::new();
     let result = client.bidi(Request::new(stream_iter(empty))).await;
 
     assert!(
