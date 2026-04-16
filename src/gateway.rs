@@ -566,9 +566,11 @@ impl GatewayServer {
     }
 
     /// Starts the gateway process.
-    /// * Retrieves configuration and configuration updates from Defguard gRPC server
-    /// * Manages the interface according to configuration and updates
-    /// * Sends interface statistics to Defguard server periodically
+    /// * Requires a valid mTLS configuration to be set (via `set_tls_config`) before starting;
+    ///   returns an error if TLS configuration is absent — the gRPC server never starts in plain-text mode
+    /// * Retrieves configuration and configuration updates from Defguard core via a mTLS-secured gRPC server
+    /// * Manages the WireGuard interface according to configuration and updates
+    /// * Sends interface statistics to Defguard core periodically
     pub async fn start(self, config: Config) -> Result<(), GatewayError> {
         info!("Starting Defguard Gateway version {VERSION} with configuration: {config:?}");
 
@@ -601,36 +603,42 @@ impl GatewayServer {
             execute_command(post_up)?;
         }
 
-        let tls_config = self.gateway.lock().unwrap().tls_config.clone();
+        let tls_config = self
+            .gateway
+            .lock()
+            .expect("gateway mutex poison")
+            .tls_config
+            .clone();
 
         // Build gRPC server.
         let addr = config.grpc_socket();
         info!("gRPC server is listening on {addr}");
 
-        let mut builder = if let Some(ref tls) = tls_config {
-            let identity = Identity::from_pem(&tls.grpc_cert_pem, &tls.grpc_key_pem);
-            let ca = Certificate::from_pem(&tls.grpc_ca_cert_pem);
-            Server::builder()
-                .tls_config(ServerTlsConfig::new().identity(identity).client_ca_root(ca))?
-        } else {
-            Server::builder()
-        };
+        let tls = tls_config.ok_or_else(|| {
+            GatewayError::SetupError(
+                "TLS configuration is required; gateway gRPC server cannot start without mTLS"
+                    .into(),
+            )
+        })?;
 
-        // Extract Core client cert serial for pinning (None in no-TLS mode).
-        let expected_serial = tls_config.as_ref().map(|tls| {
-            CertificateInfo::from_der(&tls.core_client_cert_der)
-                .expect("core client cert DER stored in TlsConfig must be valid")
-                .serial
-        });
+        let identity = Identity::from_pem(&tls.grpc_cert_pem, &tls.grpc_key_pem);
+        let ca = Certificate::from_pem(&tls.grpc_ca_cert_pem);
+        let mut builder = Server::builder()
+            .tls_config(ServerTlsConfig::new().identity(identity).client_ca_root(ca))?;
+
+        // Extract Core client cert serial for pinning.
+        let expected_serial = CertificateInfo::from_der(&tls.core_client_cert_der)
+            .expect("core client cert DER stored in TlsConfig must be valid")
+            .serial;
 
         // Start gRPC server. This should run indefinitely.
         debug!("Serving gRPC");
         builder
             .add_service(
                 ServiceBuilder::new()
-                    .layer(InterceptorLayer::new(certificate_serial_interceptor(
+                    .layer(InterceptorLayer::new(certificate_serial_interceptor(Some(
                         expected_serial,
-                    )))
+                    ))))
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_server::GatewayServer::new(self)),
             )
