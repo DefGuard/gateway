@@ -8,7 +8,7 @@ use std::{
 use defguard_certs::{
     CertificateAuthority, Csr, PemLabel, cert_der_to_pem, der_to_pem, generate_key_pair,
 };
-use rustls::crypto::aws_lc_rs;
+use rustls::crypto::ring;
 use tokio::{select, spawn, sync::oneshot, time::sleep};
 use tokio_stream::iter as stream_iter;
 use tonic::{
@@ -99,7 +99,7 @@ fn build_gateway(config: &Config) -> Gateway {
 /// Must be called before any TLS code runs. Safe to call from multiple tests —
 /// subsequent calls after the first are silently ignored.
 fn init_crypto() {
-    let _ = aws_lc_rs::default_provider().install_default();
+    let _ = ring::default_provider().install_default();
 }
 
 /// Spawn a configured `GatewayServer` on a free port.
@@ -166,10 +166,6 @@ async fn call_bidi(client: &mut GatewayClient<Channel>) -> tonic::Status {
         Err(status) => status,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 /// `start()` must return `Err` immediately when no `TlsConfig` has been set.
 #[tokio::test]

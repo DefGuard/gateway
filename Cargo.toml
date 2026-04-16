@@ -50,7 +50,7 @@ nix = { version = "0.31", default-features = false, features = ["ioctl"] }
 
 [dev-dependencies]
 defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "564dc72c" }
-rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tokio = { version = "1", features = ["full"] }
 tonic = { version = "0.14", default-features = false, features = [
     "codegen",
