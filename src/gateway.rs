@@ -9,6 +9,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use defguard_certs::CertificateInfo;
+use defguard_grpc_tls::server::certificate_serial_interceptor;
 use defguard_version::{
     ComponentInfo, DefguardComponent, Version, get_tracing_variables, server::DefguardVersionLayer,
 };
@@ -21,7 +23,8 @@ use tokio::{
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{
     Request, Response, Status, Streaming,
-    transport::{Identity, Server, ServerTlsConfig},
+    service::InterceptorLayer,
+    transport::{Certificate, Identity, Server, ServerTlsConfig},
 };
 use tower::ServiceBuilder;
 use tracing::instrument;
@@ -598,36 +601,36 @@ impl GatewayServer {
             execute_command(post_up)?;
         }
 
-        let grpc_cert = self
-            .gateway
-            .lock()
-            .unwrap()
-            .tls_config
-            .as_ref()
-            .map(|c| c.grpc_cert_pem.clone());
-        let grpc_key = self
-            .gateway
-            .lock()
-            .unwrap()
-            .tls_config
-            .as_ref()
-            .map(|c| c.grpc_key_pem.clone());
+        let tls_config = self.gateway.lock().unwrap().tls_config.clone();
 
         // Build gRPC server.
         let addr = config.grpc_socket();
         info!("gRPC server is listening on {addr}");
-        let mut builder = if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
-            let identity = Identity::from_pem(cert, key);
-            Server::builder().tls_config(ServerTlsConfig::new().identity(identity))?
+
+        let mut builder = if let Some(ref tls) = tls_config {
+            let identity = Identity::from_pem(&tls.grpc_cert_pem, &tls.grpc_key_pem);
+            let ca = Certificate::from_pem(&tls.grpc_ca_cert_pem);
+            Server::builder()
+                .tls_config(ServerTlsConfig::new().identity(identity).client_ca_root(ca))?
         } else {
             Server::builder()
         };
+
+        // Extract Core client cert serial for pinning (None in no-TLS mode).
+        let expected_serial = tls_config.as_ref().map(|tls| {
+            CertificateInfo::from_der(&tls.core_client_cert_der)
+                .expect("core client cert DER stored in TlsConfig must be valid")
+                .serial
+        });
 
         // Start gRPC server. This should run indefinitely.
         debug!("Serving gRPC");
         builder
             .add_service(
                 ServiceBuilder::new()
+                    .layer(InterceptorLayer::new(certificate_serial_interceptor(
+                        expected_serial,
+                    )))
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_server::GatewayServer::new(self)),
             )
