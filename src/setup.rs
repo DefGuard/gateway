@@ -119,7 +119,7 @@ impl GatewaySetupServer {
                 _ = tokio::time::sleep(adoption_timeout) => {
                     adoption_expired.store(true, Ordering::Relaxed);
                     error!(
-                        "Gateway adoption expired and is now blocked. Restart the Gateway to enable auto-adoption."
+                        "Gateway adoption expired and is now blocked. Restart the Gateway to enable adoption."
                     );
                 }
                 _ = cancel_rx => {}
@@ -205,7 +205,7 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
     async fn start(&self, request: Request<()>) -> Result<Response<Self::StartStream>, Status> {
         debug!("Core initiated setup process, preparing to stream logs");
         if self.adoption_expired.load(Ordering::Relaxed) {
-            let error_message = "Gateway adoption expired and is now blocked. Restart the Gateway to enable auto-adoption.";
+            let error_message = "Gateway adoption expired and is now blocked. Restart the Gateway to enable adoption.";
             error!("{error_message}");
             return Err(Status::failed_precondition(error_message));
         }
