@@ -1,9 +1,3 @@
-use defguard_version::{
-    ComponentInfo, DefguardComponent, Version, client::ClientVersionInterceptor,
-    get_tracing_variables,
-};
-use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
-use gethostname::gethostname;
 use std::{
     collections::HashMap,
     fs::read_to_string,
@@ -14,6 +8,13 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
+
+use defguard_version::{
+    ComponentInfo, DefguardComponent, Version, client::ClientVersionInterceptor,
+    get_tracing_variables,
+};
+use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
+use gethostname::gethostname;
 use tokio::{
     select,
     sync::mpsc,
