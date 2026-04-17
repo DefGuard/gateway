@@ -7,7 +7,7 @@ use defguard_wireguard_rs::{
 
 /// A minimal no-op WireGuard API implementation for use in tests.
 ///
-/// All operations return an error — the gateway warns and continues on
+/// All operations return an error - the gateway warns and continues on
 /// interface creation failure, and no other WireGuard operations are invoked
 /// during the mTLS handshake tests.
 pub(crate) struct NullWgApi;

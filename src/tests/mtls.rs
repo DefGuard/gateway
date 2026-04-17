@@ -48,13 +48,13 @@ impl TestCerts {
         let gateway_cert_pem = cert_der_to_pem(gw_server_cert.der()).unwrap();
         let gateway_key_pem = der_to_pem(gw_key.serialized_der(), PemLabel::PrivateKey).unwrap();
 
-        // Core client cert A — pinned serial
+        // Core client cert A - pinned serial
         let client_a = ca.issue_core_client_cert("core-client-a").unwrap();
         let core_client_cert_der = client_a.cert_der.clone();
         let core_client_cert_pem = cert_der_to_pem(&client_a.cert_der).unwrap();
         let core_client_key_pem = der_to_pem(&client_a.key_der, PemLabel::PrivateKey).unwrap();
 
-        // Core client cert B — different serial, same CA
+        // Core client cert B - different serial, same CA
         let client_b = ca.issue_core_client_cert("core-client-b").unwrap();
         let wrong_serial_cert_pem = cert_der_to_pem(&client_b.cert_der).unwrap();
         let wrong_serial_key_pem = der_to_pem(&client_b.key_der, PemLabel::PrivateKey).unwrap();
@@ -95,7 +95,7 @@ fn build_gateway(config: &Config) -> Gateway {
 
 /// Install the rustls AWS-LC crypto provider for the process.
 ///
-/// Must be called before any TLS code runs. Safe to call from multiple tests —
+/// Must be called before any TLS code runs. Safe to call from multiple tests -
 /// subsequent calls after the first are silently ignored.
 fn init_crypto() {
     let _ = ring::default_provider().install_default();
@@ -156,7 +156,7 @@ async fn connect(
 
 /// Open a `bidi` streaming call with an empty request stream and return the status.
 ///
-/// The stream body is irrelevant — we only care whether the mTLS + serial-pin
+/// The stream body is irrelevant - we only care whether the mTLS + serial-pin
 /// interceptors accept or reject the connection.
 async fn call_bidi(client: &mut GatewayClient<Channel>) -> tonic::Status {
     let empty = Vec::new();
@@ -189,7 +189,7 @@ async fn start_errors_without_tls_config() {
 /// A client presenting the correct CA-signed cert with the expected serial must be accepted.
 ///
 /// The `bidi` call may be rejected by the version interceptor (no version headers are sent),
-/// but it must NOT be rejected with `Unauthenticated` — that would indicate the mTLS layer
+/// but it must NOT be rejected with `Unauthenticated` - that would indicate the mTLS layer
 /// or serial-pin interceptor wrongly rejected the cert.
 #[tokio::test]
 async fn valid_mtls_client_accepted() {
@@ -223,7 +223,7 @@ async fn no_client_cert_rejected() {
     let certs = TestCerts::generate();
     let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
 
-    // connect() is lazy in tonic — the TLS handshake happens on the first RPC.
+    // connect() is lazy in tonic - the TLS handshake happens on the first RPC.
     let Ok(mut client) = connect(port, &certs.ca_cert_pem, None).await else {
         let _ = shutdown_tx.send(());
         return;
@@ -276,7 +276,7 @@ async fn rogue_ca_client_rejected() {
     let certs = TestCerts::generate();
     let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
 
-    // connect() is lazy in tonic — the TLS handshake happens on the first RPC.
+    // connect() is lazy in tonic - the TLS handshake happens on the first RPC.
     let Ok(mut client) = connect(
         port,
         &certs.ca_cert_pem,
@@ -295,13 +295,13 @@ async fn rogue_ca_client_rejected() {
         result.is_err(),
         "rogue-CA client cert must be rejected; got Ok",
     );
-    // Must NOT be FailedPrecondition — that would mean the cert was accepted by the
+    // Must NOT be FailedPrecondition - that would mean the cert was accepted by the
     // TLS layer and reached the gRPC handler.
     if let Err(ref status) = result {
         assert_ne!(
             status.code(),
             Code::FailedPrecondition,
-            "rogue-CA cert reached the gRPC handler — server-side CA verification is missing; \
+            "rogue-CA cert reached the gRPC handler - server-side CA verification is missing; \
              got: {status}",
         );
     }
