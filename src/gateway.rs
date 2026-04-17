@@ -563,7 +563,7 @@ impl GatewayServer {
 
     /// Starts the gateway process.
     /// * Requires a valid mTLS configuration to be set (via `set_tls_config`) before starting;
-    ///   returns an error if TLS configuration is absent — the gRPC server never starts in plain-text mode
+    ///   returns an error if TLS configuration is absent - the gRPC server never starts in plain-text mode
     /// * Retrieves configuration and configuration updates from Defguard core via a mTLS-secured gRPC server
     /// * Manages the WireGuard interface according to configuration and updates
     /// * Sends interface statistics to Defguard core periodically

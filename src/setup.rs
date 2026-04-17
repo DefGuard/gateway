@@ -32,8 +32,10 @@ type LogsReceiver = Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>;
 
 /// Verify that both `component_der` and `core_client_der` are signed by `ca_der`.
 ///
-/// Uses ECDSA P-256 / SHA-256 via ring (FreeBSD-compatible). Returns an error
-/// message string on any failure so the caller can forward it as a gRPC status.
+/// Uses ECDSA P-256 via `ring` (chosen for FreeBSD/OPNsense compatibility;
+/// `aws-lc-rs` does not support FreeBSD). The proxy counterpart uses `aws-lc-rs`.
+/// Both verify the same algorithm set: `ECDSA_P256_SHA256` and `ECDSA_P256_SHA384`.
+/// Returns an error message string on any failure so the caller can forward it as a gRPC status.
 fn validate_cert_bundle(
     ca_der: &[u8],
     component_der: &[u8],
