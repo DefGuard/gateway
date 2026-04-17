@@ -269,6 +269,7 @@ impl FirewallManagementApi for FirewallApi {
 
         let mut batch = Batch::new();
         set_nat_rules(&mut batch, &self.ifname, masquerade_enabled, snat_bindings)?;
+        send_batch(&batch.finalize(), &self.socket)?;
 
         debug!("Finished POSTROUTING chain rules setup");
         Ok(())
