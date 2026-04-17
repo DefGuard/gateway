@@ -108,8 +108,8 @@ impl GatewaySetupServer {
         let addr = config.grpc_socket();
         let adoption_timeout = config.adoption_timeout();
         info!(
-            "Starting Gateway setup server on {addr} and awaiting configuration from Core for {} seconds",
-            adoption_timeout.as_secs()
+            "Starting Gateway setup server on {addr} and awaiting configuration from Core for {} min",
+            adoption_timeout.as_secs() / 60
         );
 
         let adoption_expired = Arc::clone(&self.adoption_expired);
@@ -146,6 +146,7 @@ impl GatewaySetupServer {
             })
             .await?;
 
+        // Skip blocking Gateway adoption if adoption was already done
         if server_config.is_some() {
             let _ = cancel_tx.send(());
         }
