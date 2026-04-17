@@ -9,8 +9,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use defguard_certs::CertificateInfo;
-use defguard_grpc_tls::server::certificate_serial_interceptor;
+use defguard_certs::{CertificateError, CertificateInfo};
+use defguard_grpc_tls::{certs::server_tls_config, server::certificate_serial_interceptor};
 use defguard_version::{
     ComponentInfo, DefguardComponent, Version, get_tracing_variables, server::DefguardVersionLayer,
 };
@@ -21,11 +21,7 @@ use tokio::{
     time::interval,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tonic::{
-    Request, Response, Status, Streaming,
-    service::InterceptorLayer,
-    transport::{Certificate, Identity, Server, ServerTlsConfig},
-};
+use tonic::{Request, Response, Status, Streaming, service::InterceptorLayer, transport::Server};
 use tower::ServiceBuilder;
 use tracing::instrument;
 
@@ -621,14 +617,14 @@ impl GatewayServer {
             )
         })?;
 
-        let identity = Identity::from_pem(&tls.grpc_cert_pem, &tls.grpc_key_pem);
-        let ca = Certificate::from_pem(&tls.grpc_ca_cert_pem);
-        let mut builder = Server::builder()
-            .tls_config(ServerTlsConfig::new().identity(identity).client_ca_root(ca))?;
+        let tls_config =
+            server_tls_config(&tls.grpc_cert_pem, &tls.grpc_key_pem, &tls.grpc_ca_cert_pem)
+                .map_err(|e| GatewayError::SetupError(e.to_string()))?;
+        let mut builder = Server::builder().tls_config(tls_config)?;
 
         // Extract Core client cert serial for pinning.
         let expected_serial = CertificateInfo::from_der(&tls.core_client_cert_der)
-            .expect("core client cert DER stored in TlsConfig must be valid")
+            .map_err(|e: CertificateError| GatewayError::SetupError(e.to_string()))?
             .serial;
 
         // Start gRPC server. This should run indefinitely.
