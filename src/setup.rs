@@ -1,5 +1,8 @@
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -153,6 +156,7 @@ pub struct GatewaySetupServer {
     current_session_token: Arc<Mutex<Option<String>>>,
     setup_tx: Arc<tokio::sync::Mutex<Option<oneshot::Sender<TlsConfig>>>>,
     setup_rx: Arc<tokio::sync::Mutex<oneshot::Receiver<TlsConfig>>>,
+    adoption_expired: Arc<AtomicBool>,
 }
 
 impl Clone for GatewaySetupServer {
@@ -163,6 +167,7 @@ impl Clone for GatewaySetupServer {
             current_session_token: Arc::clone(&self.current_session_token),
             setup_tx: Arc::clone(&self.setup_tx),
             setup_rx: Arc::clone(&self.setup_rx),
+            adoption_expired: Arc::clone(&self.adoption_expired),
         }
     }
 }
@@ -177,6 +182,7 @@ impl GatewaySetupServer {
             current_session_token: Arc::new(Mutex::new(None)),
             setup_tx: Arc::new(tokio::sync::Mutex::new(Some(setup_tx))),
             setup_rx: Arc::new(tokio::sync::Mutex::new(setup_rx)),
+            adoption_expired: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -186,7 +192,25 @@ impl GatewaySetupServer {
         let setup_rx = Arc::clone(&self.setup_rx);
 
         let addr = config.grpc_socket();
-        info!("Starting Gateway setup server on {addr} and awaiting configuration from Core");
+        let adoption_timeout = config.adoption_timeout();
+        info!(
+            "Starting Gateway setup server on {addr} and awaiting configuration from Core for {} min",
+            adoption_timeout.as_secs() / 60
+        );
+
+        let adoption_expired = Arc::clone(&self.adoption_expired);
+        let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = tokio::time::sleep(adoption_timeout) => {
+                    adoption_expired.store(true, Ordering::Relaxed);
+                    error!(
+                        "Gateway adoption expired and is now blocked. Restart the Gateway to enable adoption."
+                    );
+                }
+                _ = cancel_rx => {}
+            }
+        });
 
         server_builder
             .add_service(
@@ -207,6 +231,11 @@ impl GatewaySetupServer {
                 }
             })
             .await?;
+
+        // Skip blocking Gateway adoption if adoption was already done
+        if server_config.is_some() {
+            let _ = cancel_tx.send(());
+        }
 
         server_config.ok_or_else(|| {
             GatewayError::SetupError("Failed to receive setup configuration from Core".into())
@@ -261,6 +290,11 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
     #[instrument(skip(self, request))]
     async fn start(&self, request: Request<()>) -> Result<Response<Self::StartStream>, Status> {
         debug!("Core initiated setup process, preparing to stream logs");
+        if self.adoption_expired.load(Ordering::Relaxed) {
+            let error_message = "Gateway adoption expired and is now blocked. Restart the Gateway to enable adoption.";
+            error!("{error_message}");
+            return Err(Status::failed_precondition(error_message));
+        }
         if self.is_setup_in_progress() {
             error!("Setup already in progress, rejecting new setup request");
             return Err(Status::resource_exhausted("Setup already in progress"));
