@@ -35,14 +35,6 @@ pub struct Config {
     #[arg(long, env = "DEFGUARD_GRPC_PORT", default_value = "50066")]
     pub(crate) grpc_port: u16,
 
-    /// Gateway gRPC server certificate.
-    #[arg(long, env = "DEFGUARD_GATEWAY_GRPC_CERT")]
-    pub(crate) grpc_cert: Option<String>,
-
-    /// Gateway gRPC server private key.
-    #[arg(long, env = "DEFGUARD_GATEWAY_GRPC_KEY")]
-    pub(crate) grpc_key: Option<String>,
-
     /// Use userspace WireGuard implementation e.g. wireguard-go
     #[arg(long, short = 'u', env = "DEFGUARD_USERSPACE")]
     pub userspace: bool,
@@ -159,8 +151,6 @@ impl Default for Config {
             log_level: "info".into(),
             grpc_port: 50066,
             userspace: false,
-            grpc_cert: None,
-            grpc_key: None,
             stats_period: 15,
             ifname: "wg0".into(),
             pidfile: None,
