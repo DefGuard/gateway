@@ -51,6 +51,11 @@ fn load_tls_config(cert_dir: &Path) -> Result<Option<TlsConfig>, GatewayError> {
 
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
+    // Install the ring CryptoProvider as the process-wide default for rustls.
+    // Both ring and aws-lc-rs may be pulled in transitively; without an explicit
+    // selection rustls panics at runtime when it cannot determine which to use.
+    defguard_gateway::init_crypto_provider();
+
     // parse config
     let config = get_config()?;
 
