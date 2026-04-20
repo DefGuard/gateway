@@ -9,7 +9,12 @@ use defguard_certs::{
     CertificateAuthority, Csr, PemLabel, cert_der_to_pem, der_to_pem, generate_key_pair,
 };
 use rustls::crypto::ring;
-use tokio::{select, spawn, sync::oneshot, time::sleep};
+use tokio::{
+    net::TcpStream,
+    select, spawn,
+    sync::oneshot,
+    time::{Instant, sleep},
+};
 use tokio_stream::iter as stream_iter;
 use tonic::{
     Code, Request,
@@ -93,7 +98,7 @@ fn build_gateway(config: &Config) -> Gateway {
     Gateway::new(config.clone(), NullWgApi).unwrap()
 }
 
-/// Install the rustls AWS-LC crypto provider for the process.
+/// Install the rustls `ring` crypto provider for the process.
 ///
 /// Must be called before any TLS code runs. Safe to call from multiple tests -
 /// subsequent calls after the first are silently ignored.
@@ -103,6 +108,9 @@ fn init_crypto() {
 
 /// Spawn a configured `GatewayServer` on a free port.
 /// Returns `(bound_port, shutdown_tx)`.
+///
+/// Waits until the server is accepting TCP connections before returning, so
+/// callers do not need a fixed sleep to avoid startup races.
 async fn spawn_test_gateway(certs: &TestCerts) -> (u16, oneshot::Sender<()>) {
     let port = TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -128,7 +136,19 @@ async fn spawn_test_gateway(certs: &TestCerts) -> (u16, oneshot::Sender<()>) {
         }
     });
 
-    sleep(Duration::from_millis(150)).await;
+    // Wait until the server is accepting TCP connections instead of sleeping a
+    // fixed amount. This eliminates the flaky startup race while keeping the
+    // helper fast on capable hardware.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if Instant::now() >= deadline {
+            panic!("timeout waiting for test gRPC server to start on port {port}");
+        }
+        if TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
+            break;
+        }
+        sleep(Duration::from_millis(20)).await;
+    }
 
     (port, shutdown_tx)
 }
@@ -217,24 +237,31 @@ async fn valid_mtls_client_accepted() {
 }
 
 /// A client that presents no certificate must be rejected at the TLS layer.
+///
+/// tonic may reject the connection eagerly (at `connect()` time) or lazily
+/// (on the first RPC). Both outcomes are treated as the expected rejection.
 #[tokio::test]
 async fn no_client_cert_rejected() {
     init_crypto();
     let certs = TestCerts::generate();
     let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
 
-    // connect() is lazy in tonic - the TLS handshake happens on the first RPC.
-    let Ok(mut client) = connect(port, &certs.ca_cert_pem, None).await else {
-        let _ = shutdown_tx.send(());
-        return;
+    // spawn_test_gateway guarantees the server is ready, so a connect() failure
+    // here is a genuine TLS rejection rather than a startup race.
+    let rejected = match connect(port, &certs.ca_cert_pem, None).await {
+        Err(_) => true, // eager TLS rejection at connect time
+        Ok(mut client) => {
+            // Lazy path: TLS handshake occurs on the first RPC.
+            client
+                .bidi(Request::new(stream_iter(Vec::new())))
+                .await
+                .is_err()
+        }
     };
 
-    let empty = Vec::new();
-    let result = client.bidi(Request::new(stream_iter(empty))).await;
-
     assert!(
-        result.is_err(),
-        "connecting without a client cert should be rejected",
+        rejected,
+        "connecting without a client cert should be rejected"
     );
 
     let _ = shutdown_tx.send(());
@@ -270,41 +297,51 @@ async fn wrong_serial_rejected() {
 
 /// A client presenting a cert signed by a rogue CA must be rejected at the TLS layer
 /// because the server does not trust that CA.
+///
+/// tonic may reject the connection eagerly (at `connect()` time) or lazily
+/// (on the first RPC). Both outcomes are treated as the expected rejection,
+/// but the rejection must not be `FailedPrecondition`, which would indicate
+/// the cert bypassed CA verification and reached the gRPC handler.
 #[tokio::test]
 async fn rogue_ca_client_rejected() {
     init_crypto();
     let certs = TestCerts::generate();
     let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
 
-    // connect() is lazy in tonic - the TLS handshake happens on the first RPC.
-    let Ok(mut client) = connect(
+    // spawn_test_gateway guarantees the server is ready, so a connect() failure
+    // here is a genuine TLS rejection rather than a startup race.
+    let rpc_status = match connect(
         port,
         &certs.ca_cert_pem,
         Some((&certs.rogue_client_cert_pem, &certs.rogue_client_key_pem)),
     )
     .await
-    else {
-        let _ = shutdown_tx.send(());
-        return;
+    {
+        Err(_) => {
+            // Eager TLS rejection at connect time - correct behavior.
+            let _ = shutdown_tx.send(());
+            return;
+        }
+        Ok(mut client) => {
+            // Lazy path: TLS handshake occurs on the first RPC.
+            match client.bidi(Request::new(stream_iter(Vec::new()))).await {
+                Ok(_) => {
+                    let _ = shutdown_tx.send(());
+                    panic!("rogue-CA client cert must be rejected; got Ok");
+                }
+                Err(status) => status,
+            }
+        }
     };
 
-    let empty = Vec::new();
-    let result = client.bidi(Request::new(stream_iter(empty))).await;
-
-    assert!(
-        result.is_err(),
-        "rogue-CA client cert must be rejected; got Ok",
-    );
     // Must NOT be FailedPrecondition - that would mean the cert was accepted by the
     // TLS layer and reached the gRPC handler.
-    if let Err(ref status) = result {
-        assert_ne!(
-            status.code(),
-            Code::FailedPrecondition,
-            "rogue-CA cert reached the gRPC handler - server-side CA verification is missing; \
-             got: {status}",
-        );
-    }
+    assert_ne!(
+        rpc_status.code(),
+        Code::FailedPrecondition,
+        "rogue-CA cert reached the gRPC handler - server-side CA verification is missing; \
+         got: {rpc_status}",
+    );
 
     let _ = shutdown_tx.send(());
 }

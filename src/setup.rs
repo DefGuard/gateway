@@ -108,21 +108,18 @@ pub async fn run_setup(
     options.mode(0o600); // rw-------
     // Write certificate to a file.
     options
-        .clone()
         .open(cert_path)
         .await?
         .write_all(tls_config.grpc_cert_pem.as_bytes())
         .await?;
     // Write key to a file.
     options
-        .clone()
         .open(key_path)
         .await?
         .write_all(tls_config.grpc_key_pem.as_bytes())
         .await?;
     // Write CA certificate to a file.
     options
-        .clone()
         .open(cert_dir.join(GRPC_CA_CERT_NAME))
         .await?
         .write_all(tls_config.grpc_ca_cert_pem.as_bytes())

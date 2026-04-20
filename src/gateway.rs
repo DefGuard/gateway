@@ -776,14 +776,20 @@ impl gateway_server::Gateway for GatewayServer {
         let core_client_cert_path = self.cert_dir.join(CORE_CLIENT_CERT_NAME);
 
         let remove_cert_file = async |path: &std::path::Path, label: &str| -> Result<(), Status> {
-            if let Err(err) = remove_file(path).await
-                && err.kind() != std::io::ErrorKind::NotFound
-            {
-                error!("Failed to remove {label} at {}: {err}", path.display());
-                return Err(Status::internal(format!("Failed to remove {label}")));
+            match remove_file(path).await {
+                Ok(()) => {
+                    info!("Removed {label} at {}", path.display());
+                    Ok(())
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    debug!("{label} not found at {}, skipping removal", path.display());
+                    Ok(())
+                }
+                Err(err) => {
+                    error!("Failed to remove {label} at {}: {err}", path.display());
+                    Err(Status::internal(format!("Failed to remove {label}")))
+                }
             }
-            info!("Removed {label} at {}", path.display());
-            Ok(())
         };
 
         remove_cert_file(&cert_path, "gRPC certificate").await?;
