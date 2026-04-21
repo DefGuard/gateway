@@ -884,7 +884,7 @@ dependencies = [
 [[package]]
 name = "defguard_certs"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=564dc72c#564dc72c8c18c6b25ff1401e2e18dc40e1ff39a4"
+source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -898,7 +898,7 @@ dependencies = [
 [[package]]
 name = "defguard_common"
 version = "2.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=710b1bfd#710b1bfd5c10328b201bcf43ed9b99483d462012"
+source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
 dependencies = [
  "anyhow",
  "argon2",
@@ -938,10 +938,11 @@ dependencies = [
 [[package]]
 name = "defguard_grpc_tls"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=710b1bfd#710b1bfd5c10328b201bcf43ed9b99483d462012"
+source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
 dependencies = [
  "defguard_common",
  "http",
+ "hyper-rustls",
  "rustls",
  "thiserror 2.0.18",
  "tokio",
@@ -954,7 +955,7 @@ dependencies = [
 [[package]]
 name = "defguard_version"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=7d28f46e#7d28f46e828a975118d4943f204614a737d1c92e"
+source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
 dependencies = [
  "axum",
  "http",
@@ -1725,7 +1726,9 @@ dependencies = [
  "http",
  "hyper",
  "hyper-util",
+ "log",
  "rustls",
+ "rustls-native-certs",
  "tokio",
  "tokio-rustls",
  "tower-service",
@@ -2315,7 +2318,7 @@ dependencies = [
 [[package]]
 name = "model_derive"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=710b1bfd#710b1bfd5c10328b201bcf43ed9b99483d462012"
+source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
 dependencies = [
  "quote",
  "syn",

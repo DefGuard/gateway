@@ -8,9 +8,9 @@ axum = "0.8"
 base64 = "0.22"
 chrono = "0.4"
 clap = { version = "4.6", features = ["derive", "env"] }
-defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "564dc72c" }
-defguard_grpc_tls = { git = "https://github.com/DefGuard/defguard.git", rev = "710b1bfd" }
-defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "7d28f46e" }
+defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "8ac70d3157d8a47b038bd1022ab9806bda642da4" }
+defguard_grpc_tls = { git = "https://github.com/DefGuard/defguard.git", rev = "8ac70d3157d8a47b038bd1022ab9806bda642da4" }
+defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "8ac70d3157d8a47b038bd1022ab9806bda642da4" }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rustls-pki-types = "1"
 rustls-webpki = { version = "0.103", features = ["ring", "std"] }
@@ -50,7 +50,7 @@ mnl = "0.3"
 nix = { version = "0.31", default-features = false, features = ["ioctl"] }
 
 [dev-dependencies]
-defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "564dc72c" }
+defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "8ac70d3157d8a47b038bd1022ab9806bda642da4" }
 tokio = { version = "1", features = ["net"] }
 tonic = { version = "0.14", default-features = false, features = [
     "codegen",
