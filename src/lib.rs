@@ -57,10 +57,27 @@ pub mod enterprise;
 pub mod logging;
 pub mod setup;
 
+#[cfg(test)]
+mod tests;
+
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("VERGEN_GIT_SHA"));
+
+/// Install the `ring` CryptoProvider as the process-wide default for rustls.
+///
+/// Must be called once near process startup, before any TLS code runs. Both
+/// `ring` and `aws-lc-rs` may be present as transitive dependencies; without
+/// an explicit selection rustls panics at runtime.  Subsequent calls are
+/// silently ignored (`.ok()` swallows the `AlreadySet` error).
+pub fn init_crypto_provider() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .ok();
+}
 
 pub const GRPC_CERT_NAME: &str = "gateway_grpc_cert.pem";
 pub const GRPC_KEY_NAME: &str = "gateway_grpc_key.pem";
+pub const GRPC_CA_CERT_NAME: &str = "grpc_ca_cert.pem";
+pub const CORE_CLIENT_CERT_NAME: &str = "core_client_cert.pem";
 
 /// Masks object's field with "***" string.
 /// Used to log sensitive/secret objects.

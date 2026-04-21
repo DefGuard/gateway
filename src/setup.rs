@@ -1,9 +1,13 @@
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use defguard_version::{Version, server::DefguardVersionLayer};
+use rustls_pki_types::{CertificateDer, UnixTime};
 use tokio::{
     fs::OpenOptions,
     io::AsyncWriteExt,
@@ -13,20 +17,82 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{Request, Response, Status, transport::Server};
 use tower::ServiceBuilder;
 use tracing::instrument;
+use webpki::{KeyUsage, anchor_from_trusted_cert};
 
 use crate::{
-    GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
+    CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
     error::GatewayError,
     gateway::TlsConfig,
     proto::{
-        common::{CertificateInfo, DerPayload, LogEntry},
+        common::{CertBundle, CertificateInfo, DerPayload, LogEntry},
         gateway::gateway_setup_server,
     },
 };
 
 const AUTH_HEADER: &str = "authorization";
 type LogsReceiver = Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>;
+
+/// Verify that both `component_der` and `core_client_der` are signed by `ca_der`.
+///
+/// Uses ECDSA P-256 via `ring` (chosen for FreeBSD/OPNsense compatibility;
+/// `aws-lc-rs` does not support FreeBSD). The proxy counterpart uses `aws-lc-rs`.
+/// Both verify the same algorithm set: `ECDSA_P256_SHA256` and `ECDSA_P256_SHA384`.
+/// Returns an error message string on any failure so the caller can forward it as a gRPC status.
+fn validate_cert_bundle(
+    ca_der: &[u8],
+    component_der: &[u8],
+    core_client_der: &[u8],
+) -> Result<(), String> {
+    let sig_algs: &[&dyn rustls_pki_types::SignatureVerificationAlgorithm] = &[
+        webpki::ring::ECDSA_P256_SHA256,
+        webpki::ring::ECDSA_P256_SHA384,
+    ];
+
+    let ca_cert_der = CertificateDer::from(ca_der);
+    let trust_anchor = anchor_from_trusted_cert(&ca_cert_der)
+        .map_err(|e| format!("Failed to parse CA certificate as trust anchor: {e}"))?;
+    let trust_anchors = [trust_anchor];
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO);
+    let time = UnixTime::since_unix_epoch(now);
+
+    // Verify component (server) certificate.
+    let component_cert_der = CertificateDer::from(component_der);
+    let component_ee = webpki::EndEntityCert::try_from(&component_cert_der)
+        .map_err(|e| format!("Failed to parse component certificate: {e}"))?;
+    component_ee
+        .verify_for_usage(
+            sig_algs,
+            &trust_anchors,
+            &[],
+            time,
+            KeyUsage::server_auth(),
+            None,
+            None,
+        )
+        .map_err(|e| format!("Component certificate failed chain validation: {e}"))?;
+
+    // Verify Core client certificate.
+    let core_client_cert_der = CertificateDer::from(core_client_der);
+    let core_client_ee = webpki::EndEntityCert::try_from(&core_client_cert_der)
+        .map_err(|e| format!("Failed to parse Core client certificate: {e}"))?;
+    core_client_ee
+        .verify_for_usage(
+            sig_algs,
+            &trust_anchors,
+            &[],
+            time,
+            KeyUsage::client_auth(),
+            None,
+            None,
+        )
+        .map_err(|e| format!("Core client certificate failed chain validation: {e}"))?;
+
+    Ok(())
+}
 
 pub async fn run_setup(
     config: &Config,
@@ -45,7 +111,6 @@ pub async fn run_setup(
     options.mode(0o600); // rw-------
     // Write certificate to a file.
     options
-        .clone()
         .open(cert_path)
         .await?
         .write_all(tls_config.grpc_cert_pem.as_bytes())
@@ -55,6 +120,27 @@ pub async fn run_setup(
         .open(key_path)
         .await?
         .write_all(tls_config.grpc_key_pem.as_bytes())
+        .await?;
+    // Write CA certificate to a file.
+    options
+        .open(cert_dir.join(GRPC_CA_CERT_NAME))
+        .await?
+        .write_all(tls_config.grpc_ca_cert_pem.as_bytes())
+        .await?;
+    // Write Core client certificate (PEM-encoded) to a file for serial pinning on restart.
+    let core_client_cert_pem = defguard_certs::der_to_pem(
+        &tls_config.core_client_cert_der,
+        defguard_certs::PemLabel::Certificate,
+    )
+    .map_err(|err| {
+        GatewayError::SetupError(format!(
+            "Failed to PEM-encode Core client certificate: {err}"
+        ))
+    })?;
+    options
+        .open(cert_dir.join(CORE_CLIENT_CERT_NAME))
+        .await?
+        .write_all(core_client_cert_pem.as_bytes())
         .await?;
     log::info!(
         "Generated gRPC TLS certificates have been saved to {}",
@@ -343,8 +429,8 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
     }
 
     #[instrument(skip(self, request))]
-    async fn send_cert(&self, request: Request<DerPayload>) -> Result<Response<()>, Status> {
-        debug!("Core sending back signed certificate for installation");
+    async fn send_cert(&self, request: Request<CertBundle>) -> Result<Response<()>, Status> {
+        debug!("Core sending back signed certificate bundle for installation");
         let token = request
             .metadata()
             .get(AUTH_HEADER)
@@ -358,25 +444,60 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
             return Err(Status::unauthenticated("Invalid session token"));
         }
 
-        let der_payload = request.into_inner();
-        let cert_der = der_payload.der_data;
-        debug!(
-            "Received signed certificate from Core ({} bytes)",
-            cert_der.len()
-        );
+        let bundle = request.into_inner();
 
-        debug!("Parsing received certificate DER data");
-        let grpc_cert_pem =
-            match defguard_certs::der_to_pem(&cert_der, defguard_certs::PemLabel::Certificate) {
-                Ok(pem) => pem,
-                Err(err) => {
-                    let msg = format!("Failed to convert certificate DER to PEM: {err}");
-                    error!("{msg}");
-                    self.clear_setup_session();
-                    return Err(Status::internal(msg));
-                }
-            };
-        debug!("Certificate processed successfully");
+        debug!("Validating certificate bundle received from Core");
+        if let Err(reason) = validate_cert_bundle(
+            &bundle.ca_cert_der,
+            &bundle.component_cert_der,
+            &bundle.core_client_cert_der,
+        ) {
+            error!("Certificate bundle validation failed: {reason}");
+            self.clear_setup_session();
+            return Err(Status::invalid_argument(reason));
+        }
+        debug!("Certificate bundle validated successfully against CA");
+
+        debug!(
+            "Received component certificate from Core ({} bytes)",
+            bundle.component_cert_der.len()
+        );
+        debug!("Parsing component certificate DER data");
+        let grpc_cert_pem = match defguard_certs::der_to_pem(
+            &bundle.component_cert_der,
+            defguard_certs::PemLabel::Certificate,
+        ) {
+            Ok(pem) => pem,
+            Err(err) => {
+                let msg = format!("Failed to convert component certificate DER to PEM: {err}");
+                error!("{msg}");
+                self.clear_setup_session();
+                return Err(Status::internal(msg));
+            }
+        };
+
+        debug!(
+            "Received CA certificate from Core ({} bytes)",
+            bundle.ca_cert_der.len()
+        );
+        debug!("Parsing CA certificate DER data");
+        let grpc_ca_cert_pem = match defguard_certs::der_to_pem(
+            &bundle.ca_cert_der,
+            defguard_certs::PemLabel::Certificate,
+        ) {
+            Ok(pem) => pem,
+            Err(err) => {
+                let msg = format!("Failed to convert CA certificate DER to PEM: {err}");
+                error!("{msg}");
+                self.clear_setup_session();
+                return Err(Status::internal(msg));
+            }
+        };
+
+        debug!(
+            "Received Core client certificate ({} bytes); will pin serial for mTLS",
+            bundle.core_client_cert_der.len()
+        );
 
         let key_pair = {
             let key_pair = self
@@ -401,6 +522,8 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
         let configuration = TlsConfig {
             grpc_key_pem: key_pair.serialize_pem(),
             grpc_cert_pem,
+            grpc_ca_cert_pem,
+            core_client_cert_der: bundle.core_client_cert_der,
         };
 
         let Some(sender) = self.setup_tx.lock().await.take() else {
