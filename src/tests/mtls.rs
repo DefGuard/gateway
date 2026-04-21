@@ -1,6 +1,6 @@
 use std::{
     env::temp_dir,
-    net::TcpListener,
+    net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -112,7 +112,7 @@ fn init_crypto() {
 /// Waits until the server is accepting TCP connections before returning, so
 /// callers do not need a fixed sleep to avoid startup races.
 async fn spawn_test_gateway(certs: &TestCerts) -> (u16, oneshot::Sender<()>) {
-    let port = TcpListener::bind("127.0.0.1:0")
+    let port = TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))
         .unwrap()
         .local_addr()
         .unwrap()
