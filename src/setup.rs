@@ -1,5 +1,5 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -99,7 +99,7 @@ fn validate_cert_bundle(
 /// subsequent runs.  This is called from within the `SendCert` gRPC handler **before**
 /// returning `Ok` to Core, so any I/O failure causes Core to treat the adoption as failed
 /// rather than silently leaving the gateway without certificates.
-async fn save_tls_certs(cert_dir: &PathBuf, config: &TlsConfig) -> Result<(), GatewayError> {
+async fn save_tls_certs(cert_dir: &Path, config: &TlsConfig) -> Result<(), GatewayError> {
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
