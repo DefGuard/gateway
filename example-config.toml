@@ -1,15 +1,8 @@
 # This is an example config file for defguard VPN gateway
 # To use it fill in actual values for your deployment below
 
-# Required: defguard server gRPC endpoint URL
-# NOTE: must replace default with actual value
-grpc_url = "<defguard_grpc_url>"
-# Optional: gateway name which will be displayed in defguard web UI
-name = "Gateway A"
 # Required: use userspace WireGuard implementation (e.g. wireguard-go)
 userspace = false
-# Optional: path to TLS cert file
-# grpc_ca = cert.pem
 # Required: how often should interface stat updates be sent to defguard server (in seconds)
 stats_period = 60
 # Required: name of WireGuard interface
