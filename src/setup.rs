@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -94,42 +95,33 @@ fn validate_cert_bundle(
     Ok(())
 }
 
-pub async fn run_setup(
-    config: &Config,
-    logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
-) -> Result<TlsConfig, GatewayError> {
-    let cert_dir = &config.cert_dir;
-    let setup_server = GatewaySetupServer::new(logs_rx);
-    let tls_config = setup_server.await_setup(config).await?;
-
-    let cert_path = cert_dir.join(GRPC_CERT_NAME);
-    let key_path = cert_dir.join(GRPC_KEY_NAME);
-    // Certificate and its key will be accessed only to this process's user.
+/// Persist all four TLS certificate files that the gateway needs to start with mTLS on
+/// subsequent runs.  This is called from within the `SendCert` gRPC handler **before**
+/// returning `Ok` to Core, so any I/O failure causes Core to treat the adoption as failed
+/// rather than silently leaving the gateway without certificates.
+async fn save_tls_certs(cert_dir: &PathBuf, config: &TlsConfig) -> Result<(), GatewayError> {
     let mut options = OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
     options.mode(0o600); // rw-------
-    // Write certificate to a file.
+
     options
-        .open(cert_path)
+        .open(cert_dir.join(GRPC_CERT_NAME))
         .await?
-        .write_all(tls_config.grpc_cert_pem.as_bytes())
+        .write_all(config.grpc_cert_pem.as_bytes())
         .await?;
-    // Write key to a file.
     options
-        .open(key_path)
+        .open(cert_dir.join(GRPC_KEY_NAME))
         .await?
-        .write_all(tls_config.grpc_key_pem.as_bytes())
+        .write_all(config.grpc_key_pem.as_bytes())
         .await?;
-    // Write CA certificate to a file.
     options
         .open(cert_dir.join(GRPC_CA_CERT_NAME))
         .await?
-        .write_all(tls_config.grpc_ca_cert_pem.as_bytes())
+        .write_all(config.grpc_ca_cert_pem.as_bytes())
         .await?;
-    // Write Core client certificate (PEM-encoded) to a file for serial pinning on restart.
     let core_client_cert_pem = defguard_certs::der_to_pem(
-        &tls_config.core_client_cert_der,
+        &config.core_client_cert_der,
         defguard_certs::PemLabel::Certificate,
     )
     .map_err(|err| {
@@ -142,11 +134,20 @@ pub async fn run_setup(
         .await?
         .write_all(core_client_cert_pem.as_bytes())
         .await?;
+
     log::info!(
         "Generated gRPC TLS certificates have been saved to {}",
         cert_dir.display()
     );
+    Ok(())
+}
 
+pub async fn run_setup(
+    config: &Config,
+    logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
+) -> Result<TlsConfig, GatewayError> {
+    let setup_server = GatewaySetupServer::new(logs_rx, config.cert_dir.clone());
+    let tls_config = setup_server.await_setup(config).await?;
     Ok(tls_config)
 }
 
@@ -157,6 +158,7 @@ pub struct GatewaySetupServer {
     setup_tx: Arc<tokio::sync::Mutex<Option<oneshot::Sender<TlsConfig>>>>,
     setup_rx: Arc<tokio::sync::Mutex<oneshot::Receiver<TlsConfig>>>,
     adoption_expired: Arc<AtomicBool>,
+    cert_dir: Arc<PathBuf>,
 }
 
 impl Clone for GatewaySetupServer {
@@ -168,13 +170,14 @@ impl Clone for GatewaySetupServer {
             setup_tx: Arc::clone(&self.setup_tx),
             setup_rx: Arc::clone(&self.setup_rx),
             adoption_expired: Arc::clone(&self.adoption_expired),
+            cert_dir: Arc::clone(&self.cert_dir),
         }
     }
 }
 
 impl GatewaySetupServer {
     #[must_use]
-    pub fn new(logs_rx: LogsReceiver) -> Self {
+    pub fn new(logs_rx: LogsReceiver, cert_dir: PathBuf) -> Self {
         let (setup_tx, setup_rx) = oneshot::channel();
         Self {
             key_pair: Arc::new(Mutex::new(None)),
@@ -183,6 +186,7 @@ impl GatewaySetupServer {
             setup_tx: Arc::new(tokio::sync::Mutex::new(Some(setup_tx))),
             setup_rx: Arc::new(tokio::sync::Mutex::new(setup_rx)),
             adoption_expired: Arc::new(AtomicBool::new(false)),
+            cert_dir: Arc::new(cert_dir),
         }
     }
 
@@ -530,6 +534,13 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
             error!("Setup channel sender not found");
             return Err(Status::internal("Setup channel sender not found"));
         };
+
+        if let Err(err) = save_tls_certs(&self.cert_dir, &configuration).await {
+            let msg = format!("Failed to save certificates to disk: {err}");
+            error!("{msg}");
+            self.clear_setup_session();
+            return Err(Status::internal(msg));
+        }
 
         sender.send(configuration).map_err(|_| {
             let msg = "Failed to send setup configuration through channel";
