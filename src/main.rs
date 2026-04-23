@@ -72,6 +72,28 @@ async fn main() -> Result<(), GatewayError> {
         tokio::fs::create_dir_all(cert_dir).await?;
         #[cfg(unix)]
         tokio::fs::set_permissions(cert_dir, Permissions::from_mode(0o700)).await?;
+    } else {
+        // Probe write access
+        let probe = cert_dir.join(".write_test");
+        match tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&probe)
+            .await
+        {
+            Ok(_) => {
+                let _ = tokio::fs::remove_file(&probe).await;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                return Err(GatewayError::SetupError(format!(
+                    "Certificate directory '{}' exists but is not writable. \
+                     Please check directory permissions.",
+                    cert_dir.display()
+                )));
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
 
     let maybe_tls_config = load_tls_config(cert_dir)?;
