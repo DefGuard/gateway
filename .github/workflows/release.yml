@@ -122,57 +122,101 @@ jobs:
         with:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu=/usr/bin/defguard-gateway
-            defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
-            example-config.toml=/etc/defguard/gateway.toml.sample"
-          fpm_opts: "--architecture amd64 --output-type deb --version ${{ env.VERSION }} --package defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu.deb --after-install after-install.sh"
+            linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
+            example-config.toml=/etc/defguard/gateway.toml"
+          fpm_opts:
+            "--architecture amd64
+            --output-type deb
+            --version ${{ env.VERSION }}
+            --package defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu.deb
+            --before-install linux/preinst
+            --after-install linux/postinst
+            --before-remove linux/prerm
+            --after-remove linux/postrm"
 
       - name: Build aarch64 DEB package
         uses: defGuard/fpm-action@main
         with:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu=/usr/bin/defguard-gateway
-            defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
-            example-config.toml=/etc/defguard/gateway.toml.sample"
-          fpm_opts: "--architecture arm64 --output-type deb --version ${{ env.VERSION }} --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu.deb --after-install after-install.sh"
+            linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
+            example-config.toml=/etc/defguard/gateway.toml"
+          fpm_opts:
+            "--architecture arm64
+            --output-type deb
+            --version ${{ env.VERSION }}
+            --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu.deb
+            --before-install linux/preinst
+            --after-install linux/postinst
+            --before-remove linux/prerm
+            --after-remove linux/postrm"
 
       - name: Build x86_64 RPM package
         uses: defGuard/fpm-action@main
         with:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu=/usr/bin/defguard-gateway
-            defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
-            example-config.toml=/etc/defguard/gateway.toml.sample"
-          fpm_opts: "--architecture amd64 --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu.rpm --after-install after-install.sh"
+            linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
+            example-config.toml=/etc/defguard/gateway.toml"
+          fpm_opts:
+            "--architecture amd64
+            --output-type rpm
+            --version ${{ env.VERSION }}
+            --package defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu.rpm
+            --before-install linux/preinst
+            --after-install linux/postinst
+            --before-remove linux/prerm
+            --after-remove linux/postrm"
 
       - name: Build aarch64 RPM package
         uses: defGuard/fpm-action@main
         with:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu=/usr/bin/defguard-gateway
-            defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
-            example-config.toml=/etc/defguard/gateway.toml.sample"
-          fpm_opts: "--architecture arm64 --output-type rpm --version ${{ env.VERSION }} --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu.rpm --after-install after-install.sh"
+            linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
+            example-config.toml=/etc/defguard/gateway.toml"
+          fpm_opts:
+            "--architecture arm64
+            --output-type rpm
+            --version ${{ env.VERSION }}
+            --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu.rpm
+            --before-install linux/preinst
+            --after-install linux/postinst
+            --before-remove linux/prerm
+            --after-remove linux/postrm"
 
       - name: Build FreeBSD package
         uses: defGuard/fpm-action@main
         with:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-freebsd=/usr/local/bin/defguard-gateway
-            defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard-gateway
-            example-config.toml=/etc/defguard/gateway.toml.sample"
-          fpm_opts: "--architecture amd64 --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-freebsd.pkg --freebsd-osversion '*' --depends openssl"
+            freebsd/defguard-gateway=/usr/local/etc/rc.d/defguard-gateway
+            example-config.toml=/etc/defguard/gateway.toml"
+          fpm_opts:
+            "--architecture amd64
+            --output-type freebsd
+            --version ${{ env.VERSION }}
+            --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-freebsd.pkg
+            --freebsd-osversion '*'
+            --depends openssl"
 
       - name: Build OPNsense package
         uses: defGuard/fpm-action@main
         with:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-freebsd=/usr/local/bin/defguard-gateway
-            defguard-gateway.service.freebsd=/usr/local/etc/rc.d/defguard-gateway
-            example-config.toml=/etc/defguard/gateway.toml.sample
+            freebsd/defguard-gateway=/usr/local/etc/rc.d/defguard-gateway
+            example-config.toml=/etc/defguard/gateway.toml
             defguard-rc.conf=/etc/rc.conf.d/defguard_gateway
             opnsense/src/etc/=/usr/local/etc/
             opnsense/src/opnsense/=/usr/local/opnsense/"
-          fpm_opts: "--architecture amd64 --output-type freebsd --version ${{ env.VERSION }} --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-opnsense.pkg --freebsd-osversion '*' --depends openssl"
+          fpm_opts:
+            "--architecture amd64
+            --output-type freebsd
+            --version ${{ env.VERSION }}
+            --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
+            --freebsd-osversion '*'
+            --depends openssl"
 
       - name: Upload Linux x86_64 archive
         uses: shogo82148/actions-upload-release-asset@v1
