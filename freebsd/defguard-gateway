@@ -12,9 +12,8 @@ command="/usr/local/sbin/defguard-gateway"
 config="/etc/defguard/gateway.toml"
 start_cmd="${name}_start"
 
-defguard_gateway_start()
-{
-  ${command} --config ${config} &
+defguard_gateway_start() {
+	${command} --config ${config} &
 }
 
 load_rc_config $name
