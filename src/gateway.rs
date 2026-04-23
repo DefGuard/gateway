@@ -9,24 +9,24 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use defguard_certs::{CertificateError, CertificateInfo};
+use defguard_grpc_tls::{certs::server_tls_config, server::certificate_serial_interceptor};
 use defguard_version::{
     ComponentInfo, DefguardComponent, Version, get_tracing_variables, server::DefguardVersionLayer,
 };
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use tokio::{
+    fs::remove_file,
     sync::{mpsc, oneshot},
     time::interval,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tonic::{
-    Request, Response, Status, Streaming,
-    transport::{Identity, Server, ServerTlsConfig},
-};
+use tonic::{Request, Response, Status, Streaming, service::InterceptorLayer, transport::Server};
 use tower::ServiceBuilder;
 use tracing::instrument;
 
 use crate::{
-    GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
+    CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
     enterprise::firewall::{
         FirewallConfig, FirewallError, FirewallRule, SnatBinding,
@@ -144,6 +144,10 @@ type PubKey = String;
 pub struct TlsConfig {
     pub grpc_cert_pem: String,
     pub grpc_key_pem: String,
+    /// PEM-encoded CA certificate used to verify Core's mTLS client certificate chain.
+    pub grpc_ca_cert_pem: String,
+    /// DER-encoded Core client certificate; used to extract and pin the expected serial.
+    pub core_client_cert_der: Vec<u8>,
 }
 
 pub struct Gateway {
@@ -558,9 +562,11 @@ impl GatewayServer {
     }
 
     /// Starts the gateway process.
-    /// * Retrieves configuration and configuration updates from Defguard gRPC server
-    /// * Manages the interface according to configuration and updates
-    /// * Sends interface statistics to Defguard server periodically
+    /// * Requires a valid mTLS configuration to be set (via `set_tls_config`) before starting;
+    ///   returns an error if TLS configuration is absent - the gRPC server never starts in plain-text mode
+    /// * Retrieves configuration and configuration updates from Defguard core via a mTLS-secured gRPC server
+    /// * Manages the WireGuard interface according to configuration and updates
+    /// * Sends interface statistics to Defguard core periodically
     pub async fn start(self, config: Config) -> Result<(), GatewayError> {
         info!("Starting Defguard Gateway version {VERSION} with configuration: {config:?}");
 
@@ -593,36 +599,42 @@ impl GatewayServer {
             execute_command(post_up)?;
         }
 
-        let grpc_cert = self
+        let tls_config = self
             .gateway
             .lock()
-            .unwrap()
+            .expect("gateway mutex poison")
             .tls_config
-            .as_ref()
-            .map(|c| c.grpc_cert_pem.clone());
-        let grpc_key = self
-            .gateway
-            .lock()
-            .unwrap()
-            .tls_config
-            .as_ref()
-            .map(|c| c.grpc_key_pem.clone());
+            .clone();
 
         // Build gRPC server.
         let addr = config.grpc_socket();
         info!("gRPC server is listening on {addr}");
-        let mut builder = if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
-            let identity = Identity::from_pem(cert, key);
-            Server::builder().tls_config(ServerTlsConfig::new().identity(identity))?
-        } else {
-            Server::builder()
-        };
+
+        let tls = tls_config.ok_or_else(|| {
+            GatewayError::SetupError(
+                "TLS configuration is required; gateway gRPC server cannot start without mTLS"
+                    .into(),
+            )
+        })?;
+
+        let tls_config =
+            server_tls_config(&tls.grpc_cert_pem, &tls.grpc_key_pem, &tls.grpc_ca_cert_pem)
+                .map_err(|e| GatewayError::SetupError(e.to_string()))?;
+        let mut builder = Server::builder().tls_config(tls_config)?;
+
+        // Extract Core client cert serial for pinning.
+        let expected_serial = CertificateInfo::from_der(&tls.core_client_cert_der)
+            .map_err(|e: CertificateError| GatewayError::SetupError(e.to_string()))?
+            .serial;
 
         // Start gRPC server. This should run indefinitely.
         debug!("Serving gRPC");
         builder
             .add_service(
                 ServiceBuilder::new()
+                    .layer(InterceptorLayer::new(certificate_serial_interceptor(
+                        expected_serial,
+                    )))
                     .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
                     .service(gateway_server::GatewayServer::new(self)),
             )
@@ -760,25 +772,30 @@ impl gateway_server::Gateway for GatewayServer {
         debug!("Received purge request, removing gRPC certificate files");
         let cert_path = self.cert_dir.join(GRPC_CERT_NAME);
         let key_path = self.cert_dir.join(GRPC_KEY_NAME);
+        let ca_cert_path = self.cert_dir.join(GRPC_CA_CERT_NAME);
+        let core_client_cert_path = self.cert_dir.join(CORE_CLIENT_CERT_NAME);
 
-        if let Err(err) = tokio::fs::remove_file(&cert_path).await
-            && err.kind() != std::io::ErrorKind::NotFound
-        {
-            error!(
-                "Failed to remove gRPC certificate at {}: {err}",
-                cert_path.display()
-            );
-            return Err(Status::internal("Failed to remove gRPC certificate"));
-        }
-        info!("Removed gRPC certificate at {}", cert_path.display());
+        let remove_cert_file = async |path: &std::path::Path, label: &str| -> Result<(), Status> {
+            match remove_file(path).await {
+                Ok(()) => {
+                    info!("Removed {label} at {}", path.display());
+                    Ok(())
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    debug!("{label} not found at {}, skipping removal", path.display());
+                    Ok(())
+                }
+                Err(err) => {
+                    error!("Failed to remove {label} at {}: {err}", path.display());
+                    Err(Status::internal(format!("Failed to remove {label}")))
+                }
+            }
+        };
 
-        if let Err(err) = tokio::fs::remove_file(&key_path).await
-            && err.kind() != std::io::ErrorKind::NotFound
-        {
-            error!("Failed to remove gRPC key at {}: {err}", key_path.display());
-            return Err(Status::internal("Failed to remove gRPC key"));
-        }
-        info!("Removed gRPC key at {}", cert_path.display());
+        remove_cert_file(&cert_path, "gRPC certificate").await?;
+        remove_cert_file(&key_path, "gRPC key").await?;
+        remove_cert_file(&ca_cert_path, "CA certificate").await?;
+        remove_cert_file(&core_client_cert_path, "Core client certificate").await?;
 
         // Prepare underlying `Gateway` to enter setup mode.
         self.gateway

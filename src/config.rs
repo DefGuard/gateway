@@ -15,12 +15,32 @@ fn default_log_level() -> String {
     String::from("info")
 }
 
+fn default_grpc_port() -> u16 {
+    50066
+}
+
+fn default_stats_period() -> u64 {
+    30
+}
+
+fn default_ifname() -> String {
+    String::from("wg0")
+}
+
+fn default_syslog_facility() -> String {
+    String::from("LOG_USER")
+}
+
 fn default_adoption_timeout() -> u64 {
     10
 }
 
 fn default_syslog_socket() -> PathBuf {
     PathBuf::from("/var/run/log")
+}
+
+fn default_cert_dir() -> PathBuf {
+    PathBuf::from("/etc/defguard/certs")
 }
 
 #[derive(Debug, Parser, Clone, Deserialize)]
@@ -33,26 +53,22 @@ pub struct Config {
 
     /// Gateway gRPC server port.
     #[arg(long, env = "DEFGUARD_GRPC_PORT", default_value = "50066")]
+    #[serde(default = "default_grpc_port")]
     pub(crate) grpc_port: u16,
-
-    /// Gateway gRPC server certificate.
-    #[arg(long, env = "DEFGUARD_GATEWAY_GRPC_CERT")]
-    pub(crate) grpc_cert: Option<String>,
-
-    /// Gateway gRPC server private key.
-    #[arg(long, env = "DEFGUARD_GATEWAY_GRPC_KEY")]
-    pub(crate) grpc_key: Option<String>,
 
     /// Use userspace WireGuard implementation e.g. wireguard-go
     #[arg(long, short = 'u', env = "DEFGUARD_USERSPACE")]
+    #[serde(default)]
     pub userspace: bool,
 
     /// Defines how often (in seconds) interface statistics are sent to Defguard Core.
     #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "30")]
+    #[serde(default = "default_stats_period")]
     pub stats_period: u64,
 
     /// Network interface name (e.g. wg0)
     #[arg(long, short = 'i', env = "DEFGUARD_IFNAME", default_value = "wg0")]
+    #[serde(default = "default_ifname")]
     pub ifname: String,
 
     /// Write process ID (PID) to this file
@@ -61,10 +77,12 @@ pub struct Config {
 
     /// Log to syslog
     #[arg(long, short = 's')]
+    #[serde(default)]
     pub use_syslog: bool,
 
     /// Syslog facility
     #[arg(long, default_value = "LOG_USER")]
+    #[serde(default = "default_syslog_facility")]
     pub syslog_facility: String,
 
     /// Syslog socket path
@@ -121,6 +139,7 @@ pub struct Config {
         env = "DEFGUARD_GATEWAY_CERT_DIR",
         default_value = "/etc/defguard/certs"
     )]
+    #[serde(default = "default_cert_dir")]
     pub cert_dir: PathBuf,
 
     /// Time limit in minutes for the auto-adoption process.
@@ -159,8 +178,6 @@ impl Default for Config {
             log_level: "info".into(),
             grpc_port: 50066,
             userspace: false,
-            grpc_cert: None,
-            grpc_key: None,
             stats_period: 15,
             ifname: "wg0".into(),
             pidfile: None,

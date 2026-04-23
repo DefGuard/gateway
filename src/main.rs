@@ -3,12 +3,13 @@ use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 use std::{
     fs::{File, read_to_string},
     io::Write,
+    path::Path,
     process,
     sync::{Arc, Mutex},
 };
 
 use defguard_gateway::{
-    GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
+    CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::get_config,
     error::GatewayError,
     execute_command,
@@ -24,8 +25,37 @@ use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
 use tokio::{sync::mpsc, task::JoinSet};
 
+fn load_tls_config(cert_dir: &Path) -> Result<Option<TlsConfig>, GatewayError> {
+    let grpc_cert = read_to_string(cert_dir.join(GRPC_CERT_NAME)).ok();
+    let grpc_key = read_to_string(cert_dir.join(GRPC_KEY_NAME)).ok();
+    let grpc_ca_cert = read_to_string(cert_dir.join(GRPC_CA_CERT_NAME)).ok();
+    let core_client_cert_pem = read_to_string(cert_dir.join(CORE_CLIENT_CERT_NAME)).ok();
+
+    match (grpc_cert, grpc_key, grpc_ca_cert, core_client_cert_pem) {
+        (Some(cert), Some(key), Some(ca_cert), Some(client_cert_pem)) => {
+            let core_client_cert_der = defguard_certs::parse_pem_certificate(&client_cert_pem)
+                .map_err(|e| {
+                    GatewayError::SetupError(format!("Failed to parse Core client cert: {e}"))
+                })?
+                .to_vec();
+            Ok(Some(TlsConfig {
+                grpc_cert_pem: cert,
+                grpc_key_pem: key,
+                grpc_ca_cert_pem: ca_cert,
+                core_client_cert_der,
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), GatewayError> {
+    // Install the ring CryptoProvider as the process-wide default for rustls.
+    // Both ring and aws-lc-rs may be pulled in transitively; without an explicit
+    // selection rustls panics at runtime when it cannot determine which to use.
+    defguard_gateway::init_crypto_provider();
+
     // parse config
     let config = get_config()?;
 
@@ -42,14 +72,31 @@ async fn main() -> Result<(), GatewayError> {
         tokio::fs::create_dir_all(cert_dir).await?;
         #[cfg(unix)]
         tokio::fs::set_permissions(cert_dir, Permissions::from_mode(0o700)).await?;
+    } else {
+        // Probe write access
+        let probe = cert_dir.join(".write_test");
+        match tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&probe)
+            .await
+        {
+            Ok(_) => {
+                let _ = tokio::fs::remove_file(&probe).await;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                return Err(GatewayError::SetupError(format!(
+                    "Certificate directory '{}' exists but is not writable. \
+                     Please check directory permissions.",
+                    cert_dir.display()
+                )));
+            }
+            Err(e) => return Err(e.into()),
+        }
     }
 
-    let (grpc_cert, grpc_key) = (
-        read_to_string(cert_dir.join(GRPC_CERT_NAME)).ok(),
-        read_to_string(cert_dir.join(GRPC_KEY_NAME)).ok(),
-    );
-
-    let needs_setup = grpc_cert.is_none() || grpc_key.is_none();
+    let maybe_tls_config = load_tls_config(cert_dir)?;
 
     // TODO: The channel size may need to be adjusted or some other approach should be used
     // to avoid dropping log messages.
@@ -108,25 +155,21 @@ async fn main() -> Result<(), GatewayError> {
     let post_down_clone = config.post_down.clone();
 
     tasks.spawn(async move {
-        let tls_config = if needs_setup {
-            log::info!(
-                "gRPC TLS certificates not found in {}. They will be generated during setup.",
-                config.cert_dir.display()
-            );
-            run_setup(&config, Arc::clone(&logs_rx)).await?
-        } else if let (Some(cert), Some(key)) = (grpc_cert, grpc_key) {
-            log::info!(
-                "Using existing gRPC TLS certificates from {}",
-                config.cert_dir.display()
-            );
-            TlsConfig {
-                grpc_cert_pem: cert,
-                grpc_key_pem: key,
+        let tls_config = match maybe_tls_config {
+            None => {
+                log::info!(
+                    "gRPC TLS certificates not found in {}. They will be generated during setup.",
+                    config.cert_dir.display()
+                );
+                run_setup(&config, Arc::clone(&logs_rx)).await?
             }
-        } else {
-            return Err(GatewayError::SetupError(
-                "gRPC TLS certificates are missing after setup".to_string(),
-            ));
+            Some(tls_config) => {
+                log::info!(
+                    "Using existing gRPC TLS certificates from {}",
+                    config.cert_dir.display()
+                );
+                tls_config
+            }
         };
 
         // Launch gRPC server (with purge-triggered setup loop).

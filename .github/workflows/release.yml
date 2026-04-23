@@ -128,7 +128,7 @@ jobs:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
-            example-config.toml=/etc/defguard/gateway.toml.sample"
+            example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts:
             "--architecture amd64
             --output-type deb
@@ -145,7 +145,7 @@ jobs:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
-            example-config.toml=/etc/defguard/gateway.toml.sample"
+            example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts:
             "--architecture arm64
             --output-type deb
@@ -162,7 +162,7 @@ jobs:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
-            example-config.toml=/etc/defguard/gateway.toml.sample"
+            example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts:
             "--architecture amd64
             --output-type rpm
@@ -179,7 +179,7 @@ jobs:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
-            example-config.toml=/etc/defguard/gateway.toml.sample"
+            example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts:
             "--architecture arm64
             --output-type rpm
@@ -196,7 +196,7 @@ jobs:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-freebsd=/usr/local/bin/defguard-gateway
             freebsd/defguard-gateway=/usr/local/etc/rc.d/defguard-gateway
-            example-config.toml=/etc/defguard/gateway.toml.sample"
+            example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts:
             "--architecture amd64
             --output-type freebsd
@@ -211,7 +211,7 @@ jobs:
           fpm_args:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-freebsd=/usr/local/bin/defguard-gateway
             freebsd/defguard-gateway=/usr/local/etc/rc.d/defguard-gateway
-            example-config.toml=/etc/defguard/gateway.toml.sample
+            example-config.toml=/etc/defguard/gateway.toml
             defguard-rc.conf=/etc/rc.conf.d/defguard_gateway
             opnsense/src/etc/=/usr/local/etc/
             opnsense/src/opnsense/=/usr/local/opnsense/"
