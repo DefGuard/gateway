@@ -884,7 +884,7 @@ dependencies = [
 [[package]]
 name = "defguard_certs"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
+source = "git+https://github.com/DefGuard/defguard.git?rev=dc0b70e69335c4be98d5b17615003922c9464994#dc0b70e69335c4be98d5b17615003922c9464994"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -898,7 +898,7 @@ dependencies = [
 [[package]]
 name = "defguard_common"
 version = "2.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
+source = "git+https://github.com/DefGuard/defguard.git?rev=dc0b70e69335c4be98d5b17615003922c9464994#dc0b70e69335c4be98d5b17615003922c9464994"
 dependencies = [
  "anyhow",
  "argon2",
@@ -907,6 +907,7 @@ dependencies = [
  "chrono",
  "claims",
  "clap",
+ "defguard_certs",
  "ed25519-dalek",
  "humantime",
  "ipnetwork 0.20.0",
@@ -938,7 +939,7 @@ dependencies = [
 [[package]]
 name = "defguard_grpc_tls"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
+source = "git+https://github.com/DefGuard/defguard.git?rev=dc0b70e69335c4be98d5b17615003922c9464994#dc0b70e69335c4be98d5b17615003922c9464994"
 dependencies = [
  "defguard_common",
  "http",
@@ -955,7 +956,7 @@ dependencies = [
 [[package]]
 name = "defguard_version"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
+source = "git+https://github.com/DefGuard/defguard.git?rev=dc0b70e69335c4be98d5b17615003922c9464994#dc0b70e69335c4be98d5b17615003922c9464994"
 dependencies = [
  "axum",
  "http",
@@ -2318,7 +2319,7 @@ dependencies = [
 [[package]]
 name = "model_derive"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=8ac70d3157d8a47b038bd1022ab9806bda642da4#8ac70d3157d8a47b038bd1022ab9806bda642da4"
+source = "git+https://github.com/DefGuard/defguard.git?rev=dc0b70e69335c4be98d5b17615003922c9464994#dc0b70e69335c4be98d5b17615003922c9464994"
 dependencies = [
  "quote",
  "syn",
