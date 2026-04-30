@@ -1,0 +1,10 @@
+vulnerabilities:
+  - id: CVE-2026-29111
+    expired_at: 2026-05-31
+    statement: "No fixed version available in debian:13-slim - waiting for Debian to backport systemd patch"
+  - id: CVE-2025-69720
+    expired_at: 2026-05-31
+    statement: "No fixed version available in debian:13-slim - waiting for Debian to release ncurses patch"
+  - id: CVE-2026-35535
+    expired_at: 2026-05-31
+    statement: "No fixed version available in debian:13-slim - waiting for Debian to release sudo patch"
