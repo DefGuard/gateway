@@ -367,7 +367,7 @@ jobs:
         run: |
           apt-get install -y \
             build-essential pkg-config cmake \
-            libssl-dev libmnl-dev \
+            libssl-dev libmnl-dev libnftnl-dev \
             protobuf-compiler libprotobuf-dev \
             ruby ruby-dev rubygems rpm
           gem install fpm --no-document
