@@ -10,11 +10,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  SQLX_OFFLINE: "1"
-  # sccache
-  SCCACHE_GHA_ENABLED: "true"
-  RUSTC_WRAPPER: "sccache"
+
 
 jobs:
   # build-docker-release:
@@ -75,6 +71,11 @@ jobs:
       - self-hosted
       - Linux
       - X64
+    env:
+      SQLX_OFFLINE: "1"
+      # sccache
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     steps:
       # Store the version, stripping any v-prefix
       - name: Write release version
