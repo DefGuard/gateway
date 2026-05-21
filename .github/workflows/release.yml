@@ -3,6 +3,8 @@ on:
   push:
     tags:
       - v*.*.*
+    branches:
+      - build-additional-debs
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
