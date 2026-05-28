@@ -3,17 +3,17 @@ name: Continuous integration
 on:
   push:
     branches:
-      - main
       - dev
       - "release/**"
+      - "stable/**"
     paths-ignore:
       - "*.md"
       - "LICENSE"
   pull_request:
     branches:
-      - main
       - dev
       - "release/**"
+      - "stable/**"
     paths-ignore:
       - "*.md"
       - "LICENSE"
@@ -32,12 +32,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           submodules: recursive
 
       - name: Scan code with Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_SHOW_SUPPRESSED: 1
           TRIVY_IGNOREFILE: "./.trivyignore.yaml"
@@ -50,7 +50,7 @@ jobs:
           scanners: "vuln"
 
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
       - name: Install dependencies
         run: apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
@@ -66,7 +66,7 @@ jobs:
           cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Install cargo extensions
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@3235f8901fd37ffed0052b276cec25a362fb82e9 # v2
         with:
           tool: cargo-deny
 
