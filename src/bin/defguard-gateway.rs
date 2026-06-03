@@ -161,7 +161,13 @@ async fn main() -> Result<(), GatewayError> {
                     "gRPC TLS certificates not found in {}. They will be generated during setup.",
                     config.cert_dir.display()
                 );
-                run_setup(&config, Arc::clone(&logs_rx)).await?
+                match run_setup(&config, Arc::clone(&logs_rx)).await {
+                    Ok(tls_config) => tls_config,
+                    Err(err) => {
+                        log::error!("Failed to run setup: {err}");
+                        return;
+                    }
+                }
             }
             Some(tls_config) => {
                 log::info!(
@@ -173,12 +179,11 @@ async fn main() -> Result<(), GatewayError> {
         };
 
         // Launch gRPC server (with purge-triggered setup loop).
-        run_gateway_loop(config, gateway, Arc::clone(&logs_rx), tls_config).await
+        run_gateway_loop(config, gateway, Arc::clone(&logs_rx), tls_config).await;
     });
 
-    while let Some(Ok(result)) = tasks.join_next().await {
-        result?;
-    }
+    // Wait for the first task to finish.
+    let _result = tasks.join_next().await;
 
     if let Some(post_down) = &post_down_clone {
         log::info!("Executing specified POST_DOWN command: {post_down}");

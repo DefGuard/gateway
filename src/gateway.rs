@@ -1,48 +1,39 @@
+#[cfg(test)]
+mod tests;
+
 use std::{
     collections::HashMap,
-    path::PathBuf,
     str::FromStr,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, SystemTime},
 };
 
-use defguard_certs::{CertificateError, CertificateInfo};
-use defguard_grpc_tls::{certs::server_tls_config, server::certificate_serial_interceptor};
-use defguard_version::{
-    ComponentInfo, DefguardComponent, Version, get_tracing_variables, server::DefguardVersionLayer,
-};
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use tokio::{
-    fs::remove_file,
+    signal,
     sync::{mpsc, oneshot},
     time::interval,
 };
-use tokio_stream::wrappers::UnboundedReceiverStream;
-use tonic::{Request, Response, Status, Streaming, service::InterceptorLayer, transport::Server};
-use tower::ServiceBuilder;
+use tonic::Status;
 use tracing::instrument;
 
 use crate::{
-    CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
     enterprise::firewall::{
         FirewallConfig, FirewallError, FirewallRule, SnatBinding,
         api::{FirewallApi, FirewallManagementApi},
     },
     error::GatewayError,
-    execute_command, mask,
+    gateway_server::GatewayServer,
+    mask,
     proto::{
         common::LogEntry,
-        gateway::{
-            Configuration, CoreRequest, CoreResponse, Peer, Update, core_request, core_response,
-            gateway_server, update,
-        },
+        gateway::{Configuration, CoreRequest, Peer, Update, core_request, update},
     },
     setup::run_setup,
-    version::is_core_version_supported,
 };
 
 /// Keeps the gRPC server running, but allows it to be stopped and
@@ -52,7 +43,7 @@ pub async fn run_gateway_loop(
     gateway: Arc<Mutex<Gateway>>,
     logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
     mut tls_config: TlsConfig,
-) -> Result<(), GatewayError> {
+) {
     loop {
         // Channel used by the gRPC service to request entering setup mode.
         // The purge RPC sends on this channel.
@@ -65,17 +56,26 @@ pub async fn run_gateway_loop(
 
         tokio::select! {
             biased;
+            // Handle Ctrl-C
+            _ = signal::ctrl_c() => {
+                if !config.keep_on_quit {
+                    gateway.lock().unwrap().cleanup();
+                }
+                break;
+            }
             // The purge RPC requested setup mode.
             signal = &mut reset_rx => {
                 // Handle channel closed event.
                 if signal.is_err() {
                     match server_handle.await {
                         Ok(Ok(())) => (),
-                        Ok(Err(err)) => return Err(err),
+                        Ok(Err(err)) => {
+                            error!("gRPC server task failed: {err}");
+                            return;
+                        }
                         Err(err) => {
-                            return Err(GatewayError::SetupError(
-                                format!("gRPC server task failed: {err}"),
-                            ));
+                            error!("gRPC server task failed: {err}");
+                            return;
                         }
                     }
                     break;
@@ -87,25 +87,31 @@ pub async fn run_gateway_loop(
 
                 // Run setup server to obtain new TLS certs, then loop to restart gRPC.
                 log::info!("Restarting setup server after purge request");
-                tls_config = run_setup(&config, Arc::clone(&logs_rx)).await?;
+                tls_config = match run_setup(&config, Arc::clone(&logs_rx)).await {
+                    Ok(config) => config,
+                    Err(err) => {
+                        error!("Failed to run setup {err}");
+                        return;
+                    }
+                }
             }
             // Server exited on its own (error or normal shutdown).
             result = &mut server_handle => {
                 match result {
                     Ok(Ok(())) => (),
-                    Ok(Err(err)) => return Err(err),
+                    Ok(Err(err)) => {
+                        error!("gRPC server task failed: {err}");
+                        return;
+                    }
                     Err(err) => {
-                        return Err(GatewayError::SetupError(
-                            format!("gRPC server task failed: {err}"),
-                        ));
+                        error!("gRPC server task failed: {err}");
+                        return;
                     }
                 }
                 break;
             }
         }
     }
-
-    Ok(())
 }
 
 // Helper struct which stores just the interface config without peers.
@@ -154,11 +160,11 @@ pub struct Gateway {
     config: Config,
     interface_configuration: Option<InterfaceConfiguration>,
     peers: HashMap<PubKey, Peer>,
-    wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
+    pub(crate) wgapi: Arc<Mutex<dyn WireguardInterfaceApi + Send + Sync + 'static>>,
     firewall_config: Option<FirewallConfig>,
     pub connected: Arc<AtomicBool>,
     // Transmission channel. Important: allows only one connected client.
-    client_tx: Option<mpsc::UnboundedSender<Result<CoreRequest, Status>>>,
+    pub(crate) client_tx: Option<mpsc::UnboundedSender<Result<CoreRequest, Status>>>,
     pub(crate) tls_config: Option<TlsConfig>,
 }
 
@@ -383,7 +389,10 @@ impl Gateway {
     /// Performs complete interface reconfiguration based on `configuration` object.
     /// Called when gateway (re)connects to gRPC endpoint and retrieves complete
     /// network and peers data.
-    fn configure(&mut self, new_configuration: Configuration) -> Result<(), GatewayError> {
+    pub(crate) fn configure(
+        &mut self,
+        new_configuration: Configuration,
+    ) -> Result<(), GatewayError> {
         debug!(
             "Received configuration, reconfiguring WireGuard interface {} (addresses: {:?})",
             new_configuration.name, new_configuration.addresses
@@ -450,7 +459,7 @@ impl Gateway {
     }
 
     #[instrument(skip_all)]
-    fn handle_updates(&mut self, update: Update) {
+    pub(crate) fn handle_updates(&mut self, update: Update) {
         debug!("Received update: {update:?}");
         match update.update {
             Some(update::Update::Network(configuration)) => {
@@ -537,289 +546,14 @@ impl Gateway {
             _ => warn!("Unsupported kind of update: {update:?}"),
         }
     }
-}
 
-pub struct GatewayServer {
-    message_id: AtomicU64,
-    gateway: Arc<Mutex<Gateway>>,
-    cert_dir: PathBuf,
-    reset_tx: Arc<tokio::sync::Mutex<Option<oneshot::Sender<()>>>>,
-}
-
-impl GatewayServer {
-    #[must_use]
-    pub fn new(
-        gateway: Arc<Mutex<Gateway>>,
-        cert_dir: PathBuf,
-        reset_tx: oneshot::Sender<()>,
-    ) -> Self {
-        Self {
-            message_id: AtomicU64::new(0),
-            gateway,
-            cert_dir,
-            reset_tx: Arc::new(tokio::sync::Mutex::new(Some(reset_tx))),
-        }
-    }
-
-    /// Starts the gateway process.
-    /// * Requires a valid mTLS configuration to be set (via `set_tls_config`) before starting;
-    ///   returns an error if TLS configuration is absent - the gRPC server never starts in plain-text mode
-    /// * Retrieves configuration and configuration updates from Defguard core via a mTLS-secured gRPC server
-    /// * Manages the WireGuard interface according to configuration and updates
-    /// * Sends interface statistics to Defguard core periodically
-    pub async fn start(self, config: Config) -> Result<(), GatewayError> {
-        info!("Starting Defguard Gateway version {VERSION} with configuration: {config:?}");
-
-        // Try to create network interface for WireGuard.
-        // FIXME: check if the interface already exists, or somehow be more clever.
-        {
-            #[allow(unused)]
-            let mut gateway = &mut self.gateway.lock().expect("gateway mutex poison");
-            if let Err(err) = gateway
-                .wgapi
-                .lock()
-                .expect("wgapi mutex poison")
-                .create_interface()
-            {
-                warn!(
-                    "Couldn't create network interface {}: {err}. Proceeding anyway.",
-                    config.ifname
-                );
-            } else {
-                #[cfg(target_os = "linux")]
-                if !config.disable_firewall_management && config.masquerade {
-                    let mut firewall_api = FirewallApi::new(&config.ifname)?;
-                    firewall_api.setup_nat(config.masquerade, &[])?;
-                }
-            }
-        }
-
-        if let Some(post_up) = &config.post_up {
-            debug!("Executing specified POST_UP command: {post_up}");
-            execute_command(post_up)?;
-        }
-
-        let tls_config = self
-            .gateway
-            .lock()
-            .expect("gateway mutex poison")
-            .tls_config
-            .clone();
-
-        // Build gRPC server.
-        let addr = config.grpc_socket();
-        info!("gRPC server is listening on {addr}");
-
-        let tls = tls_config.ok_or_else(|| {
-            GatewayError::SetupError(
-                "TLS configuration is required; gateway gRPC server cannot start without mTLS"
-                    .into(),
-            )
-        })?;
-
-        let tls_config =
-            server_tls_config(&tls.grpc_cert_pem, &tls.grpc_key_pem, &tls.grpc_ca_cert_pem)
-                .map_err(|e| GatewayError::SetupError(e.to_string()))?;
-        let mut builder = Server::builder().tls_config(tls_config)?;
-
-        // Extract Core client cert serial for pinning.
-        let expected_serial = CertificateInfo::from_der(&tls.core_client_cert_der)
-            .map_err(|e: CertificateError| GatewayError::SetupError(e.to_string()))?
-            .serial;
-
-        // Start gRPC server. This should run indefinitely.
-        debug!("Serving gRPC");
-        builder
-            .add_service(
-                ServiceBuilder::new()
-                    .layer(InterceptorLayer::new(certificate_serial_interceptor(
-                        expected_serial,
-                    )))
-                    .layer(DefguardVersionLayer::new(Version::parse(VERSION)?))
-                    .service(gateway_server::GatewayServer::new(self)),
-            )
-            .serve(addr)
-            .await?;
-
-        Ok(())
-    }
-
-    pub(crate) fn set_tls_config(&mut self, tls_config: TlsConfig) {
-        if let Ok(mut gateway) = self.gateway.lock() {
-            gateway.tls_config = Some(tls_config);
-        }
-    }
-}
-
-#[tonic::async_trait]
-impl gateway_server::Gateway for GatewayServer {
-    type BidiStream = UnboundedReceiverStream<Result<CoreRequest, Status>>;
-
-    /// Handle bidirectional communication with Defguard Core.
-    async fn bidi(
-        &self,
-        request: Request<Streaming<CoreResponse>>,
-    ) -> Result<Response<Self::BidiStream>, Status> {
-        let Some(address) = request.remote_addr() else {
-            error!("Failed to determine Defguard Core's address for request: {request:?}");
-            return Err(Status::internal(
-                "Failed to determine Defguard Core's address",
-            ));
-        };
-        info!("Defguard Core gRPC client connected from {address}");
-
-        let core_info = ComponentInfo::from_metadata(request.metadata());
-        let (version, info) = get_tracing_variables(&core_info);
-
-        // Tracing span.
-        let span = tracing::info_span!(
-            "core_communication",
-            component = %DefguardComponent::Core,
-            version = version.to_string(),
-            info
-        );
-        let _guard = span.enter();
-
-        // Check Defguard Core's version and exit if it's not supported.
-        let version = core_info.as_ref().map(|info| &info.version);
-        if !is_core_version_supported(version) {
-            return Err(Status::internal("Unsupported Defguard Core version"));
-        }
-
-        // Drop new connections if another Core has already been connected.
-        if self
-            .gateway
-            .lock()
-            .expect("Gateway lock poison")
-            .client_tx
-            .is_some()
-        {
-            error!("Only one client connection is allowed.");
-            return Err(Status::internal("Client already connected"));
-        }
-
-        let (tx, rx) = mpsc::unbounded_channel();
-
-        // First, send configuration request.
-        let req = CoreRequest {
-            id: self.message_id.fetch_add(1, Ordering::Relaxed),
-            payload: Some(core_request::Payload::ConfigRequest(())),
-        };
-
-        match tx.send(Ok(req)) {
-            Ok(()) => info!("Requesting network configuration from {address}"),
-            Err(err) => {
-                error!("Unable to send network configuration request to {address}: {err}");
-                return Err(Status::internal("failed to send configuration request"));
-            }
-        }
-
-        self.gateway.lock().expect("Gateway lock poison").client_tx = Some(tx);
-
-        let gateway = Arc::clone(&self.gateway);
-        let mut stream = request.into_inner();
-        tokio::spawn(async move {
-            loop {
-                match stream.message().await {
-                    Ok(Some(response)) => {
-                        debug!("Received message from Defguard Core: {response:?}");
-                        // Discard empty payloads.
-                        if let Some(payload) = response.payload {
-                            match payload {
-                                core_response::Payload::Config(configuration) => {
-                                    match gateway.lock() {
-                                        Ok(mut gw) => {
-                                            gw.connected.store(true, Ordering::Relaxed);
-                                            if let Err(err) = gw.configure(configuration) {
-                                                error!("Failed to configure: {err}");
-                                            }
-                                        }
-                                        Err(err) => error!("Lock failed: {err}"),
-                                    }
-                                }
-                                core_response::Payload::Update(update) => match gateway.lock() {
-                                    Ok(mut gw) => {
-                                        gw.handle_updates(update);
-                                    }
-                                    Err(err) => error!("Lock failed: {err}"),
-                                },
-                                core_response::Payload::Empty(()) => (),
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        info!("gRPC stream from Defguard Core has been closed");
-                        break;
-                    }
-                    Err(err) => {
-                        error!("gRPC stream from Defguard Core failed with error: {err}");
-                        break;
-                    }
-                }
-            }
-            info!("Defguard Core gRPC stream has been disconnected: {address}");
-            if let Ok(mut gateway) = gateway.lock() {
-                gateway.connected.store(false, Ordering::Relaxed);
-                gateway.client_tx = None;
-            }
-        });
-
-        Ok(Response::new(UnboundedReceiverStream::new(rx)))
-    }
-
-    #[instrument(skip(self, _request))]
-    async fn purge(&self, _request: Request<()>) -> Result<Response<()>, Status> {
-        debug!("Received purge request, removing gRPC certificate files");
-        let cert_path = self.cert_dir.join(GRPC_CERT_NAME);
-        let key_path = self.cert_dir.join(GRPC_KEY_NAME);
-        let ca_cert_path = self.cert_dir.join(GRPC_CA_CERT_NAME);
-        let core_client_cert_path = self.cert_dir.join(CORE_CLIENT_CERT_NAME);
-
-        let remove_cert_file = async |path: &std::path::Path, label: &str| -> Result<(), Status> {
-            match remove_file(path).await {
-                Ok(()) => {
-                    info!("Removed {label} at {}", path.display());
-                    Ok(())
-                }
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                    debug!("{label} not found at {}, skipping removal", path.display());
-                    Ok(())
-                }
-                Err(err) => {
-                    error!("Failed to remove {label} at {}: {err}", path.display());
-                    Err(Status::internal(format!("Failed to remove {label}")))
-                }
-            }
-        };
-
-        remove_cert_file(&cert_path, "gRPC certificate").await?;
-        remove_cert_file(&key_path, "gRPC key").await?;
-        remove_cert_file(&ca_cert_path, "CA certificate").await?;
-        remove_cert_file(&core_client_cert_path, "Core client certificate").await?;
-
-        // Prepare underlying `Gateway` to enter setup mode.
-        self.gateway
-            .lock()
-            .expect("Failed to lock GatewayServer::gateway")
-            .purge();
-
-        let Some(sender) = self.reset_tx.lock().await.take() else {
-            error!("Reset channel sender not found");
-            return Err(Status::internal("Failed to enter setup mode"));
-        };
-
-        if sender.send(()).is_err() {
-            error!("Failed to notify setup handler");
-            return Err(Status::internal("Failed to enter setup mode"));
-        }
-
-        info!("Removed gRPC certificate files; entering setup mode");
-        Ok(Response::new(()))
+    pub(crate) fn cleanup(&self) {
+        // not implemented
     }
 }
 
 /// Gather WireGuard statistics and send them to Core through gRPC.
-pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result<(), GatewayError> {
+pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) {
     // Helper map to track if peer data is actually changing to avoid sending duplicate stats.
     let mut peer_map = HashMap::new();
     let mut interval = interval(period);
@@ -887,371 +621,5 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) -> Result
             }
             Err(err) => error!("Failed to retrieve WireGuard interface statistics: {err}"),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{
-        net::{IpAddr, Ipv4Addr},
-        slice::from_ref,
-    };
-
-    #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
-    use defguard_wireguard_rs::Kernel;
-    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
-    use defguard_wireguard_rs::Userspace;
-    use defguard_wireguard_rs::WGApi;
-    use ipnetwork::IpNetwork;
-
-    use super::*;
-    use crate::enterprise::firewall::{Address, FirewallRule, Policy, Port, Protocol};
-
-    #[cfg(any(target_os = "macos", target_os = "netbsd"))]
-    type WG = WGApi<Userspace>;
-    #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
-    type WG = WGApi<Kernel>;
-
-    #[tokio::test]
-    async fn test_configuration_comparison() {
-        let old_config = InterfaceConfiguration {
-            name: "gateway".to_string(),
-            private_key: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            addresses: vec!["10.6.1.1/24".parse().unwrap()],
-            port: 50051,
-            mtu: 1420,
-            fwmark: 0,
-        };
-
-        let old_peers = vec![
-            Peer {
-                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.3/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-        let old_peers_map = old_peers
-            .clone()
-            .into_iter()
-            .map(|peer| (peer.pubkey.clone(), peer))
-            .collect();
-
-        let wgapi = WG::new("wg0").unwrap();
-        let config = Config::default();
-        let gateway = Gateway {
-            config,
-            interface_configuration: Some(old_config.clone()),
-            peers: old_peers_map,
-            wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_config: None,
-            connected: Arc::new(AtomicBool::new(false)),
-            client_tx: None,
-            tls_config: None,
-        };
-
-        // new config is the same
-        let new_config = old_config.clone();
-        let new_peers = old_peers.clone();
-        assert!(!gateway.is_interface_config_changed(&new_config, &new_peers));
-
-        // only interface config is different
-        let new_config = InterfaceConfiguration {
-            name: "gateway".to_string(),
-            private_key: "FGqcPuaSlGWC2j50TBA4jHgiefPgQQcgTNLwzKUzBS8=".to_string(),
-            addresses: vec!["10.6.1.2/24".parse().unwrap()],
-            port: 50051,
-            mtu: 1420,
-            fwmark: 0,
-        };
-        let new_peers = old_peers.clone();
-        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
-
-        // peer was removed
-        let new_config = old_config.clone();
-        let mut new_peers = old_peers.clone();
-        new_peers.pop();
-
-        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
-
-        // peer was added
-        let new_config = old_config.clone();
-        let mut new_peers = old_peers.clone();
-        new_peers.push(Peer {
-            pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
-            allowed_ips: vec!["10.6.1.4/24".to_string()],
-            preshared_key: None,
-            keepalive_interval: None,
-        });
-
-        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
-
-        // peer pubkey changed
-        let new_config = old_config.clone();
-        let new_peers = vec![
-            Peer {
-                pubkey: "VOCXuGWKz3PcdFba8pl7bFO/W4OG8sPet+w9Eb1LECk=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.3/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-
-        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
-
-        // peer IP changed
-        let new_config = old_config.clone();
-        let new_peers = vec![
-            Peer {
-                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.4/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-
-        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
-
-        // peer preshared key changed
-        let new_config = old_config.clone();
-        let new_peers = vec![
-            Peer {
-                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: Some("VGhpc2lzdGhlcGFzc3dvcmQzMWNoYXJhY3RlcnNsbwo=".into()),
-                keepalive_interval: None,
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.4/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-
-        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
-
-        // peer keepalive interval changed
-        let new_config = old_config.clone();
-        let new_peers = vec![
-            Peer {
-                pubkey: "+Oj0nZZ3iVH9WvKU9gM2eajJqY0hnzN5PkI4bvblgWo=".to_string(),
-                allowed_ips: vec!["10.6.1.2/24".to_string()],
-                preshared_key: Some("VGhpc2lzdGhlcGFzc3dvcmQzMWNoYXJhY3RlcnNsbwo=".into()),
-                keepalive_interval: Some(15),
-            },
-            Peer {
-                pubkey: "m7ZxDjk4sjpzgowerQqycBvOz2n/nkswCdv24MEYVGA=".to_string(),
-                allowed_ips: vec!["10.6.1.4/24".to_string()],
-                preshared_key: None,
-                keepalive_interval: None,
-            },
-        ];
-
-        assert!(gateway.is_interface_config_changed(&new_config, &new_peers));
-    }
-
-    #[tokio::test]
-    async fn test_firewall_rules_comparison() {
-        let rule1 = FirewallRule {
-            comment: Some("Rule 1".to_string()),
-            destination_addrs: vec![Address::Network(
-                IpNetwork::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 32).unwrap(),
-            )],
-            destination_ports: vec![Port::Single(80)],
-            id: 1,
-            verdict: Policy::Allow,
-            protocols: vec![Protocol::Tcp],
-            source_addrs: vec![Address::Network(
-                IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 32).unwrap(),
-            )],
-            ipv4: true,
-        };
-
-        let rule2 = FirewallRule {
-            comment: Some("Rule 2".to_string()),
-            destination_addrs: vec![Address::Network(
-                IpNetwork::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 32).unwrap(),
-            )],
-            destination_ports: vec![Port::Single(443)],
-            id: 2,
-            verdict: Policy::Allow,
-            protocols: vec![Protocol::Tcp],
-            source_addrs: vec![Address::Network(
-                IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2)), 32).unwrap(),
-            )],
-            ipv4: true,
-        };
-
-        let rule3 = FirewallRule {
-            comment: Some("Rule 3".to_string()),
-            destination_addrs: vec![Address::Network(
-                IpNetwork::from_str("10.0.1.0/24").unwrap(),
-            )],
-            destination_ports: vec![Port::Range(1000, 2000)],
-            id: 3,
-            verdict: Policy::Deny,
-            protocols: vec![Protocol::Udp],
-            source_addrs: vec![Address::Network(
-                IpNetwork::from_str("192.168.0.0/16").unwrap(),
-            )],
-            ipv4: true,
-        };
-
-        let config1 = FirewallConfig {
-            rules: vec![rule1.clone(), rule2.clone()],
-            default_policy: Policy::Allow,
-            snat_bindings: Vec::new(),
-        };
-
-        let config_empty = FirewallConfig {
-            rules: Vec::new(),
-            default_policy: Policy::Allow,
-            snat_bindings: Vec::new(),
-        };
-
-        let wgapi = WG::new("wg0").unwrap();
-        let config = Config::default();
-        let mut gateway = Gateway {
-            config,
-            interface_configuration: None,
-            peers: HashMap::new(),
-            wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_config: None,
-            connected: Arc::new(AtomicBool::new(false)),
-            client_tx: None,
-            tls_config: None,
-        };
-
-        // Gateway has no firewall config, new rules are empty
-        gateway.firewall_config = None;
-        assert!(gateway.have_firewall_rules_changed(&[]));
-
-        // Gateway has no firewall config, but new rules exist
-        gateway.firewall_config = None;
-        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
-
-        // Gateway has firewall config, with empty rules list
-        gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.have_firewall_rules_changed(&[]));
-
-        // Gateway has firewall config, new rules have different length
-        gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
-
-        // Gateway has firewall config, new rules have different content
-        gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.have_firewall_rules_changed(&[rule1.clone(), rule3.clone()]));
-
-        // Gateway has firewall config, new rules are identical
-        gateway.firewall_config = Some(config1.clone());
-        assert!(!gateway.have_firewall_rules_changed(&[rule1.clone(), rule2.clone()]));
-
-        // Gateway has empty firewall config, new rules exist
-        gateway.firewall_config = Some(config_empty.clone());
-        assert!(gateway.have_firewall_rules_changed(from_ref(&rule1)));
-
-        // Both configs are empty
-        gateway.firewall_config = Some(config_empty);
-        assert!(!gateway.have_firewall_rules_changed(&[]));
-    }
-
-    #[tokio::test]
-    async fn test_firewall_config_comparison() {
-        let config1 = FirewallConfig {
-            rules: Vec::new(),
-            default_policy: Policy::Allow,
-            snat_bindings: Vec::new(),
-        };
-
-        let config2 = FirewallConfig {
-            rules: Vec::new(),
-            default_policy: Policy::Deny,
-            snat_bindings: Vec::new(),
-        };
-
-        let config3 = FirewallConfig {
-            rules: Vec::new(),
-            default_policy: Policy::Allow,
-            snat_bindings: Vec::new(),
-        };
-
-        let wgapi = WG::new("wg0").unwrap();
-        let config = Config::default();
-        let mut gateway = Gateway {
-            config,
-            interface_configuration: None,
-            peers: HashMap::new(),
-            wgapi: Arc::new(Mutex::new(wgapi)),
-            firewall_config: None,
-            connected: Arc::new(AtomicBool::new(false)),
-            client_tx: None,
-            tls_config: None,
-        };
-        // Gateway has no config
-        gateway.firewall_config = None;
-        assert!(gateway.has_firewall_config_changed(&config1));
-
-        // Gateway has config, new config has different default_policy
-        gateway.firewall_config = Some(config1.clone());
-        assert!(gateway.has_firewall_config_changed(&config2));
-
-        // Gateway has config, new config is identical
-        gateway.firewall_config = Some(config1.clone());
-        assert!(!gateway.has_firewall_config_changed(&config3));
-
-        // Rules are not being ignored
-        let config4 = FirewallConfig {
-            rules: vec![FirewallRule {
-                comment: None,
-                destination_addrs: Vec::new(),
-                destination_ports: Vec::new(),
-                id: 0,
-                verdict: Policy::Allow,
-                protocols: Vec::new(),
-                source_addrs: Vec::new(),
-                ipv4: true,
-            }],
-            default_policy: Policy::Allow,
-            snat_bindings: Vec::new(),
-        };
-        gateway.firewall_config = Some(config1);
-        assert!(gateway.has_firewall_config_changed(&config4));
-
-        // Rule IP versions are not being ignored
-        let config5 = FirewallConfig {
-            rules: vec![FirewallRule {
-                comment: None,
-                destination_addrs: Vec::new(),
-                destination_ports: Vec::new(),
-                id: 0,
-                verdict: Policy::Allow,
-                protocols: Vec::new(),
-                source_addrs: Vec::new(),
-                ipv4: false,
-            }],
-            default_policy: Policy::Allow,
-            snat_bindings: Vec::new(),
-        };
-        gateway.firewall_config = Some(config4);
-        assert!(gateway.has_firewall_config_changed(&config5));
     }
 }

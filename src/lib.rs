@@ -1,6 +1,7 @@
 pub mod config;
 pub mod error;
 pub mod gateway;
+mod gateway_server;
 pub mod server;
 mod version;
 
