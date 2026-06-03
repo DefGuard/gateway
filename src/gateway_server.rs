@@ -20,6 +20,8 @@ use tonic::{Request, Response, Status, Streaming, service::InterceptorLayer, tra
 use tower::ServiceBuilder;
 use tracing::instrument;
 
+#[cfg(target_os = "linux")]
+use crate::enterprise::firewall::api::{FirewallApi, FirewallManagementApi};
 use crate::{
     CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
