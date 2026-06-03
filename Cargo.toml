@@ -1,6 +1,6 @@
 [package]
 name = "defguard-gateway"
-version = "2.0.1"
+version = "2.0.2"
 edition = "2024"
 
 [dependencies]
@@ -11,10 +11,10 @@ clap = { version = "4.6", features = ["derive", "env"] }
 defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "dc0b70e69335c4be98d5b17615003922c9464994" }
 defguard_grpc_tls = { git = "https://github.com/DefGuard/defguard.git", rev = "dc0b70e69335c4be98d5b17615003922c9464994" }
 defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "dc0b70e69335c4be98d5b17615003922c9464994" }
+defguard_wireguard_rs = "0.10"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rustls-pki-types = "1"
 rustls-webpki = { version = "0.103", features = ["ring", "std"] }
-defguard_wireguard_rs = "0.9"
 env_logger = "0.11"
 ipnetwork = "0.21"
 libc = { version = "0.2", default-features = false }
@@ -46,9 +46,6 @@ tracing-subscriber = "0.3"
 nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "a5cf4c9965118e27795f4ad94ea5fbbde2687ff7" }
 mnl = "0.3"
 
-[target.'cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))'.dependencies]
-nix = { version = "0.31", default-features = false, features = ["ioctl"] }
-
 [dev-dependencies]
 tokio = { version = "1", features = ["net"] }
 tonic = { version = "0.14", default-features = false, features = [
@@ -67,3 +64,6 @@ codegen-units = 1
 panic = "abort"
 lto = "thin"
 strip = "symbols"
+
+[patch.crates-io]
+defguard_wireguard_rs = { path = "../wireguard-rs" }
