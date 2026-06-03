@@ -68,11 +68,7 @@ async fn main() -> Result<(), GatewayError> {
     }
 
     let cert_dir = &config.cert_dir;
-    if !cert_dir.exists() {
-        tokio::fs::create_dir_all(cert_dir).await?;
-        #[cfg(unix)]
-        tokio::fs::set_permissions(cert_dir, Permissions::from_mode(0o700)).await?;
-    } else {
+    if cert_dir.exists() {
         // Probe write access
         let probe = cert_dir.join(".write_test");
         match tokio::fs::OpenOptions::new()
@@ -94,6 +90,10 @@ async fn main() -> Result<(), GatewayError> {
             }
             Err(e) => return Err(e.into()),
         }
+    } else {
+        tokio::fs::create_dir_all(cert_dir).await?;
+        #[cfg(unix)]
+        tokio::fs::set_permissions(cert_dir, Permissions::from_mode(0o700)).await?;
     }
 
     let maybe_tls_config = load_tls_config(cert_dir)?;
