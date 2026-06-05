@@ -32,7 +32,7 @@ use crate::{
     version::is_core_version_supported,
 };
 
-pub struct GatewayServer {
+pub(crate) struct GatewayServer {
     message_id: AtomicU64,
     gateway: Arc<Mutex<Gateway>>,
     cert_dir: PathBuf,
@@ -41,7 +41,7 @@ pub struct GatewayServer {
 
 impl GatewayServer {
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         gateway: Arc<Mutex<Gateway>>,
         cert_dir: PathBuf,
         reset_tx: oneshot::Sender<()>,
@@ -60,7 +60,7 @@ impl GatewayServer {
     /// * Retrieves configuration and configuration updates from Defguard core via a mTLS-secured gRPC server
     /// * Manages the WireGuard interface according to configuration and updates
     /// * Sends interface statistics to Defguard core periodically
-    pub async fn start(self, config: Config) -> Result<(), GatewayError> {
+    pub(crate) async fn start(self, config: Config) -> Result<(), GatewayError> {
         info!("Starting Defguard Gateway version {VERSION} with configuration: {config:?}");
 
         // Try to create network interface for WireGuard.

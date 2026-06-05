@@ -529,9 +529,9 @@ dependencies = [
 
 [[package]]
 name = "chrono"
-version = "0.4.44"
+version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
+checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
  "js-sys",
@@ -887,7 +887,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "libc",
- "nix 0.31.3",
+ "nix",
  "parking_lot",
  "ring",
  "socket2",
@@ -990,6 +990,8 @@ dependencies = [
 [[package]]
 name = "defguard_wireguard_rs"
 version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f4188d2edddeff6c87f01746ddd869a34ea4a5b0005909b9f8b89c806bfdd0d"
 dependencies = [
  "base64 0.22.1",
  "defguard_boringtun",
@@ -2223,9 +2225,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.31"
+version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "113b30b4cd05f7c06868fdb2854f66a7b9fece9a48425351cd532e810d74024f"
+checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
 
 [[package]]
 name = "matchers"
@@ -2411,36 +2413,24 @@ dependencies = [
 
 [[package]]
 name = "nftnl"
-version = "0.9.1"
-source = "git+https://github.com/DefGuard/nftnl-rs.git?rev=a5cf4c9965118e27795f4ad94ea5fbbde2687ff7#a5cf4c9965118e27795f4ad94ea5fbbde2687ff7"
+version = "0.9.2"
+source = "git+https://github.com/DefGuard/nftnl-rs.git?rev=abd34b08c53b88a47346da6362e360d522cf8ca2#abd34b08c53b88a47346da6362e360d522cf8ca2"
 dependencies = [
  "bitflags",
  "log",
  "nftnl-sys",
- "nix 0.30.1",
+ "nix",
 ]
 
 [[package]]
 name = "nftnl-sys"
 version = "0.6.4"
-source = "git+https://github.com/DefGuard/nftnl-rs.git?rev=a5cf4c9965118e27795f4ad94ea5fbbde2687ff7#a5cf4c9965118e27795f4ad94ea5fbbde2687ff7"
+source = "git+https://github.com/DefGuard/nftnl-rs.git?rev=abd34b08c53b88a47346da6362e360d522cf8ca2#abd34b08c53b88a47346da6362e360d522cf8ca2"
 dependencies = [
  "cfg-if",
  "libc",
  "mnl-sys",
  "pkg-config",
-]
-
-[[package]]
-name = "nix"
-version = "0.30.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
-dependencies = [
- "bitflags",
- "cfg-if",
- "cfg_aliases",
- "libc",
 ]
 
 [[package]]
@@ -2851,7 +2841,7 @@ checksum = "9cf20a545b305cf1da722b236b5155c9bb35f1d5ceb28c048bd96ca842f41b5b"
 dependencies = [
  "android_system_properties",
  "log",
- "nix 0.31.3",
+ "nix",
  "objc2",
  "objc2-foundation",
  "objc2-ui-kit",
@@ -3746,9 +3736,9 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
-version = "3.20.0"
+version = "3.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e72c1c2cb7b223fafb600a619537a871c2818583d619401b785e7c0b746ccde2"
+checksum = "76a5c54c7310e7b8b9577c286d7e399ddd876c3e12b3ed917a8aabc4b96e9e8c"
 dependencies = [
  "base64 0.22.1",
  "bs58",
@@ -3766,9 +3756,9 @@ dependencies = [
 
 [[package]]
 name = "serde_with_macros"
-version = "3.20.0"
+version = "3.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b90c488738ecb4fb0262f41f43bc40efc5868d9fb744319ddf5f5317f417bfac"
+checksum = "84d57bc0c8b9a17920c178daa6bb924850d54a9c97ab45194bb8c17ad66bb660"
 dependencies = [
  "darling 0.23.0",
  "proc-macro2",
@@ -5698,9 +5688,9 @@ dependencies = [
 
 [[package]]
 name = "yoke"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abe8c5fda708d9ca3df187cae8bfb9ceda00dd96231bed36e445a1a48e66f9ca"
+checksum = "709fe23a0424b6a435d82152b1bd3fdfb0833487d5fa90d05d42762a9891fef5"
 dependencies = [
  "stable_deref_trait",
  "yoke-derive",

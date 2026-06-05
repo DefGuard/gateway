@@ -43,7 +43,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "a5cf4c9965118e27795f4ad94ea5fbbde2687ff7" }
+nftnl = { git = "https://github.com/DefGuard/nftnl-rs.git", rev = "abd34b08c53b88a47346da6362e360d522cf8ca2" }
 mnl = "0.3"
 
 [dev-dependencies]
@@ -64,6 +64,3 @@ codegen-units = 1
 panic = "abort"
 lto = "thin"
 strip = "symbols"
-
-[patch.crates-io]
-defguard_wireguard_rs = { path = "../wireguard-rs" }

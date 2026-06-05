@@ -59,7 +59,7 @@ pub async fn run_gateway_loop(
             // Handle Ctrl-C
             _ = signal::ctrl_c() => {
                 if !config.keep_on_quit {
-                    gateway.lock().unwrap().cleanup();
+                    gateway.lock().unwrap().purge();
                 }
                 break;
             }
@@ -545,10 +545,6 @@ impl Gateway {
             }
             _ => warn!("Unsupported kind of update: {update:?}"),
         }
-    }
-
-    pub(crate) fn cleanup(&self) {
-        // not implemented
     }
 }
 
