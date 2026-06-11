@@ -46,9 +46,9 @@ Defguard follows a component-based architecture designed to reduce attack surfac
 </p>
 
 Strict division of responsibilities and network segmentation:
-- **Core** — central management plane: identity, authentication, authorization, and policy
-- **Edge** — public-facing entry point, exposes selected Defguard services [GitHub repo](https://github.com/DefGuard/proxy)
-- **Gateway** — enforces network access policies for protected resources [GitHub repo](https://github.com/DefGuard/gateway)
+- **Core** - central management plane: identity, authentication, authorization, and policy
+- **Edge** - public-facing entry point, exposes selected Defguard services [GitHub repo](https://github.com/DefGuard/proxy)
+- **Gateway** - WireGuard tunnel manager, routes secure VPN traffic between users and your protected networks [GitHub repo](https://github.com/DefGuard/gateway)
 
 For details refer to the [architecture documentation](https://docs.defguard.net/in-depth/architecture).
 
