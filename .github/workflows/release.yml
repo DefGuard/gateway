@@ -8,8 +8,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-
-
 jobs:
   build-docker-release:
     # Ignore tags with -, like v1.0.0-alpha
@@ -196,6 +194,7 @@ jobs:
             example-config.toml=/etc/defguard/gateway.toml"
           fpm_opts:
             "--architecture amd64
+            --config-files /etc/defguard/gateway.toml
             --output-type freebsd
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-freebsd.pkg
@@ -214,6 +213,7 @@ jobs:
             opnsense/src/opnsense/=/usr/local/opnsense/"
           fpm_opts:
             "--architecture amd64
+            --config-files /etc/defguard/gateway.toml
             --output-type freebsd
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
