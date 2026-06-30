@@ -154,9 +154,9 @@ pub struct Config {
     pub adoption_timeout: u64,
 
     /// On quit, keep (don't clean) the network interface and VPN configurations.
-    #[arg(long, short = 'k', env = "DEFGUARD_KEEP_ON_QUIT")]
+    #[arg(long, env = "DEFGUARD_CLEAN_ON_QUIT")]
     #[serde(default)]
-    pub keep_on_quit: bool,
+    pub clean_on_quit: bool,
 }
 
 impl Config {
@@ -201,7 +201,7 @@ impl Default for Config {
             http_bind_address: None,
             cert_dir: PathBuf::from("/etc/defguard/certs"),
             adoption_timeout: 5,
-            keep_on_quit: false,
+            clean_on_quit: false,
         }
     }
 }

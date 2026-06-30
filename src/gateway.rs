@@ -58,7 +58,7 @@ pub async fn run_gateway_loop(
             biased;
             // Handle Ctrl-C
             _ = signal::ctrl_c() => {
-                if !config.keep_on_quit {
+                if config.clean_on_quit {
                     gateway.lock().unwrap().purge();
                 }
                 break;

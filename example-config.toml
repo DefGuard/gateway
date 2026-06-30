@@ -46,5 +46,5 @@ syslog_socket = "/var/run/log"
 # Optional: Set the priority of the Defguard forward chain
 #fw_priority = 0
 
-# Optional: Keep the network interface and VPN configuration on quit.
-#keep_on_quit = true
+# Optional: Clean the network interface and VPN configuration on quit.
+#clean_on_quit = true
