@@ -153,7 +153,7 @@ pub struct Config {
     #[serde(default = "default_adoption_timeout")]
     pub adoption_timeout: u64,
 
-    /// On quit, keep (don't clean) the network interface and VPN configurations.
+    /// On quit, clean the network interface and VPN configurations.
     #[arg(long, env = "DEFGUARD_CLEAN_ON_QUIT")]
     #[serde(default)]
     pub clean_on_quit: bool,
