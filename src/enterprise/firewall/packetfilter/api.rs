@@ -1,8 +1,11 @@
 use std::os::fd::AsRawFd;
 
+use defguard_wireguard_rs::bsd::c_int_to_error;
+use libc::ioctl;
+
 use super::{
     FirewallRule,
-    calls::{IocTrans, IocTransElement, pf_begin, pf_commit, pf_rollback},
+    calls::{DIOCXBEGIN, DIOCXCOMMIT, DIOCXROLLBACK, IocTrans, IocTransElement},
     rule::RuleSet,
 };
 use crate::enterprise::firewall::{
@@ -33,9 +36,8 @@ impl FirewallManagementApi for FirewallApi {
         let mut elements = [IocTransElement::new(RuleSet::Filter, anchor)];
         let mut ioc_trans = IocTrans::new(elements.as_mut_slice());
         // This will create an anchor if it doesn't exist.
-        unsafe {
-            pf_begin(self.fd(), &raw mut ioc_trans)?;
-        }
+        let result = unsafe { ioctl(self.fd(), DIOCXBEGIN, &raw mut ioc_trans) };
+        c_int_to_error(result)?;
 
         let ticket = elements[0].ticket;
         let pool_ticket = self.get_pool_ticket(anchor)?;
@@ -45,10 +47,10 @@ impl FirewallManagementApi for FirewallApi {
             error!("Default policy rule can't be added");
             debug!("Rollback pf transaction");
             // Rule cannot be added, so rollback.
-            unsafe {
-                pf_rollback(self.fd(), &raw mut ioc_trans)?;
-                return Err(FirewallError::TransactionFailed(err.to_string()));
-            }
+            let result = unsafe { ioctl(self.fd(), DIOCXROLLBACK, &raw mut ioc_trans) };
+            c_int_to_error(result)?;
+
+            return Err(FirewallError::TransactionFailed(err.to_string()));
         }
 
         for rule in rules {
@@ -56,18 +58,17 @@ impl FirewallManagementApi for FirewallApi {
                 error!("Firewall rule {} can't be added", &rule.id);
                 debug!("Rollback pf transaction");
                 // Rule cannot be added, so rollback.
-                unsafe {
-                    pf_rollback(self.fd(), &raw mut ioc_trans)?;
-                    return Err(FirewallError::TransactionFailed(err.to_string()));
-                }
+                let result = unsafe { ioctl(self.fd(), DIOCXROLLBACK, &raw mut ioc_trans) };
+                c_int_to_error(result)?;
+
+                return Err(FirewallError::TransactionFailed(err.to_string()));
             }
         }
 
         // Commit transaction.
         debug!("Commit pf transaction");
-        unsafe {
-            pf_commit(self.file.as_raw_fd(), &raw mut ioc_trans).unwrap();
-        }
+        let result = unsafe { ioctl(self.file.as_raw_fd(), DIOCXCOMMIT, &raw mut ioc_trans) };
+        c_int_to_error(result)?;
 
         Ok(())
     }

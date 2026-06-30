@@ -1,6 +1,7 @@
 pub mod config;
 pub mod error;
 pub mod gateway;
+mod gateway_server;
 pub mod server;
 mod version;
 
@@ -124,7 +125,7 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
 
-            info!("Command {command} executed successfully. Stdout: {stdout}",);
+            info!("Command {command} executed successfully. Stdout: {stdout}");
             if !stderr.is_empty() {
                 error!("Stderr:\n{stderr}");
             }

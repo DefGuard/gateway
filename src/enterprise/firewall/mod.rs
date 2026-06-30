@@ -357,9 +357,6 @@ pub enum FirewallError {
     IpAddrRange(#[from] IpAddrRangeError),
     #[error("Io error: {0}")]
     Io(#[from] std::io::Error),
-    #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
-    #[error("Errno:{0}")]
-    Errno(#[from] nix::errno::Errno),
     #[error("Type conversion error: {0}")]
     TypeConversionError(String),
     #[error("Out of memory: {0}")]

@@ -206,7 +206,7 @@ impl GatewaySetupServer {
         let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
             tokio::select! {
-                _ = tokio::time::sleep(adoption_timeout) => {
+                () = tokio::time::sleep(adoption_timeout) => {
                     adoption_expired.store(true, Ordering::Relaxed);
                     error!(
                         "Gateway adoption expired and is now blocked. Restart the Gateway to enable adoption."
@@ -391,7 +391,7 @@ impl gateway_setup_server::GatewaySetup for GatewaySetupServer {
         debug!("Key pair created");
 
         let subject_alt_names = [setup_info.cert_hostname];
-        debug!("Preparing Certificate Signing Request for hostname: {subject_alt_names:?}",);
+        debug!("Preparing Certificate Signing Request for hostname: {subject_alt_names:?}");
 
         let csr = match defguard_certs::Csr::new(
             &key_pair,
