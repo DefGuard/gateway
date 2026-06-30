@@ -18,17 +18,11 @@ pub enum GatewayError {
     #[error("Tonic error")]
     Tonic(#[from] tonic::transport::Error),
 
-    #[error("Uri error")]
-    Uri(#[from] tonic::codegen::http::uri::InvalidUri),
-
     #[error("Invalid config file. Error: {0}")]
     InvalidConfigFile(String),
 
     #[error("WireGuard error: {0}")]
     WireguardError(#[from] WireguardInterfaceError),
-
-    #[error("Invalid CA file. Error")]
-    InvalidCaFile,
 
     #[error(transparent)]
     IoError(#[from] std::io::Error),

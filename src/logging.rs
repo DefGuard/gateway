@@ -1,3 +1,5 @@
+use std::{collections::HashMap, fmt};
+
 use defguard_version::Version;
 use tokio::sync::mpsc::Sender;
 use tracing::{Event, Subscriber};
@@ -45,7 +47,7 @@ where
         event.record(&mut visitor);
 
         let entry = LogEntry {
-            level: format!("{:?}", event.metadata().level()),
+            level: event.metadata().level().to_string(),
             target: event.metadata().target().to_string(),
             message: visitor.message,
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -60,16 +62,16 @@ where
 #[derive(Default)]
 struct LogVisitor {
     message: String,
-    fields: std::collections::HashMap<String, String>,
+    fields: HashMap<String, String>,
 }
 
 impl tracing::field::Visit for LogVisitor {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
+        let value_str = format!("{value:?}");
         if field.name() == "message" {
-            self.message = format!("{value:?}");
+            self.message = value_str;
         } else {
-            self.fields
-                .insert(field.name().to_string(), format!("{value:?}"));
+            self.fields.insert(field.name().to_string(), value_str);
         }
     }
 }
