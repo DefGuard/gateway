@@ -18,10 +18,13 @@ mod rule;
 
 use std::os::fd::{AsRawFd, RawFd};
 
-use calls::{IocPoolAddr, pf_begin_addrs};
-use rule::PacketFilterRule;
+use defguard_wireguard_rs::bsd::c_int_to_error;
+use libc::ioctl;
 
-use self::calls::{Change, IocRule, Rule, pf_add_rule};
+use self::{
+    calls::{Change, DIOCADDRULE, DIOCBEGINADDRS, IocPoolAddr, IocRule, Rule},
+    rule::PacketFilterRule,
+};
 use super::{FirewallError, FirewallRule, api::FirewallApi};
 use crate::enterprise::firewall::Port;
 
@@ -41,9 +44,8 @@ impl FirewallApi {
     fn get_pool_ticket(&self, anchor: &str) -> Result<u32, FirewallError> {
         let mut ioc = IocPoolAddr::new(anchor);
 
-        unsafe {
-            pf_begin_addrs(self.fd(), &raw mut ioc)?;
-        }
+        let result = unsafe { ioctl(self.fd(), DIOCBEGINADDRS, &raw mut ioc) };
+        c_int_to_error(result)?;
 
         Ok(ioc.ticket)
     }
@@ -58,7 +60,8 @@ impl FirewallApi {
         let mut ioc = IocRule::with_rule(anchor, Rule::from_pf_rule(&rule));
         ioc.ticket = ticket;
         ioc.pool_ticket = pool_ticket;
-        if let Err(err) = unsafe { pf_add_rule(self.fd(), &raw mut ioc) } {
+        let result = unsafe { ioctl(self.fd(), DIOCADDRULE, &raw mut ioc) };
+        if let Err(err) = c_int_to_error(result) {
             error!("Packet filter rule {rule} can't be added.");
             return Err(err.into());
         }
@@ -82,7 +85,8 @@ impl FirewallApi {
             ioc.action = Change::None;
             ioc.ticket = ticket;
             ioc.pool_ticket = pool_ticket;
-            if let Err(err) = unsafe { pf_add_rule(self.fd(), &raw mut ioc) } {
+            let result = unsafe { ioctl(self.fd(), DIOCADDRULE, &raw mut ioc) };
+            if let Err(err) = c_int_to_error(result) {
                 error!("Packet filter rule {rule} can't be added.");
                 return Err(err.into());
             }

@@ -24,7 +24,8 @@ use tonic::{
 use super::mock_wgapi::NullWgApi;
 use crate::{
     config::Config,
-    gateway::{Gateway, GatewayServer, TlsConfig},
+    gateway::{Gateway, TlsConfig},
+    gateway_server::GatewayServer,
     proto::gateway::gateway_client::GatewayClient,
 };
 

@@ -7,9 +7,9 @@ use std::{
     ptr,
 };
 
+use defguard_wireguard_rs::bsd::ioctl::iowr;
 use ipnetwork::IpNetwork;
-use libc::{IFNAMSIZ, pid_t, uid_t};
-use nix::{ioctl_none, ioctl_readwrite};
+use libc::{IFNAMSIZ, c_ulong, pid_t, uid_t};
 
 use super::rule::{Action, AddressFamily, Direction, PacketFilterRule, RuleSet, State};
 use crate::enterprise::firewall::Port;
@@ -762,89 +762,42 @@ impl IocTrans {
     }
 }
 
-// DIOCSTART
 // Start the packet filter.
-ioctl_none!(pf_start, b'D', 1);
-
-// DIOCSTOP
+// pub(super) const DIOCSTART: c_ulong = io(b'D', 1);
 // Stop the packet filter.
-ioctl_none!(pf_stop, b'D', 2);
+// pub(super) const DIOCSTOP: c_ulong = io(b'D', 2);
 
-// DIOCADDRULE
 // Add rule at the end of the inactive ruleset. This call requires a ticket obtained through
 // a preceding DIOCXBEGIN call and a pool_ticket obtained through a DIOCBEGINADDRS call.
 // DIOCADDADDR must also be called if any pool addresses are required. The optional anchor name
 // indicates the anchor in which to append the rule. `nr` and `action` are ignored.
-ioctl_readwrite!(pf_add_rule, b'D', 4, IocRule);
-
-// DIOCGETRULES
-ioctl_readwrite!(pf_get_rules, b'D', 6, IocRule);
-
-// DIOCGETRULE
-ioctl_readwrite!(pf_get_rule, b'D', 7, IocRule);
-
-// DIOCCLRSTATES
-// ioctl_readwrite!(pf_clear_states, b'D', 18, pfioc_state_kill);
-
-// DIOCGETSTATUS
-// ioctl_readwrite!(pf_get_status, b'D', 21, pf_status);
-
-// DIOCGETSTATES (COMPAT_FREEBSD14)
-// ioctl_readwrite!(pf_get_states, b'D', 25, pfioc_states);
-
-// DIOCCHANGERULE
-ioctl_readwrite!(pf_change_rule, b'D', 26, IocRule);
-
-// DIOCINSERTRULE
+pub(super) const DIOCADDRULE: c_ulong = iowr::<IocRule>(b'D', 4);
+// pub(super) const DIOCGETRULES: c_ulong = iowr::<IocRule>(b'D', 6);
+// pub(super) const DIOCGETRULE: c_ulong = iowr::<IocRule>(b'D', 7);
+// pub(super) const DIOCCHANGERULE: c_ulong = iowr::<IocRule>(b'D', 26);
 // Substituted on FreeBSD, NetBSD, and OpenBSD by DIOCCHANGERULE with rule.action = PF_CHANGE_REMOVE
-#[cfg(target_os = "macos")]
-ioctl_readwrite!(pf_insert_rule, b'D', 27, IocRule);
-
-// DIOCDELETERULE
+// #[cfg(target_os = "macos")]
+// pub(super) const DIOCINSERTRULE: c_ulong = iowr::<IocRule>(b'D', 27);
 // Substituted on FreeBSD, NetBSD, and OpenBSD by DIOCCHANGERULE with rule.action = PF_CHANGE_REMOVE
-#[cfg(target_os = "macos")]
-ioctl_readwrite!(pf_delete_rule, b'D', 28, IocRule);
+// #[cfg(target_os = "macos")]
+// pub(super) const DIOCDELETERULE: c_ulong = iowr::<IocRule>(b'D', 28);
 
-// DIOCKILLSTATES
-// ioctl_readwrite!(pf_kill_states, b'D', 41, pfioc_state_kill);
-
-// DIOCBEGINADDRS
 // Clear the buffer address pool and get a ticket for subsequent DIOCADDADDR, DIOCADDRULE, and
 // DIOCCHANGERULE calls.
-ioctl_readwrite!(pf_begin_addrs, b'D', 51, IocPoolAddr);
-
-// DIOCADDADDR
+pub(super) const DIOCBEGINADDRS: c_ulong = iowr::<IocPoolAddr>(b'D', 51);
 // Add the pool address `addr` to the buffer address pool to be used in the following DIOCADDRULE
 // or DIOCCHANGERULE call. All other members of the structure are ignored.
-ioctl_readwrite!(pf_add_addr, b'D', 52, IocPoolAddr);
-
-// DIOCGETADDRS
+// pub(super) const DIOCADDADDR: c_ulong = iowr::<IocPoolAddr>(b'D', 52);
 // Get a ticket for subsequent DIOCGETADDR calls and the number nr of pool addresses in the rule
 // specified with r_action, r_num, and anchor.
-ioctl_readwrite!(pf_get_addrs, b'D', 53, IocPoolAddr);
-
-// DIOCGETADDR
+// pub(super) const DIOCGETADDRS: c_ulong = iowr::<IocPoolAddr>(b'D', 53);
 // Get the pool address addr by its number nr from the rule specified with r_action, r_num, and
 // anchor using the ticket obtained through a preceding DIOCGETADDRS call.
-ioctl_readwrite!(pf_get_addr, b'D', 54, IocPoolAddr);
+// pub(super) const DIOCGETADDR: c_ulong = iowr::<IocPoolAddr>(b'D', 54);
 
-// DIOCCHANGEADDR
-// ioctl_readwrite!(pf_change_addr, b'D', 55, IocPoolAddr);
-
-// DIOCGETRULESETS
-// ioctl_readwrite!(pf_get_rulesets, b'D', 58, PFRuleset);
-
-// DIOCGETRULESET
-// ioctl_readwrite!(pf_get_ruleset, b'D', 59, PFRuleset);
-
-// DIOCXBEGIN
-ioctl_readwrite!(pf_begin, b'D', 81, IocTrans);
-
-// DIOCXCOMMIT
-ioctl_readwrite!(pf_commit, b'D', 82, IocTrans);
-
-// DIOCXROLLBACK
-ioctl_readwrite!(pf_rollback, b'D', 83, IocTrans);
+pub(super) const DIOCXBEGIN: c_ulong = iowr::<IocTrans>(b'D', 81);
+pub(super) const DIOCXCOMMIT: c_ulong = iowr::<IocTrans>(b'D', 82);
+pub(super) const DIOCXROLLBACK: c_ulong = iowr::<IocTrans>(b'D', 83);
 
 #[cfg(test)]
 mod tests {

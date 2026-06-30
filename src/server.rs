@@ -9,8 +9,6 @@ use std::{
 use axum::{Router, extract::Extension, http::StatusCode, routing::get, serve};
 use tokio::net::TcpListener;
 
-use crate::error::GatewayError;
-
 async fn healthcheck<'a>(
     Extension(connected): Extension<Arc<AtomicBool>>,
 ) -> (StatusCode, &'a str) {
@@ -26,7 +24,7 @@ pub async fn run_http_server(
     http_port: u16,
     http_bind_address: Option<IpAddr>,
     connected: Arc<AtomicBool>,
-) -> Result<(), GatewayError> {
+) {
     let app = Router::new()
         .route("/health", get(healthcheck))
         .layer(Extension(connected));
@@ -36,13 +34,15 @@ pub async fn run_http_server(
         http_bind_address.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
         http_port,
     );
-    let listener = TcpListener::bind(&addr).await.inspect_err(|err| {
-        error!("Failed to bind to {addr}: {err}");
-    })?;
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(socket) => socket,
+        Err(err) => {
+            error!("Failed to bind to {addr}: {err}");
+            return;
+        }
+    };
     info!("Health check listening on {addr}");
 
     // From axum docs: this future will never actually complete or return an error.
     let _ = serve(listener, app.into_make_service()).await;
-
-    Ok(())
 }
