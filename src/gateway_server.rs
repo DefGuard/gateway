@@ -254,6 +254,7 @@ impl gateway_server::Gateway for GatewayServer {
             if let Ok(mut gateway) = gateway.lock() {
                 gateway.connected.store(false, Ordering::Relaxed);
                 gateway.client_tx = None;
+                gateway.purge();
             }
         });
 
