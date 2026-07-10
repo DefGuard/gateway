@@ -31,7 +31,7 @@ use crate::{
     mask,
     proto::{
         common::LogEntry,
-        gateway::{Configuration, CoreRequest, Peer, Update, core_request, update},
+        gateway::{Configuration, CoreRequest, Peer, Update, UpdateType, core_request, update},
     },
     setup::run_setup,
 };
@@ -469,8 +469,7 @@ impl Gateway {
             }
             Some(update::Update::Peer(peer_config)) => {
                 debug!("Applying peer configuration: {peer_config:?}");
-                // UpdateType::Delete
-                if update.update_type == 2 {
+                if UpdateType::try_from(update.update_type) == Ok(UpdateType::Delete) {
                     debug!("Deleting peer {peer_config:?}");
                     self.peers.remove(&peer_config.pubkey);
                     if let Err(err) =
