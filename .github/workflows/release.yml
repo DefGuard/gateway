@@ -52,8 +52,8 @@ jobs:
         with:
           draft: true
           generate_release_notes: true
-          release_name: v2.0.3
-          tag_name: v2.0.3
+          release_name: v2.0.3-src
+          tag_name: v2.0.3-src
 
   create-sbom:
     needs:
@@ -91,7 +91,7 @@ jobs:
 
       - name: Build source code archive
         run: tar --exclude='.github' --exclude-vcs --xform='s|^\./|gateway-${{ env.VERSION }}/|' \
-             --xz -cf defguard-gateway-${{ env.VERSION }}.tar.xz .
+             --xz -cf ${{ runner.temp }}/defguard-gateway-${{ env.VERSION }}.tar.xz .
 
       - name: Upload source code archive
         uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
@@ -99,7 +99,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: defguard-gateway-${{ env.VERSION }}.tar.xz
+          asset_path: ${{ runner.temp }}/defguard-gateway-${{ env.VERSION }}.tar.xz
           asset_content_type: application/x-xz
           overwrite: true
 
