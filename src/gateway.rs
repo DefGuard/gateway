@@ -207,6 +207,35 @@ impl Gateway {
         self.connected.store(false, Ordering::Relaxed);
     }
 
+    /// Tear down peer state on Core disconnect without removing the WireGuard
+    /// interface.
+    ///
+    /// Removes all peers from the kernel interface (fail-closed security) and
+    /// resets gateway state, but leaves the interface alive so it can be
+    /// reconfigured when Core reconnects. Unlike [`purge`](Self::purge), this
+    /// does not call `remove_interface()`.
+    pub(crate) fn disconnect_cleanup(&mut self) {
+        // Remove all peers from the kernel interface.
+        {
+            let wgapi = self.wgapi.lock().expect("Failed to lock Gateway::wgapi");
+            for pubkey in self.peers.keys() {
+                if let Err(err) = wgapi.remove_peer(&pubkey.as_str().try_into().unwrap_or_default())
+                {
+                    error!("Failed to remove peer {pubkey} during disconnect cleanup: {err}");
+                }
+            }
+        }
+        // Cleanup the firewall.
+        if let Err(err) = self.cleanup_firewall() {
+            error!("Gateway disconnect cleanup failed to cleanup firewall rules: {err}");
+        }
+        // Reset connection state but keep the interface alive.
+        self.interface_configuration = None;
+        self.peers.clear();
+        self.client_tx = None;
+        self.connected.store(false, Ordering::Relaxed);
+    }
+
     // Replace current peer map with a new list of peers.
     fn replace_peers(&mut self, new_peers: Vec<Peer>) {
         debug!("Replacing stored peers with {} new peers", new_peers.len());

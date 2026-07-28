@@ -226,9 +226,7 @@ impl gateway_server::Gateway for GatewayServer {
             }
             info!("Defguard Core gRPC stream has been disconnected: {address}");
             if let Ok(mut gateway) = gateway.lock() {
-                gateway.connected.store(false, Ordering::Relaxed);
-                gateway.client_tx = None;
-                gateway.purge();
+                gateway.disconnect_cleanup();
             }
         });
 
