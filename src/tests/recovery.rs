@@ -12,7 +12,7 @@ use crate::{config::Config, gateway::Gateway, proto::gateway::Configuration};
 /// 2. Calling `purge()` which drives `remove_interface()` -> interface gone
 /// 3. Calling `configure()` with a minimal config -> fails on current code
 #[test]
-fn purge_then_configure_recovers_interface() {
+fn test_purge_then_configure_recovers_interface() {
     let mut config = Config::default();
     config.disable_firewall_management = true;
     let mut gateway = Gateway::new(config, StatefulMockWgApi::new()).unwrap();
