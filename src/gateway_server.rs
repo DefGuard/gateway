@@ -20,8 +20,6 @@ use tonic::{Request, Response, Status, Streaming, service::InterceptorLayer, tra
 use tower::ServiceBuilder;
 use tracing::instrument;
 
-#[cfg(target_os = "linux")]
-use crate::enterprise::firewall::api::{FirewallApi, FirewallManagementApi};
 use crate::{
     CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
@@ -62,30 +60,6 @@ impl GatewayServer {
     /// * Sends interface statistics to Defguard core periodically
     pub(crate) async fn start(self, config: Config) -> Result<(), GatewayError> {
         info!("Starting Defguard Gateway version {VERSION} with configuration: {config:?}");
-
-        // Try to create network interface for WireGuard.
-        // FIXME: check if the interface already exists, or somehow be more clever.
-        {
-            #[allow(unused)]
-            let mut gateway = &mut self.gateway.lock().expect("gateway mutex poison");
-            if let Err(err) = gateway
-                .wgapi
-                .lock()
-                .expect("wgapi mutex poison")
-                .create_interface()
-            {
-                warn!(
-                    "Couldn't create network interface {}: {err}. Proceeding anyway.",
-                    config.ifname
-                );
-            } else {
-                #[cfg(target_os = "linux")]
-                if !config.disable_firewall_management && config.masquerade {
-                    let mut firewall_api = FirewallApi::new(&config.ifname)?;
-                    firewall_api.setup_nat(config.masquerade, &[])?;
-                }
-            }
-        }
 
         if let Some(post_up) = &config.post_up {
             debug!("Executing specified POST_UP command: {post_up}");

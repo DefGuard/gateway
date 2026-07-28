@@ -402,6 +402,21 @@ impl Gateway {
             mask!(new_configuration, private_key)
         );
 
+        // configure() is the sole owner of interface existence; recreate it if
+        // it was removed (e.g. by purge during a disconnect).
+        if self
+            .wgapi
+            .lock()
+            .expect("Failed to lock Gateway::wgapi")
+            .read_interface_data()
+            .is_err()
+        {
+            self.wgapi
+                .lock()
+                .expect("Failed to lock Gateway::wgapi")
+                .create_interface()?;
+        }
+
         // check if new configuration is different than current one
         let new_interface_configuration = new_configuration.clone().into();
 
