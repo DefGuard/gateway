@@ -207,42 +207,10 @@ impl Gateway {
         self.connected.store(false, Ordering::Relaxed);
     }
 
-    /// Tear down peer state on Core disconnect without removing the WireGuard
-    /// interface.
-    ///
-    /// Removes all peers from the interface (fail-closed security) and
-    /// resets gateway state, but leaves the interface alive so it can be
-    /// reconfigured when Core reconnects. Unlike [`purge`](Self::purge), this
-    /// does not call `remove_interface()`.
-    pub(crate) fn disconnect_cleanup(&mut self) {
-        // Remove all peers from the interface.
-        {
-            let wgapi = self.wgapi.lock().expect("Failed to lock Gateway::wgapi");
-            for pubkey in self.peers.keys() {
-                let key = match pubkey.as_str().try_into() {
-                    Ok(key) => key,
-                    Err(err) => {
-                        error!(
-                            "Failed to parse peer public key {pubkey} during disconnect \
-                             cleanup; peer NOT removed: {err}"
-                        );
-                        continue;
-                    }
-                };
-                if let Err(err) = wgapi.remove_peer(&key) {
-                    error!("Failed to remove peer {pubkey} during disconnect cleanup: {err}");
-                }
-            }
-        }
-        // Cleanup the firewall.
-        if let Err(err) = self.cleanup_firewall() {
-            error!("Gateway disconnect cleanup failed to cleanup firewall rules: {err}");
-        }
-        // Reset connection state but keep the interface alive.
-        self.interface_configuration = None;
-        self.peers.clear();
-        self.client_tx = None;
-        self.connected.store(false, Ordering::Relaxed);
+    /// Grace period to wait after a Core disconnect before purging the interface.
+    /// Zero means purge immediately (no grace).
+    pub(crate) fn disconnect_grace_period(&self) -> Duration {
+        Duration::from_secs(self.config.core_disconnect_grace_period)
     }
 
     // Replace current peer map with a new list of peers.

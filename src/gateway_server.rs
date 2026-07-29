@@ -13,7 +13,9 @@ use defguard_version::{
 };
 use tokio::{
     fs::remove_file,
+    spawn,
     sync::{mpsc, oneshot},
+    time::sleep,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{Request, Response, Status, Streaming, service::InterceptorLayer, transport::Server};
@@ -225,8 +227,32 @@ impl gateway_server::Gateway for GatewayServer {
                 }
             }
             info!("Defguard Core gRPC stream has been disconnected: {address}");
-            if let Ok(mut gateway) = gateway.lock() {
-                gateway.disconnect_cleanup();
+            // Mark disconnected immediately, but delay tearing down the interface by
+            // the grace period so a transient Core outage (e.g. a container restart)
+            // doesn't drop VPN traffic. If Core reconnects within the window the purge
+            // is skipped; otherwise we fail closed.
+            let grace_period = {
+                let mut gateway = gateway.lock().expect("Gateway lock poison");
+                gateway.connected.store(false, Ordering::Relaxed);
+                gateway.client_tx = None;
+                gateway.disconnect_grace_period()
+            };
+            if grace_period.is_zero() {
+                gateway.lock().expect("Gateway lock poison").purge();
+            } else {
+                let gateway = Arc::clone(&gateway);
+                spawn(async move {
+                    sleep(grace_period).await;
+                    let mut gateway = gateway.lock().expect("Gateway lock poison");
+                    if gateway.client_tx.is_none() {
+                        info!(
+                            "Core still disconnected after {grace_period:?}; purging (fail-closed)"
+                        );
+                        gateway.purge();
+                    } else {
+                        debug!("Core reconnected within grace period; skipping purge");
+                    }
+                });
             }
         });
 
