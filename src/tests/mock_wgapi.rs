@@ -77,6 +77,7 @@ pub(crate) struct StatefulMockWgApi {
 }
 
 impl StatefulMockWgApi {
+    #[must_use]
     pub(crate) fn new() -> Self {
         Self {
             interface_exists: AtomicBool::new(true),

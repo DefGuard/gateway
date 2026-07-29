@@ -219,8 +219,17 @@ impl Gateway {
         {
             let wgapi = self.wgapi.lock().expect("Failed to lock Gateway::wgapi");
             for pubkey in self.peers.keys() {
-                if let Err(err) = wgapi.remove_peer(&pubkey.as_str().try_into().unwrap_or_default())
-                {
+                let key = match pubkey.as_str().try_into() {
+                    Ok(key) => key,
+                    Err(err) => {
+                        error!(
+                            "Failed to parse peer public key {pubkey} during disconnect \
+                             cleanup; peer NOT removed: {err}"
+                        );
+                        continue;
+                    }
+                };
+                if let Err(err) = wgapi.remove_peer(&key) {
                     error!("Failed to remove peer {pubkey} during disconnect cleanup: {err}");
                 }
             }
@@ -433,17 +442,15 @@ impl Gateway {
 
         // configure() is the sole owner of interface existence; recreate it if
         // it was removed (e.g. by purge during a disconnect).
-        if self
-            .wgapi
-            .lock()
-            .expect("Failed to lock Gateway::wgapi")
-            .read_interface_data()
-            .is_err()
         {
-            self.wgapi
-                .lock()
-                .expect("Failed to lock Gateway::wgapi")
-                .create_interface()?;
+            let mut wgapi = self.wgapi.lock().expect("Failed to lock Gateway::wgapi");
+            if wgapi.read_interface_data().is_err() {
+                info!(
+                    "WireGuard interface {} is not present, creating it",
+                    new_configuration.name
+                );
+                wgapi.create_interface()?;
+            }
         }
 
         // check if new configuration is different than current one
@@ -517,12 +524,18 @@ impl Gateway {
                 if update.update_type == 2 {
                     debug!("Deleting peer {peer_config:?}");
                     self.peers.remove(&peer_config.pubkey);
-                    if let Err(err) =
-                        self.wgapi.lock().unwrap().remove_peer(
-                            &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
-                        )
-                    {
-                        error!("Failed to delete peer: {err}");
+                    match peer_config.pubkey.as_str().try_into() {
+                        Ok(key) => {
+                            if let Err(err) = self.wgapi.lock().unwrap().remove_peer(&key) {
+                                error!("Failed to delete peer: {err}");
+                            }
+                        }
+                        Err(err) => {
+                            error!(
+                                "Failed to parse public key of peer {} to delete: {err}",
+                                peer_config.pubkey
+                            );
+                        }
                     }
                 }
                 // UpdateType::Create, UpdateType::Modify

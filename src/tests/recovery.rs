@@ -1,16 +1,17 @@
 use super::mock_wgapi::StatefulMockWgApi;
 use crate::{config::Config, gateway::Gateway, proto::gateway::Configuration};
 
-/// Reproduction test for the interface recovery bug.
+/// Regression test for the interface recovery bug.
 ///
 /// After a disconnect, `Gateway::purge()` calls `remove_interface()` which
-/// deletes the kernel WireGuard link. On the next `configure()`, the gateway
-/// tries to configure a non-existent device and fails with `NoDevice`.
+/// deletes the kernel WireGuard link. Before the fix, the next `configure()`
+/// tried to configure a non-existent device and failed; `configure()` now
+/// recreates the interface when it is missing, so recovery succeeds.
 ///
-/// This test proves the bug by:
-/// 1. Building a Gateway with the stateful mock (interface starts as existing)
-/// 2. Calling `purge()` which drives `remove_interface()` -> interface gone
-/// 3. Calling `configure()` with a minimal config -> fails on current code
+/// The test:
+/// 1. Builds a Gateway with the stateful mock (interface starts as existing)
+/// 2. Calls `purge()`, which drives `remove_interface()` -> interface gone
+/// 3. Calls `configure()` and asserts it recreates the interface and succeeds
 #[test]
 fn test_purge_then_configure_recovers_interface() {
     let mut config = Config::default();
@@ -47,6 +48,6 @@ fn test_purge_then_configure_recovers_interface() {
     let result = gateway.configure(new_config);
     assert!(
         result.is_ok(),
-        "configure should succeed (but fails on current code): {result:?}",
+        "configure should recover the interface and succeed: {result:?}",
     );
 }
