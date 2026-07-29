@@ -1,7 +1,7 @@
 use super::mock_wgapi::StatefulMockWgApi;
 use crate::{config::Config, gateway::Gateway, proto::gateway::Configuration};
 
-/// Regression test for the interface recovery bug.
+/// Regression test for the interface recovery bug (#354).
 ///
 /// After a disconnect, `Gateway::purge()` calls `remove_interface()` which
 /// deletes the kernel WireGuard link. Before the fix, the next `configure()`
