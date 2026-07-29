@@ -189,7 +189,7 @@ async fn call_bidi(client: &mut GatewayClient<Channel>) -> tonic::Status {
 
 /// `start()` must return `Err` immediately when no `TlsConfig` has been set.
 #[tokio::test]
-async fn start_errors_without_tls_config() {
+async fn test_start_errors_without_tls_config() {
     let config = Config::default();
     let gateway = build_gateway(&config);
     let gateway = Arc::new(Mutex::new(gateway));
@@ -213,7 +213,7 @@ async fn start_errors_without_tls_config() {
 /// but it must NOT be rejected with `Unauthenticated` - that would indicate the mTLS layer
 /// or serial-pin interceptor wrongly rejected the cert.
 #[tokio::test]
-async fn valid_mtls_client_accepted() {
+async fn test_valid_mtls_client_accepted() {
     init_crypto();
     let certs = TestCerts::generate();
     let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
@@ -242,7 +242,7 @@ async fn valid_mtls_client_accepted() {
 /// tonic may reject the connection eagerly (at `connect()` time) or lazily
 /// (on the first RPC). Both outcomes are treated as the expected rejection.
 #[tokio::test]
-async fn no_client_cert_rejected() {
+async fn test_no_client_cert_rejected() {
     init_crypto();
     let certs = TestCerts::generate();
     let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
@@ -271,7 +271,7 @@ async fn no_client_cert_rejected() {
 /// A client presenting a cert from the correct CA but with the wrong serial must be rejected
 /// by the serial-pin interceptor with `Unauthenticated`.
 #[tokio::test]
-async fn wrong_serial_rejected() {
+async fn test_wrong_serial_rejected() {
     init_crypto();
     let certs = TestCerts::generate();
     let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
@@ -304,7 +304,7 @@ async fn wrong_serial_rejected() {
 /// but the rejection must not be `FailedPrecondition`, which would indicate
 /// the cert bypassed CA verification and reached the gRPC handler.
 #[tokio::test]
-async fn rogue_ca_client_rejected() {
+async fn test_rogue_ca_client_rejected() {
     init_crypto();
     let certs = TestCerts::generate();
     let (port, shutdown_tx) = spawn_test_gateway(&certs).await;

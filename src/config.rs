@@ -23,6 +23,10 @@ fn default_stats_period() -> u64 {
     30
 }
 
+fn default_core_disconnect_grace_period() -> u64 {
+    30
+}
+
 fn default_ifname() -> String {
     String::from("wg0")
 }
@@ -65,6 +69,20 @@ pub struct Config {
     #[arg(long, short = 'p', env = "DEFGUARD_STATS_PERIOD", default_value = "30")]
     #[serde(default = "default_stats_period")]
     pub stats_period: u64,
+
+    /// Seconds to wait after losing the Defguard Core connection before tearing down
+    /// the WireGuard interface. Bridges transient Core outages (e.g. a container
+    /// restart) without dropping VPN traffic; if Core reconnects within the window,
+    /// the teardown is skipped. Set to 0 to tear down immediately. NOTE: during the
+    /// window peers keep forwarding while Core is unreachable, so revoked or expired
+    /// sessions retain access until it elapses.
+    #[arg(
+        long,
+        env = "DEFGUARD_CORE_DISCONNECT_GRACE_PERIOD",
+        default_value = "30"
+    )]
+    #[serde(default = "default_core_disconnect_grace_period")]
+    pub core_disconnect_grace_period: u64,
 
     /// Network interface name (e.g. wg0)
     #[arg(long, short = 'i', env = "DEFGUARD_IFNAME", default_value = "wg0")]
@@ -184,6 +202,7 @@ impl Default for Config {
             grpc_port: 50066,
             userspace: false,
             stats_period: 15,
+            core_disconnect_grace_period: 30,
             ifname: "wg0".into(),
             pidfile: None,
             use_syslog: false,
