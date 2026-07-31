@@ -85,5 +85,8 @@ function defguardgateway_firewall($fw)
     // (OPNsense 26.7+), a 'quick' anchor short-circuits the parent ruleset
     // even when no inner rule matches, silently skipping OPNsense's own
     // firewall rules.
-    $fw->registerAnchor('defguard/*', 'fw', 1, 'tail', false);
+    $model = new OPNsense\DefguardGateway\DefguardGateway();
+    $placement = (string) $model->general->FwAnchorPlacement ?: 'tail';
+    $quick = (string) $model->general->FwAnchorQuick === '1';
+    $fw->registerAnchor('defguard/*', 'fw', 1, $placement, $quick);
 }
