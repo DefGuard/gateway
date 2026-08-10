@@ -160,7 +160,8 @@ fn add_rule_comment(rule: &mut Rule, comment: &str) -> Result<(), FirewallError>
             "Failed to create CString from string {comment}. Error: {e:?}"
         ))
     })?;
-    rule.set_comment(comment);
+    rule.set_comment(comment)
+        .map_err(|err| FirewallError::NetlinkError(err.into()))?;
     debug!("Added comment to nftables expression: {comment:?}");
     Ok(())
 }
