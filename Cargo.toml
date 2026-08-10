@@ -9,9 +9,9 @@ axum = "0.8"
 base64 = "0.22"
 chrono = "0.4"
 clap = { version = "4.6", features = ["derive", "env"] }
-defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "042b9e507b6ed9e23074ccf675b410f57b646670" }
-defguard_grpc_tls = { git = "https://github.com/DefGuard/defguard.git", rev = "042b9e507b6ed9e23074ccf675b410f57b646670" }
-defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "042b9e507b6ed9e23074ccf675b410f57b646670" }
+defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "cdf3ef9a70796d47a6247ad1300d2e6bb7474cf5" }
+defguard_grpc_tls = { git = "https://github.com/DefGuard/defguard.git", rev = "cdf3ef9a70796d47a6247ad1300d2e6bb7474cf5" }
+defguard_version = { git = "https://github.com/DefGuard/defguard.git", rev = "cdf3ef9a70796d47a6247ad1300d2e6bb7474cf5" }
 defguard_wireguard_rs = "0.11"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rustls-pki-types = "1"
