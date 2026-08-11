@@ -55,7 +55,7 @@ impl FirewallManagementApi for FirewallApi {
 
         for rule in rules {
             if let Err(err) = self.add_rule(rule, ticket, pool_ticket, anchor) {
-                error!("Firewall rule {} can't be added", &rule.id);
+                error!("Firewall rule {} can't be added", rule.id);
                 debug!("Rollback pf transaction");
                 // Rule cannot be added, so rollback.
                 let result = unsafe { ioctl(self.fd(), DIOCXROLLBACK, &raw mut ioc_trans) };
