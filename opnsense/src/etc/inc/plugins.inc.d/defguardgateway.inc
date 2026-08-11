@@ -81,5 +81,12 @@ function defguardgateway_firewall($fw)
 
     // $fw->registerAnchor('defguard/*', 'nat', 1, 'head');
     // $fw->registerAnchor('defguard/*', 'rdr', 1, 'head');
-    $fw->registerAnchor('defguard/*', 'fw', 1, 'head', true);
+    // IMPORTANT: never register this anchor as 'quick'. On FreeBSD 15+
+    // (OPNsense 26.7+), a 'quick' anchor short-circuits the parent ruleset
+    // even when no inner rule matches, silently skipping OPNsense's own
+    // firewall rules.
+    $model = new OPNsense\DefguardGateway\DefguardGateway();
+    $placement = (string) $model->general->FwAnchorPlacement ?: 'tail';
+    $quick = (string) $model->general->FwAnchorQuick === '1';
+    $fw->registerAnchor('defguard/*', 'fw', 1, $placement, $quick);
 }
