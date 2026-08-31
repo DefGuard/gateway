@@ -1,4 +1,4 @@
-//! Manual `Debug` implementations for gRPC messages carrying secrets.
+//! Manual `Debug` implementations for protos.
 //!
 //! `Debug` derivation for these types is disabled in `build.rs` (`skip_debug`),
 //! so sensitive fields can be redacted here instead of leaking into logs.
@@ -7,7 +7,6 @@ use std::fmt;
 
 use crate::proto::gateway::{Configuration, CoreResponse, Peer, Update, core_response, update};
 
-/// Placeholder printed in place of a secret.
 const REDACTED: &str = "***";
 
 impl fmt::Debug for Configuration {
