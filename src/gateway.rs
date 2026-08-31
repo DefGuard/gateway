@@ -434,10 +434,7 @@ impl Gateway {
                 "Reconfigured WireGuard interface {} (addresses: {:?})",
                 new_configuration.name, new_configuration.addresses
             );
-            trace!(
-                "Reconfigured WireGuard interface. Configuration: {}",
-                new_configuration.name
-            );
+            trace!("Reconfigured WireGuard interface. Configuration: {new_configuration:?}");
             // store new configuration and peers
             self.interface_configuration = Some(new_interface_configuration);
             self.replace_peers(new_configuration.peers);
