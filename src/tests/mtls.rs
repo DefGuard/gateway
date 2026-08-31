@@ -142,9 +142,10 @@ async fn spawn_test_gateway(certs: &TestCerts) -> (u16, oneshot::Sender<()>) {
     // helper fast on capable hardware.
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        if Instant::now() >= deadline {
-            panic!("timeout waiting for test gRPC server to start on port {port}");
-        }
+        assert!(
+            Instant::now() < deadline,
+            "timeout waiting for test gRPC server to start on port {port}"
+        );
         if TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
             break;
         }

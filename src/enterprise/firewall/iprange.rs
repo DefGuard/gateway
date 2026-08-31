@@ -138,7 +138,7 @@ mod tests {
         let addr = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 5));
         assert!(!range.contains(&addr));
 
-        assert_eq!(Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))), range.next());
+        assert_eq!(Some(IpAddr::V4(Ipv4Addr::LOCALHOST)), range.next());
         assert_eq!(Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2))), range.next());
         assert_eq!(Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 3))), range.next());
         assert_eq!(None, range.next());

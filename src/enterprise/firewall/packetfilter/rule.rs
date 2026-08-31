@@ -363,7 +363,7 @@ mod tests {
     #[test]
     fn unroll_firewall_rule() {
         // Empty rule
-        let mut fr = FirewallRule {
+        let fr = FirewallRule {
             comment: None,
             destination_addrs: Vec::new(),
             destination_ports: Vec::new(),
@@ -374,7 +374,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", &mut fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr);
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),
@@ -385,7 +385,7 @@ mod tests {
         let addr1 = Address::Network(
             IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)), 24).unwrap(),
         );
-        let mut fr = FirewallRule {
+        let fr = FirewallRule {
             comment: None,
             destination_addrs: vec![addr1],
             destination_ports: vec![Port::Single(1138)],
@@ -396,7 +396,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", &mut fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr);
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),
@@ -410,7 +410,7 @@ mod tests {
         let addr2 = Address::Network(
             IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)), 24).unwrap(),
         );
-        let mut fr = FirewallRule {
+        let fr = FirewallRule {
             comment: None,
             destination_addrs: vec![addr1, addr2],
             destination_ports: vec![Port::Single(1138), Port::Single(42)],
@@ -421,7 +421,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", &mut fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr);
         assert_eq!(4, rules.len());
         assert_eq!(
             rules[0].to_string(),
@@ -444,7 +444,7 @@ mod tests {
         let addr1 = Address::Network(
             IpNetwork::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)), 24).unwrap(),
         );
-        let mut fr = FirewallRule {
+        let fr = FirewallRule {
             comment: None,
             destination_addrs: vec![addr1],
             destination_ports: vec![Port::Range(6000, 6666)],
@@ -455,7 +455,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", &mut fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr);
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),

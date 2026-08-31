@@ -28,7 +28,6 @@ use crate::{
     },
     error::GatewayError,
     gateway_server::GatewayServer,
-    mask,
     proto::{
         common::LogEntry,
         gateway::{Configuration, CoreRequest, Peer, Update, UpdateType, core_request, update},
@@ -403,10 +402,8 @@ impl Gateway {
             "Received configuration, reconfiguring WireGuard interface {} (addresses: {:?})",
             new_configuration.name, new_configuration.addresses
         );
-        trace!(
-            "Received configuration: {:?}",
-            mask!(new_configuration, private_key)
-        );
+
+        trace!("Received configuration: {new_configuration:?}");
 
         // configure() is the sole owner of interface existence; recreate it if
         // it was removed (e.g. by purge during a disconnect).
@@ -437,10 +434,7 @@ impl Gateway {
                 "Reconfigured WireGuard interface {} (addresses: {:?})",
                 new_configuration.name, new_configuration.addresses
             );
-            trace!(
-                "Reconfigured WireGuard interface. Configuration: {:?}",
-                mask!(new_configuration, private_key)
-            );
+            trace!("Reconfigured WireGuard interface. Configuration: {new_configuration:?}");
             // store new configuration and peers
             self.interface_configuration = Some(new_interface_configuration);
             self.replace_peers(new_configuration.peers);
