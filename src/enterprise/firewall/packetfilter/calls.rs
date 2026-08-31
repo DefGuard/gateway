@@ -169,19 +169,11 @@ impl RuleAddr {
     #[must_use]
     pub(super) fn new(ip_network: IpNetwork, port: Port) -> Self {
         let addr = AddrWrap::with_network(ip_network);
-        
-        
-        
+
         let (from_port, to_port, op) = match port {
-            Port::Any => {
-                (0, 0, PortOp::None)
-            }
-            Port::Single(port) => {
-                (port.to_be(), 0, PortOp::Equal)
-            }
-            Port::Range(from, to) => {
-                (from.to_be(), to.to_be(), PortOp::Range)
-            }
+            Port::Any => (0, 0, PortOp::None),
+            Port::Single(port) => (port.to_be(), 0, PortOp::Equal),
+            Port::Range(from, to) => (from.to_be(), to.to_be(), PortOp::Range),
         };
         Self {
             addr,
