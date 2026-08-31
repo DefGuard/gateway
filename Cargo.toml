@@ -2,11 +2,11 @@
 name = "defguard-gateway"
 version = "2.1.0"
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.96"
 
 [dependencies]
 axum = "0.8"
-base64 = "0.22"
+base64 = "0.23"
 chrono = "0.4"
 clap = { version = "4.6", features = ["derive", "env"] }
 defguard_certs = { git = "https://github.com/DefGuard/defguard.git", rev = "cdf3ef9a70796d47a6247ad1300d2e6bb7474cf5" }

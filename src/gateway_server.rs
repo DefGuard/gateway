@@ -191,7 +191,7 @@ impl gateway_server::Gateway for GatewayServer {
             loop {
                 match stream.message().await {
                     Ok(Some(response)) => {
-                        debug!("Received message from Defguard Core: {response:?}");
+                        debug!("Received message from Defguard Core");
                         // Discard empty payloads.
                         if let Some(payload) = response.payload {
                             match payload {

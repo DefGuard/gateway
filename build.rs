@@ -6,6 +6,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Emitter::default().add_instructions(&git2)?.emit()?;
 
     tonic_prost_build::configure()
+        // Skip `Debug` for types with sensitive information.
+        .skip_debug([
+            "defguard.gateway.v2.Configuration",
+            "defguard.gateway.v2.CoreResponse",
+            "defguard.gateway.v2.Peer",
+            "defguard.gateway.v2.Update",
+        ])
         // enable optional fields
         .protoc_arg("--experimental_allow_proto3_optional")
         // compiling protos using path on build time

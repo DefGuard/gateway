@@ -28,7 +28,6 @@ use crate::{
     },
     error::GatewayError,
     gateway_server::GatewayServer,
-    mask,
     proto::{
         common::LogEntry,
         gateway::{Configuration, CoreRequest, Peer, Update, UpdateType, core_request, update},
@@ -403,10 +402,6 @@ impl Gateway {
             "Received configuration, reconfiguring WireGuard interface {} (addresses: {:?})",
             new_configuration.name, new_configuration.addresses
         );
-        trace!(
-            "Received configuration: {:?}",
-            mask!(new_configuration, private_key)
-        );
 
         // configure() is the sole owner of interface existence; recreate it if
         // it was removed (e.g. by purge during a disconnect).
@@ -438,8 +433,8 @@ impl Gateway {
                 new_configuration.name, new_configuration.addresses
             );
             trace!(
-                "Reconfigured WireGuard interface. Configuration: {:?}",
-                mask!(new_configuration, private_key)
+                "Reconfigured WireGuard interface. Configuration: {}",
+                new_configuration.name
             );
             // store new configuration and peers
             self.interface_configuration = Some(new_interface_configuration);
@@ -479,7 +474,7 @@ impl Gateway {
 
     #[instrument(skip_all)]
     pub(crate) fn handle_updates(&mut self, update: Update) {
-        debug!("Received update: {update:?}");
+        debug!("Received update: {}", update.update_type);
         match update.update {
             Some(update::Update::Network(configuration)) => {
                 if let Err(err) = self.configure(configuration) {
@@ -487,9 +482,9 @@ impl Gateway {
                 }
             }
             Some(update::Update::Peer(peer_config)) => {
-                debug!("Applying peer configuration: {peer_config:?}");
+                debug!("Applying peer configuration");
                 if UpdateType::try_from(update.update_type) == Ok(UpdateType::Delete) {
-                    debug!("Deleting peer {peer_config:?}");
+                    debug!("Deleting peer {}", peer_config.pubkey);
                     self.peers.remove(&peer_config.pubkey);
                     match peer_config.pubkey.as_str().try_into() {
                         Ok(key) => {
@@ -507,10 +502,7 @@ impl Gateway {
                 }
                 // UpdateType::Create, UpdateType::Modify
                 else {
-                    debug!(
-                        "Updating peer {peer_config:?}, update type: {}",
-                        update.update_type
-                    );
+                    debug!("Updating peer, update type: {}", update.update_type);
                     self.peers
                         .insert(peer_config.pubkey.clone(), peer_config.clone());
                     if let Err(err) = self
@@ -567,7 +559,7 @@ impl Gateway {
                     error!("Failed to disable firewall configuration: {err}");
                 }
             }
-            _ => warn!("Unsupported kind of update: {update:?}"),
+            _ => warn!("Unsupported kind of update: {}", update.update_type),
         }
     }
 }
