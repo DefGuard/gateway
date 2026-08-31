@@ -403,6 +403,8 @@ impl Gateway {
             new_configuration.name, new_configuration.addresses
         );
 
+        trace!("Received configuration: {new_configuration:?}");
+
         // configure() is the sole owner of interface existence; recreate it if
         // it was removed (e.g. by purge during a disconnect).
         {
@@ -474,7 +476,7 @@ impl Gateway {
 
     #[instrument(skip_all)]
     pub(crate) fn handle_updates(&mut self, update: Update) {
-        debug!("Received update: {}", update.update_type);
+        debug!("Received update: {update:?}");
         match update.update {
             Some(update::Update::Network(configuration)) => {
                 if let Err(err) = self.configure(configuration) {
@@ -482,9 +484,9 @@ impl Gateway {
                 }
             }
             Some(update::Update::Peer(peer_config)) => {
-                debug!("Applying peer configuration");
+                debug!("Applying peer configuration: {peer_config:?}");
                 if UpdateType::try_from(update.update_type) == Ok(UpdateType::Delete) {
-                    debug!("Deleting peer {}", peer_config.pubkey);
+                    debug!("Deleting peer {peer_config:?}");
                     self.peers.remove(&peer_config.pubkey);
                     match peer_config.pubkey.as_str().try_into() {
                         Ok(key) => {
@@ -502,7 +504,10 @@ impl Gateway {
                 }
                 // UpdateType::Create, UpdateType::Modify
                 else {
-                    debug!("Updating peer, update type: {}", update.update_type);
+                    debug!(
+                        "Updating peer {peer_config:?}, update type: {}",
+                        update.update_type
+                    );
                     self.peers
                         .insert(peer_config.pubkey.clone(), peer_config.clone());
                     if let Err(err) = self
@@ -559,7 +564,7 @@ impl Gateway {
                     error!("Failed to disable firewall configuration: {err}");
                 }
             }
-            _ => warn!("Unsupported kind of update: {}", update.update_type),
+            _ => warn!("Unsupported kind of update: {update:?}"),
         }
     }
 }
