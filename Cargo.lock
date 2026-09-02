@@ -866,7 +866,7 @@ dependencies = [
 [[package]]
 name = "defguard_certs"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=a1b67061bb4670324e4559a1a2a18990932e9af2#a1b67061bb4670324e4559a1a2a18990932e9af2"
+source = "git+https://github.com/DefGuard/defguard.git?rev=b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3#b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -880,7 +880,7 @@ dependencies = [
 [[package]]
 name = "defguard_common"
 version = "2.1.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=a1b67061bb4670324e4559a1a2a18990932e9af2#a1b67061bb4670324e4559a1a2a18990932e9af2"
+source = "git+https://github.com/DefGuard/defguard.git?rev=b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3#b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3"
 dependencies = [
  "anyhow",
  "argon2",
@@ -922,7 +922,7 @@ dependencies = [
 [[package]]
 name = "defguard_grpc_tls"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=a1b67061bb4670324e4559a1a2a18990932e9af2#a1b67061bb4670324e4559a1a2a18990932e9af2"
+source = "git+https://github.com/DefGuard/defguard.git?rev=b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3#b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3"
 dependencies = [
  "defguard_common",
  "http",
@@ -939,7 +939,7 @@ dependencies = [
 [[package]]
 name = "defguard_version"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=a1b67061bb4670324e4559a1a2a18990932e9af2#a1b67061bb4670324e4559a1a2a18990932e9af2"
+source = "git+https://github.com/DefGuard/defguard.git?rev=b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3#b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3"
 dependencies = [
  "axum",
  "http",
@@ -1222,7 +1222,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2276,7 +2276,7 @@ dependencies = [
 [[package]]
 name = "model_derive"
 version = "0.0.0"
-source = "git+https://github.com/DefGuard/defguard.git?rev=a1b67061bb4670324e4559a1a2a18990932e9af2#a1b67061bb4670324e4559a1a2a18990932e9af2"
+source = "git+https://github.com/DefGuard/defguard.git?rev=b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3#b2bac0d3d70c2a6d7b18b9432a5fa1720c702bf3"
 dependencies = [
  "quote",
  "syn 2.0.119",
@@ -2421,7 +2421,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3423,7 +3423,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4172,7 +4172,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
