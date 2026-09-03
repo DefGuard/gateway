@@ -18,7 +18,6 @@ jobs:
       tags: |
         type=semver,pattern={{version}}
         type=semver,pattern={{major}}.{{minor}}
-        type=semver,pattern={{major}}
         type=sha
       # Explicitly disable latest tag. It will be added by publish-docker-latest.yml.
       flavor: |
@@ -136,8 +135,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
             example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts:
-            "--architecture amd64
+          fpm_opts: "--architecture amd64
             --output-type deb
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu.deb
@@ -153,8 +151,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
             example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts:
-            "--architecture arm64
+          fpm_opts: "--architecture arm64
             --output-type deb
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu.deb
@@ -170,8 +167,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
             example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts:
-            "--architecture amd64
+          fpm_opts: "--architecture amd64
             --output-type rpm
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu.rpm
@@ -187,8 +183,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
             example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts:
-            "--architecture arm64
+          fpm_opts: "--architecture arm64
             --output-type rpm
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu.rpm
@@ -204,8 +199,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-freebsd=/usr/local/bin/defguard-gateway
             freebsd/defguard_gateway=/usr/local/etc/rc.d/defguard_gateway
             example-config.toml=/etc/defguard/gateway.toml.sample"
-          fpm_opts:
-            "--architecture amd64
+          fpm_opts: "--architecture amd64
             --output-type freebsd
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-freebsd.pkg
@@ -223,8 +217,7 @@ jobs:
             freebsd/defguard-rc.conf=/etc/rc.conf.d/defguard_gateway
             opnsense/src/etc/=/usr/local/etc/
             opnsense/src/opnsense/=/usr/local/opnsense/"
-          fpm_opts:
-            "--architecture amd64
+          fpm_opts: "--architecture amd64
             --output-type freebsd
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
