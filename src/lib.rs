@@ -2,6 +2,7 @@ pub mod config;
 pub mod error;
 pub mod gateway;
 mod gateway_server;
+mod proto_debug;
 pub mod server;
 mod version;
 
@@ -79,17 +80,6 @@ pub const GRPC_CERT_NAME: &str = "gateway_grpc_cert.pem";
 pub const GRPC_KEY_NAME: &str = "gateway_grpc_key.pem";
 pub const GRPC_CA_CERT_NAME: &str = "grpc_ca_cert.pem";
 pub const CORE_CLIENT_CERT_NAME: &str = "core_client_cert.pem";
-
-/// Masks object's field with "***" string.
-/// Used to log sensitive/secret objects.
-#[macro_export]
-macro_rules! mask {
-    ($object:expr_2021, $field:ident) => {{
-        let mut object = $object.clone();
-        object.$field = String::from("***");
-        object
-    }};
-}
 
 /// Initialize logging to syslog.
 pub fn init_syslog(config: &Config, pid: u32) -> Result<(), GatewayError> {

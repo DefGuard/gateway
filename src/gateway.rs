@@ -28,10 +28,9 @@ use crate::{
     },
     error::GatewayError,
     gateway_server::GatewayServer,
-    mask,
     proto::{
         common::LogEntry,
-        gateway::{Configuration, CoreRequest, Peer, Update, core_request, update},
+        gateway::{Configuration, CoreRequest, Peer, Update, UpdateType, core_request, update},
     },
     setup::run_setup,
 };
@@ -205,6 +204,12 @@ impl Gateway {
         self.peers.clear();
         self.client_tx = None;
         self.connected.store(false, Ordering::Relaxed);
+    }
+
+    /// Grace period to wait after a Core disconnect before purging the interface.
+    /// Zero means purge immediately (no grace).
+    pub(crate) fn disconnect_grace_period(&self) -> Duration {
+        Duration::from_secs(self.config.core_disconnect_grace_period)
     }
 
     // Replace current peer map with a new list of peers.
@@ -397,10 +402,21 @@ impl Gateway {
             "Received configuration, reconfiguring WireGuard interface {} (addresses: {:?})",
             new_configuration.name, new_configuration.addresses
         );
-        trace!(
-            "Received configuration: {:?}",
-            mask!(new_configuration, private_key)
-        );
+
+        trace!("Received configuration: {new_configuration:?}");
+
+        // configure() is the sole owner of interface existence; recreate it if
+        // it was removed (e.g. by purge during a disconnect).
+        {
+            let mut wgapi = self.wgapi.lock().expect("Failed to lock Gateway::wgapi");
+            if wgapi.read_interface_data().is_err() {
+                info!(
+                    "WireGuard interface {} is not present, creating it",
+                    new_configuration.name
+                );
+                wgapi.create_interface()?;
+            }
+        }
 
         // check if new configuration is different than current one
         let new_interface_configuration = new_configuration.clone().into();
@@ -418,10 +434,7 @@ impl Gateway {
                 "Reconfigured WireGuard interface {} (addresses: {:?})",
                 new_configuration.name, new_configuration.addresses
             );
-            trace!(
-                "Reconfigured WireGuard interface. Configuration: {:?}",
-                mask!(new_configuration, private_key)
-            );
+            trace!("Reconfigured WireGuard interface. Configuration: {new_configuration:?}");
             // store new configuration and peers
             self.interface_configuration = Some(new_interface_configuration);
             self.replace_peers(new_configuration.peers);
@@ -469,16 +482,21 @@ impl Gateway {
             }
             Some(update::Update::Peer(peer_config)) => {
                 debug!("Applying peer configuration: {peer_config:?}");
-                // UpdateType::Delete
-                if update.update_type == 2 {
+                if UpdateType::try_from(update.update_type) == Ok(UpdateType::Delete) {
                     debug!("Deleting peer {peer_config:?}");
                     self.peers.remove(&peer_config.pubkey);
-                    if let Err(err) =
-                        self.wgapi.lock().unwrap().remove_peer(
-                            &peer_config.pubkey.as_str().try_into().unwrap_or_default(),
-                        )
-                    {
-                        error!("Failed to delete peer: {err}");
+                    match peer_config.pubkey.as_str().try_into() {
+                        Ok(key) => {
+                            if let Err(err) = self.wgapi.lock().unwrap().remove_peer(&key) {
+                                error!("Failed to delete peer: {err}");
+                            }
+                        }
+                        Err(err) => {
+                            error!(
+                                "Failed to parse public key of peer {} to delete: {err}",
+                                peer_config.pubkey
+                            );
+                        }
                     }
                 }
                 // UpdateType::Create, UpdateType::Modify

@@ -50,7 +50,7 @@ jobs:
           scanners: "vuln"
 
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - name: Install dependencies
         run: apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
@@ -66,12 +66,12 @@ jobs:
           cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Install cargo extensions
-        uses: taiki-e/install-action@3235f8901fd37ffed0052b276cec25a362fb82e9 # v2
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
         with:
           tool: cargo-deny
 
       - name: Run cargo deny
-        run: cargo deny check
+        run: cargo deny check --hide-inclusion-graph
 
       - name: Run tests
         run: cargo test --locked --no-fail-fast

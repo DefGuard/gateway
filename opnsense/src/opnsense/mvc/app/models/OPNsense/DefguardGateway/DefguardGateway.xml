@@ -90,6 +90,18 @@
         <default>/etc/defguard/certs</default>
         <Required>Y</Required>
       </CertDir>
+      <FwAnchorPlacement type="OptionField">
+        <default>tail</default>
+        <Required>Y</Required>
+        <OptionValues>
+          <tail>Tail (evaluate after OPNsense rules)</tail>
+          <head>Head (evaluate before OPNsense rules)</head>
+        </OptionValues>
+      </FwAnchorPlacement>
+      <FwAnchorQuick type="BooleanField">
+        <default>0</default>
+        <Required>Y</Required>
+      </FwAnchorQuick>
     </general>
   </items>
 </model>

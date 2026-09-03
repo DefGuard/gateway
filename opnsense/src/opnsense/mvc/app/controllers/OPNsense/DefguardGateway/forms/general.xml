@@ -134,4 +134,18 @@
     <help>Directory where the gateway stores generated gRPC certificates.</help>
     <hint>Default value: /etc/defguard/certs</hint>
   </field>
+  <field>
+    <id>defguardgateway.general.FwAnchorPlacement</id>
+    <label>Firewall anchor placement</label>
+    <type>dropdown</type>
+    <help>Where in the pf ruleset the Defguard anchor is inserted. Tail (default) evaluates OPNsense rules first; Head places Defguard rules before OPNsense rules.</help>
+    <advanced>true</advanced>
+  </field>
+  <field>
+    <id>defguardgateway.general.FwAnchorQuick</id>
+    <label>Quick anchor (dangerous)</label>
+    <type>checkbox</type>
+    <help>Make the Defguard anchor 'quick'. WARNING: on OPNsense 26.7+ (FreeBSD 15.1+) this short-circuits the parent ruleset even when no inner rule matches, silently bypassing OPNsense's own firewall rules. Leave disabled unless you fully understand the risk.</help>
+    <advanced>true</advanced>
+  </field>
 </form>

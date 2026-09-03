@@ -8,8 +8,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-
-
 jobs:
   build-docker-release:
     # Ignore tags with -, like v1.0.0-alpha
@@ -20,7 +18,6 @@ jobs:
       tags: |
         type=semver,pattern={{version}}
         type=semver,pattern={{major}}.{{minor}}
-        type=semver,pattern={{major}}
         type=sha
       # Explicitly disable latest tag. It will be added by publish-docker-latest.yml.
       flavor: |
@@ -70,7 +67,6 @@ jobs:
       - X64
     env:
       SQLX_OFFLINE: "1"
-      # sccache
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
     steps:
@@ -86,13 +82,26 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Build source code archive
+        run: tar --exclude='.github' --exclude-vcs --exclude-vcs-ignores --xform='s|^\./|gateway-${{ env.VERSION }}/|' --xz -cf ${{ runner.temp }}/defguard-gateway-${{ env.VERSION }}.tar.xz .
+
+      - name: Upload source code archive
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{ runner.temp }}/defguard-gateway-${{ env.VERSION }}.tar.xz
+          asset_content_type: application/x-xz
+          overwrite: true
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           targets: "aarch64-unknown-linux-gnu"
 
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - name: Build Linux x86_64 binary
         run: |
@@ -126,8 +135,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
             example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts:
-            "--architecture amd64
+          fpm_opts: "--architecture amd64
             --output-type deb
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu.deb
@@ -143,8 +151,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
             example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts:
-            "--architecture arm64
+          fpm_opts: "--architecture arm64
             --output-type deb
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu.deb
@@ -160,8 +167,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
             example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts:
-            "--architecture amd64
+          fpm_opts: "--architecture amd64
             --output-type rpm
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}-x86_64-unknown-linux-gnu.rpm
@@ -177,8 +183,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu=/usr/bin/defguard-gateway
             linux/defguard-gateway.service=/usr/lib/systemd/system/defguard-gateway.service
             example-config.toml=/etc/defguard/gateway.toml"
-          fpm_opts:
-            "--architecture arm64
+          fpm_opts: "--architecture arm64
             --output-type rpm
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}-aarch64-unknown-linux-gnu.rpm
@@ -194,8 +199,7 @@ jobs:
             "defguard-gateway-${{ env.VERSION }}-x86_64-unknown-freebsd=/usr/local/bin/defguard-gateway
             freebsd/defguard_gateway=/usr/local/etc/rc.d/defguard_gateway
             example-config.toml=/etc/defguard/gateway.toml.sample"
-          fpm_opts:
-            "--architecture amd64
+          fpm_opts: "--architecture amd64
             --output-type freebsd
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-freebsd.pkg
@@ -213,8 +217,7 @@ jobs:
             freebsd/defguard-rc.conf=/etc/rc.conf.d/defguard_gateway
             opnsense/src/etc/=/usr/local/etc/
             opnsense/src/opnsense/=/usr/local/opnsense/"
-          fpm_opts:
-            "--architecture amd64
+          fpm_opts: "--architecture amd64
             --output-type freebsd
             --version ${{ env.VERSION }}
             --package defguard-gateway-${{ env.VERSION }}_x86_64-unknown-opnsense.pkg
@@ -223,7 +226,7 @@ jobs:
             --after-install freebsd/post-install.sh"
 
       - name: Upload Linux x86_64 archive
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -233,7 +236,7 @@ jobs:
           overwrite: true
 
       - name: Upload Linux aarch64 archive
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -243,7 +246,7 @@ jobs:
           overwrite: true
 
       - name: Upload FreeBSD x86_64 archive
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -253,7 +256,7 @@ jobs:
           overwrite: true
 
       - name: Upload Linux x86_64 DEB
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -263,7 +266,7 @@ jobs:
           overwrite: true
 
       - name: Upload Linux aarch64 DEB
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -273,7 +276,7 @@ jobs:
           overwrite: true
 
       - name: Upload Linux x86_64 RPM
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -283,7 +286,7 @@ jobs:
           overwrite: true
 
       - name: Upload Linux aarch64 RPM
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -293,7 +296,7 @@ jobs:
           overwrite: true
 
       - name: Upload FreeBSD package
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -303,7 +306,7 @@ jobs:
           overwrite: true
 
       - name: Upload OPNsense package
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -388,7 +391,7 @@ jobs:
             "example-config.toml=/etc/defguard/gateway.toml"
 
       - name: Upload ubuntu-22-04-lts DEB
-        uses: shogo82148/actions-upload-release-asset@ee2ae851dc5d938b90075b3ef12c540abfd1ee72 # v1
+        uses: shogo82148/actions-upload-release-asset@394b3c11c3cfc038b5396ad265c074065cf875c3 # v1.10.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
