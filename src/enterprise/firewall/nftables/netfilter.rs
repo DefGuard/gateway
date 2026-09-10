@@ -9,8 +9,9 @@ use nftnl::{
     expr::{Expression, Immediate, InterfaceName, Nat, NatType, Register},
     nft_expr, nft_nlmsg_maxsize,
     nftnl_sys::{
-        NFTNL_SET_ELEM_FLAGS, NFTNL_SET_ELEM_KEY, NFTNL_SET_FLAGS, nftnl_set, nftnl_set_elem_add,
-        nftnl_set_elem_alloc, nftnl_set_elem_set, nftnl_set_elem_set_u32, nftnl_set_set_u32,
+        NFTNL_SET_ELEM_FLAGS, NFTNL_SET_ELEM_KEY, NFTNL_SET_FLAGS, NFTNL_UDATA_COMMENT_MAXLEN,
+        nftnl_set, nftnl_set_elem_add, nftnl_set_elem_alloc, nftnl_set_elem_set,
+        nftnl_set_elem_set_u32, nftnl_set_set_u32,
     },
     set::{Set, SetKey},
 };
@@ -146,23 +147,24 @@ fn add_protocol_to_set(set: NonNull<nftnl_set>, proto: Protocol) -> Result<(), F
 }
 
 fn add_rule_comment(rule: &mut Rule, comment: &str) -> Result<(), FirewallError> {
-    debug!("Adding comment to nftables expression: {comment:?}");
-    // Since we are interoping with C, truncate the string to 255 *bytes* (not UTF-8 characters)
-    // 256 is the maximum length of a comment string in nftables, leave 1 byte for the null terminator
-    let maybe_truncated_str = if comment.len() > 255 {
-        warn!("Comment string {comment} is too long, truncating to 255 bytes");
-        &comment[..=255]
+    debug!("Adding comment to nftables expression: {comment}");
+    // Truncate the string to 125 *bytes* (not UTF-8 characters), as 128 is the maximum length of
+    // a comment data in nftables, leave 1 byte for the null terminator, and 2 bytes for data type.
+    const MAX_COMMENT_LEN: usize = NFTNL_UDATA_COMMENT_MAXLEN as usize - 3;
+    let maybe_truncated_str = if comment.len() > MAX_COMMENT_LEN {
+        warn!("Comment `{comment}` is too long, truncating");
+        &comment[..MAX_COMMENT_LEN]
     } else {
         comment
     };
-    let comment = &CString::new(maybe_truncated_str).map_err(|e| {
+    let cstring = CString::new(maybe_truncated_str).map_err(|err| {
         FirewallError::NetlinkError(format!(
-            "Failed to create CString from string {comment}. Error: {e:?}"
+            "Failed to create CString from {maybe_truncated_str}. Error: {err:?}"
         ))
     })?;
-    rule.set_comment(comment)
+    rule.set_comment(&cstring)
         .map_err(|err| FirewallError::NetlinkError(err.into()))?;
-    debug!("Added comment to nftables expression: {comment:?}");
+    debug!("Added comment to nftables expression: {maybe_truncated_str}");
     Ok(())
 }
 
@@ -563,7 +565,6 @@ impl FirewallRule for SnatRule<'_> {
 
         rule.add_expr(&snat_expr);
 
-        // comment <comment>
         if let Some(comment_string) = &self.comment {
             add_rule_comment(&mut rule, comment_string)?;
         } else {
