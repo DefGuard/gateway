@@ -4,8 +4,8 @@ use std::{
 };
 
 use defguard_wireguard_rs::{
-    InterfaceConfiguration, WireguardInterfaceApi, error::WireguardInterfaceError, host::Host,
-    key::Key, net::IpAddrMask, peer::Peer as WgPeer,
+    InterfaceConfiguration, WireguardInterfaceApi, dns::DnsConfig, error::WireguardInterfaceError,
+    host::Host, key::Key, net::IpAddrMask, peer::Peer as WgPeer,
 };
 
 /// A minimal no-op WireGuard API implementation for use in tests.
@@ -65,6 +65,12 @@ impl WireguardInterfaceApi for NullWgApi {
         _search_domains: &[&str],
     ) -> Result<(), WireguardInterfaceError> {
         Err(WireguardInterfaceError::Interface("test".into()))
+    }
+
+    fn set_dns(&self, _: &DnsConfig<'_>) -> Result<(), WireguardInterfaceError> {
+        Err(WireguardInterfaceError::Interface(
+            "test: no DNS available".into(),
+        ))
     }
 }
 
@@ -145,6 +151,10 @@ impl WireguardInterfaceApi for StatefulMockWgApi {
         _dns: &[IpAddr],
         _search_domains: &[&str],
     ) -> Result<(), WireguardInterfaceError> {
+        Ok(())
+    }
+
+    fn set_dns(&self, _: &DnsConfig<'_>) -> Result<(), WireguardInterfaceError> {
         Ok(())
     }
 }
