@@ -53,7 +53,7 @@ jobs:
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - name: Install dependencies
-        run: apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev
+        run: apt-get update && apt-get -y install protobuf-compiler libnftnl-dev libmnl-dev libudev-dev
 
       - name: Check format
         run: |
@@ -66,7 +66,7 @@ jobs:
           cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Install cargo extensions
-        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2.87.13
         with:
           tool: cargo-deny
 

@@ -365,10 +365,8 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get install -y \
-            build-essential pkg-config cmake \
-            libssl-dev libmnl-dev libnftnl-dev \
-            protobuf-compiler libprotobuf-dev \
-            ruby ruby-dev rubygems rpm
+            build-essential pkg-config cmake libssl-dev libmnl-dev libnftnl-dev \
+            protobuf-compiler libprotobuf-dev libudev-dev ruby ruby-dev rubygems rpm
           gem install fpm --no-document
 
       - name: Build binary
