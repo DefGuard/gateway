@@ -6,6 +6,8 @@ COPY . .
 RUN cargo build --release
 
 FROM public.ecr.aws/docker/library/debian:13-slim
+# Bust the cache for the layer below on every build so OS security updates are always applied.
+ARG CACHEBUST=0
 RUN apt-get update && apt-get -y --no-install-recommends install \
     iproute2 wireguard-tools sudo ca-certificates iptables ebtables nftables lsb-release libudev1 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*

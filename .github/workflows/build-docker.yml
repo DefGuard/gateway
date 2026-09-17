@@ -67,6 +67,8 @@ jobs:
           platforms: linux/${{ matrix.cpu }}
           provenance: false
           push: true
+          build-args: |
+            CACHEBUST=${{ github.sha }}
           tags: "${{ env.GHCR_REPO }}:${{ github.sha }}-${{ matrix.tag }}"
           cache-from: |
             type=registry,ref=${{ env.GHCR_REPO }}:cache-${{ matrix.tag }}
