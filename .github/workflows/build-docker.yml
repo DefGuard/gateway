@@ -11,6 +11,10 @@ on:
         description: "List of flavors as key-value pair attributes"
         required: false
         type: string
+    outputs:
+      digest:
+        description: "Digest of the multi-arch manifest that this run pushed"
+        value: ${{ jobs.docker-manifest.outputs.digest }}
 
 env:
   GHCR_REPO: ghcr.io/defguard/gateway
@@ -96,6 +100,9 @@ jobs:
 
     needs: [build-docker]
 
+    outputs:
+      digest: ${{ steps.manifest.outputs.digest }}
+
     steps:
       - name: Install Cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
@@ -117,14 +124,18 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create and push manifests
+        id: manifest
         run: |
+          set -o pipefail
           tags='${{ env.GHCR_REPO }}:${{ github.sha }} ${{ steps.meta.outputs.tags }}'
           for tag in ${tags}
           do
             docker manifest rm ${tag} || true
             docker manifest create ${tag} ${{ env.GHCR_REPO }}:${{ github.sha }}-amd64 ${{ env.GHCR_REPO }}:${{ github.sha }}-arm64 ${{ env.GHCR_REPO }}:${{ github.sha }}-armv7
-            docker manifest push ${tag}
+            # docker manifest push can print other lines before the digest, so keep only the last line.
+            digest=$(docker manifest push ${tag} | tail -n 1)
           done
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
       - name: Sign the images with GitHub OIDC Token
         run: |
