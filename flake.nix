@@ -29,16 +29,18 @@
       };
     in {
       devShells.default = pkgs.mkShell {
-        packages = with pkgs; [
-          pkg-config
-          openssl
-          protobuf
-          sqlx-cli
-          rustToolchain
-          libnftnl
-          libmnl
-          trivy
-        ];
+        packages = with pkgs;
+          [
+            pkg-config
+            openssl
+            protobuf
+            sqlx-cli
+            rustToolchain
+            libnftnl
+            libmnl
+            trivy
+          ]
+          ++ lib.optionals stdenv.hostPlatform.isLinux [systemd];
       };
     });
 }
