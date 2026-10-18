@@ -4,6 +4,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
 use defguard_certs::{CertificateError, CertificateInfo};
@@ -31,6 +32,9 @@ use crate::{
     proto::gateway::{CoreRequest, CoreResponse, core_request, core_response, gateway_server},
     version::is_core_version_supported,
 };
+
+const CORE_HTTP2_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
+const CORE_HTTP2_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub(crate) struct GatewayServer {
     message_id: AtomicU64,
@@ -89,7 +93,10 @@ impl GatewayServer {
         let tls_config =
             server_tls_config(&tls.grpc_cert_pem, &tls.grpc_key_pem, &tls.grpc_ca_cert_pem)
                 .map_err(|e| GatewayError::SetupError(e.to_string()))?;
-        let mut builder = Server::builder().tls_config(tls_config)?;
+        let mut builder = Server::builder()
+            .http2_keepalive_interval(Some(CORE_HTTP2_KEEPALIVE_INTERVAL))
+            .http2_keepalive_timeout(Some(CORE_HTTP2_KEEPALIVE_TIMEOUT))
+            .tls_config(tls_config)?;
 
         // Extract Core client cert serial for pinning.
         let expected_serial = CertificateInfo::from_der(&tls.core_client_cert_der)
