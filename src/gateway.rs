@@ -12,6 +12,8 @@ use std::{
 };
 
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal as unix_signal};
 use tokio::{
     signal,
     sync::{mpsc, oneshot},
@@ -35,6 +37,20 @@ use crate::{
     setup::run_setup,
 };
 
+#[cfg(unix)]
+async fn shutdown_signal() -> std::io::Result<()> {
+    let mut terminate = unix_signal(SignalKind::terminate())?;
+    tokio::select! {
+        result = signal::ctrl_c() => result,
+        _ = terminate.recv() => Ok(()),
+    }
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() -> std::io::Result<()> {
+    signal::ctrl_c().await
+}
+
 /// Keeps the gRPC server running, but allows it to be stopped and
 /// restarted in setup mode when a purge request arrives.
 pub async fn run_gateway_loop(
@@ -55,8 +71,12 @@ pub async fn run_gateway_loop(
 
         tokio::select! {
             biased;
-            // Handle Ctrl-C
-            _ = signal::ctrl_c() => {
+            // Handle Ctrl-C and SIGTERM
+            result = shutdown_signal() => {
+                if let Err(err) = result {
+                    error!("Failed to listen for shutdown signal: {err}");
+                    return;
+                }
                 if config.clean_on_quit {
                     gateway.lock().unwrap().purge();
                 }
