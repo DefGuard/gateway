@@ -26,7 +26,7 @@ use crate::{
     CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
     error::GatewayError,
-    execute_command,
+    execute_command_cancellable,
     gateway::{Gateway, TlsConfig},
     proto::gateway::{CoreRequest, CoreResponse, core_request, core_response, gateway_server},
     version::is_core_version_supported,
@@ -65,7 +65,7 @@ impl GatewayServer {
 
         if let Some(post_up) = &config.post_up {
             debug!("Executing specified POST_UP command: {post_up}");
-            execute_command(post_up)?;
+            execute_command_cancellable(post_up).await?;
         }
 
         let tls_config = self
