@@ -7,6 +7,10 @@ use std::{
     process,
     sync::{Arc, Mutex},
 };
+#[cfg(not(unix))]
+use tokio::signal;
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal as unix_signal};
 
 use defguard_gateway::{
     CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
@@ -17,13 +21,34 @@ use defguard_gateway::{
     init_syslog,
     logging::init_tracing,
     server::run_http_server,
-    setup::run_setup,
 };
 use defguard_version::Version;
 #[cfg(not(any(target_os = "macos", target_os = "netbsd")))]
 use defguard_wireguard_rs::Kernel;
 use defguard_wireguard_rs::{Userspace, WGApi};
-use tokio::{sync::mpsc, task::JoinSet};
+use tokio::{
+    sync::{mpsc, watch},
+    task::JoinSet,
+};
+
+#[cfg(unix)]
+fn install_shutdown_signal()
+-> Result<impl std::future::Future<Output = std::io::Result<()>>, std::io::Error> {
+    let mut terminate = unix_signal(SignalKind::terminate())?;
+    let mut interrupt = unix_signal(SignalKind::interrupt())?;
+    Ok(async move {
+        tokio::select! {
+            _ = terminate.recv() => Ok(()),
+            _ = interrupt.recv() => Ok(()),
+        }
+    })
+}
+
+#[cfg(not(unix))]
+fn install_shutdown_signal()
+-> Result<impl std::future::Future<Output = std::io::Result<()>>, std::io::Error> {
+    Ok(signal::ctrl_c())
+}
 
 fn load_tls_config(cert_dir: &Path) -> Result<Option<TlsConfig>, GatewayError> {
     let grpc_cert = read_to_string(cert_dir.join(GRPC_CERT_NAME)).ok();
@@ -56,8 +81,10 @@ async fn main() -> Result<(), GatewayError> {
     // selection rustls panics at runtime when it cannot determine which to use.
     defguard_gateway::init_crypto_provider();
 
-    // parse config
+    // parse config and install signal handlers before starting setup or server tasks.
     let config = get_config()?;
+    let shutdown_signal = install_shutdown_signal()?;
+    tokio::pin!(shutdown_signal);
 
     // setup pidfile
     let pid = process::id();
@@ -135,7 +162,7 @@ async fn main() -> Result<(), GatewayError> {
         }
     };
 
-    // Keep track of spawned tasks.
+    // Keep track of background tasks.
     let mut tasks = JoinSet::new();
 
     // Optionally, launch HTTP server to report gateway's health.
@@ -151,43 +178,54 @@ async fn main() -> Result<(), GatewayError> {
     let gateway = Arc::new(Mutex::new(gateway));
     tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
 
-    // Clone for later.
-    let post_down_clone = config.post_down.clone();
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let mut gateway_task = tokio::spawn(run_gateway_loop(
+        config.clone(),
+        gateway,
+        Arc::clone(&logs_rx),
+        maybe_tls_config,
+        shutdown_rx,
+    ));
+    let mut shutdown_error = None;
 
-    tasks.spawn(async move {
-        let tls_config = match maybe_tls_config {
-            None => {
-                log::info!(
-                    "gRPC TLS certificates not found in {}. They will be generated during setup.",
-                    config.cert_dir.display()
-                );
-                match run_setup(&config, Arc::clone(&logs_rx)).await {
-                    Ok(tls_config) => tls_config,
-                    Err(err) => {
-                        log::error!("Failed to run setup: {err}");
-                        return;
-                    }
-                }
+    tokio::select! {
+        biased;
+        result = &mut shutdown_signal => {
+            if let Err(err) = result {
+                log::error!("Failed to listen for shutdown signal: {err}");
+                shutdown_error = Some(err);
             }
-            Some(tls_config) => {
-                log::info!(
-                    "Using existing gRPC TLS certificates from {}",
-                    config.cert_dir.display()
-                );
-                tls_config
+            let _ = shutdown_tx.send(true);
+            if let Err(err) = (&mut gateway_task).await {
+                log::error!("Gateway task failed: {err}");
             }
-        };
+        }
+        result = &mut gateway_task => {
+            if let Err(err) = result {
+                log::error!("Gateway task failed: {err}");
+            }
+        }
+        result = tasks.join_next() => {
+            if let Some(Err(err)) = result {
+                log::error!("Background task failed: {err}");
+            }
+            let _ = shutdown_tx.send(true);
+            if let Err(err) = (&mut gateway_task).await {
+                log::error!("Gateway task failed: {err}");
+            }
+        }
+    }
 
-        // Launch gRPC server (with purge-triggered setup loop).
-        run_gateway_loop(config, gateway, Arc::clone(&logs_rx), tls_config).await;
-    });
+    tasks.abort_all();
+    while tasks.join_next().await.is_some() {}
 
-    // Wait for the first task to finish.
-    let _result = tasks.join_next().await;
-
-    if let Some(post_down) = &post_down_clone {
+    if let Some(post_down) = &config.post_down {
         log::info!("Executing specified POST_DOWN command: {post_down}");
         execute_command(post_down)?;
+    }
+
+    if let Some(err) = shutdown_error {
+        return Err(err.into());
     }
 
     Ok(())
