@@ -233,16 +233,39 @@ pub fn get_config() -> Result<Config, GatewayError> {
     if let Some(config_path) = cli_config.config_path {
         let config_toml = fs::read_to_string(config_path)
             .map_err(|err| GatewayError::InvalidConfigFile(err.to_string()))?;
-        let file_config = toml::from_str(&config_toml)
+        let file_config: Config = toml::from_str(&config_toml)
             .map_err(|err| GatewayError::InvalidConfigFile(err.message().to_string()))?;
+        validate_ifname(&file_config.ifname)?;
         return Ok(file_config);
     }
 
+    validate_ifname(&cli_config.ifname)?;
     Ok(cli_config)
+}
+
+fn validate_ifname(ifname: &str) -> Result<(), GatewayError> {
+    if ifname.len() > 15 {
+        return Err(GatewayError::InvalidConfigFile(format!(
+            "Interface name \"{ifname}\" is too long ({} chars, max 15)",
+            ifname.len()
+        )));
+    }
+    Ok(())
 }
 
 #[test]
 fn verify_cli() {
     use clap::CommandFactory;
     Config::command().debug_assert();
+}
+
+#[test]
+fn test_validate_ifname() {
+    assert!(validate_ifname("w").is_ok());
+    assert!(validate_ifname("wg0").is_ok());
+    assert!(validate_ifname("wg-defguard").is_ok());
+    assert!(validate_ifname("wg-14-chars-ok").is_ok());
+    assert!(validate_ifname("wg-15-chars-ok_").is_ok());
+    assert!(validate_ifname("wg-16-chars-bad_").is_err());
+    assert!(validate_ifname("wgMFA-looong-naame").is_err());
 }
