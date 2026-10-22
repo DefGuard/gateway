@@ -1,6 +1,7 @@
 use std::{
     fs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    num::NonZeroU64,
     path::PathBuf,
     time::Duration,
 };
@@ -23,8 +24,19 @@ fn default_stats_period() -> u64 {
     30
 }
 
+const DEFAULT_GRPC_KEEPALIVE_INTERVAL_SECS: NonZeroU64 = NonZeroU64::new(10).unwrap();
+const DEFAULT_GRPC_KEEPALIVE_TIMEOUT_SECS: NonZeroU64 = NonZeroU64::new(20).unwrap();
+
 fn default_core_disconnect_grace_period() -> u64 {
     30
+}
+
+fn default_grpc_keepalive_interval() -> NonZeroU64 {
+    DEFAULT_GRPC_KEEPALIVE_INTERVAL_SECS
+}
+
+fn default_grpc_keepalive_timeout() -> NonZeroU64 {
+    DEFAULT_GRPC_KEEPALIVE_TIMEOUT_SECS
 }
 
 fn default_ifname() -> String {
@@ -83,6 +95,24 @@ pub struct Config {
     )]
     #[serde(default = "default_core_disconnect_grace_period")]
     pub core_disconnect_grace_period: u64,
+
+    /// Seconds between HTTP/2 keepalive pings to Defguard Core.
+    #[arg(
+        long,
+        env = "DEFGUARD_GRPC_KEEPALIVE_INTERVAL",
+        default_value_t = DEFAULT_GRPC_KEEPALIVE_INTERVAL_SECS
+    )]
+    #[serde(default = "default_grpc_keepalive_interval")]
+    pub grpc_keepalive_interval: NonZeroU64,
+
+    /// Seconds to wait for an HTTP/2 keepalive response before closing the connection.
+    #[arg(
+        long,
+        env = "DEFGUARD_GRPC_KEEPALIVE_TIMEOUT",
+        default_value_t = DEFAULT_GRPC_KEEPALIVE_TIMEOUT_SECS
+    )]
+    #[serde(default = "default_grpc_keepalive_timeout")]
+    pub grpc_keepalive_timeout: NonZeroU64,
 
     /// Network interface name (e.g. wg0)
     #[arg(long, short = 'i', env = "DEFGUARD_IFNAME", default_value = "wg0")]
@@ -184,6 +214,16 @@ impl Config {
     }
 
     #[must_use]
+    pub fn grpc_keepalive_interval(&self) -> Duration {
+        Duration::from_secs(self.grpc_keepalive_interval.get())
+    }
+
+    #[must_use]
+    pub fn grpc_keepalive_timeout(&self) -> Duration {
+        Duration::from_secs(self.grpc_keepalive_timeout.get())
+    }
+
+    #[must_use]
     pub fn adoption_timeout(&self) -> Duration {
         Duration::from_secs(self.adoption_timeout * 60)
     }
@@ -203,6 +243,8 @@ impl Default for Config {
             userspace: false,
             stats_period: 15,
             core_disconnect_grace_period: 30,
+            grpc_keepalive_interval: default_grpc_keepalive_interval(),
+            grpc_keepalive_timeout: default_grpc_keepalive_timeout(),
             ifname: "wg0".into(),
             pidfile: None,
             use_syslog: false,
@@ -245,4 +287,53 @@ pub fn get_config() -> Result<Config, GatewayError> {
 fn verify_cli() {
     use clap::CommandFactory;
     Config::command().debug_assert();
+}
+
+#[test]
+fn grpc_keepalive_settings_accept_cli_and_toml_values() {
+    use clap::CommandFactory;
+
+    let defaults = Config::default();
+    assert_eq!(defaults.grpc_keepalive_interval.get(), 10);
+    assert_eq!(defaults.grpc_keepalive_timeout.get(), 20);
+
+    let command = Config::command();
+    let interval = command
+        .get_arguments()
+        .find(|arg| arg.get_id().as_str() == "grpc_keepalive_interval")
+        .unwrap();
+    assert_eq!(
+        interval.get_env().unwrap().to_str(),
+        Some("DEFGUARD_GRPC_KEEPALIVE_INTERVAL")
+    );
+    let timeout = command
+        .get_arguments()
+        .find(|arg| arg.get_id().as_str() == "grpc_keepalive_timeout")
+        .unwrap();
+    assert_eq!(
+        timeout.get_env().unwrap().to_str(),
+        Some("DEFGUARD_GRPC_KEEPALIVE_TIMEOUT")
+    );
+
+    let cli = Config::try_parse_from([
+        "defguard-gateway",
+        "--grpc-keepalive-interval",
+        "15",
+        "--grpc-keepalive-timeout",
+        "25",
+    ])
+    .unwrap();
+    assert_eq!(cli.grpc_keepalive_interval.get(), 15);
+    assert_eq!(cli.grpc_keepalive_timeout.get(), 25);
+    assert!(
+        Config::try_parse_from(["defguard-gateway", "--grpc-keepalive-interval", "0"]).is_err()
+    );
+    assert!(Config::try_parse_from(["defguard-gateway", "--grpc-keepalive-timeout", "0"]).is_err());
+
+    let file: Config =
+        toml::from_str("grpc_keepalive_interval = 12\ngrpc_keepalive_timeout = 24").unwrap();
+    assert_eq!(file.grpc_keepalive_interval.get(), 12);
+    assert_eq!(file.grpc_keepalive_timeout.get(), 24);
+    assert!(toml::from_str::<Config>("grpc_keepalive_interval = 0").is_err());
+    assert!(toml::from_str::<Config>("grpc_keepalive_timeout = 0").is_err());
 }

@@ -26,7 +26,7 @@ use crate::{
     CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::Config,
     error::GatewayError,
-    execute_command,
+    execute_command_cancellable,
     gateway::{Gateway, TlsConfig},
     proto::gateway::{CoreRequest, CoreResponse, core_request, core_response, gateway_server},
     version::is_core_version_supported,
@@ -65,7 +65,7 @@ impl GatewayServer {
 
         if let Some(post_up) = &config.post_up {
             debug!("Executing specified POST_UP command: {post_up}");
-            execute_command(post_up)?;
+            execute_command_cancellable(post_up).await?;
         }
 
         let tls_config = self
@@ -89,7 +89,10 @@ impl GatewayServer {
         let tls_config =
             server_tls_config(&tls.grpc_cert_pem, &tls.grpc_key_pem, &tls.grpc_ca_cert_pem)
                 .map_err(|e| GatewayError::SetupError(e.to_string()))?;
-        let mut builder = Server::builder().tls_config(tls_config)?;
+        let mut builder = Server::builder()
+            .http2_keepalive_interval(Some(config.grpc_keepalive_interval()))
+            .http2_keepalive_timeout(Some(config.grpc_keepalive_timeout()))
+            .tls_config(tls_config)?;
 
         // Extract Core client cert serial for pinning.
         let expected_serial = CertificateInfo::from_der(&tls.core_client_cert_der)
