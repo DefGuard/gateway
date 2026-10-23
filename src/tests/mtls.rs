@@ -29,13 +29,13 @@ use crate::{
     proto::gateway::gateway_client::GatewayClient,
 };
 
-struct TestCerts {
-    ca_cert_pem: String,
+pub(super) struct TestCerts {
+    pub(super) ca_cert_pem: String,
     gateway_cert_pem: String,
     gateway_key_pem: String,
     core_client_cert_der: Vec<u8>,
-    core_client_cert_pem: String,
-    core_client_key_pem: String,
+    pub(super) core_client_cert_pem: String,
+    pub(super) core_client_key_pem: String,
     wrong_serial_cert_pem: String,
     wrong_serial_key_pem: String,
     rogue_client_cert_pem: String,
@@ -43,7 +43,7 @@ struct TestCerts {
 }
 
 impl TestCerts {
-    fn generate() -> Self {
+    pub(super) fn generate() -> Self {
         let ca = CertificateAuthority::new("Test CA", "test@test.local", 365).unwrap();
         let ca_cert_pem = ca.cert_pem().unwrap();
 
@@ -103,16 +103,18 @@ fn build_gateway(config: &Config) -> Gateway {
 ///
 /// Must be called before any TLS code runs. Safe to call from multiple tests -
 /// subsequent calls after the first are silently ignored.
-fn init_crypto() {
+pub(super) fn init_crypto() {
     let _ = ring::default_provider().install_default();
 }
 
 /// Spawn a configured `GatewayServer` on a free port.
-/// Returns `(bound_port, shutdown_tx)`.
+/// Returns the bound port, shutdown sender, and gateway state.
 ///
 /// Waits until the server is accepting TCP connections before returning, so
 /// callers do not need a fixed sleep to avoid startup races.
-async fn spawn_test_gateway(certs: &TestCerts) -> (u16, oneshot::Sender<()>) {
+pub(super) async fn spawn_test_gateway(
+    certs: &TestCerts,
+) -> (u16, oneshot::Sender<()>, Arc<Mutex<Gateway>>) {
     let port = TcpListener::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0))
         .unwrap()
         .local_addr()
@@ -152,11 +154,11 @@ async fn spawn_test_gateway(certs: &TestCerts) -> (u16, oneshot::Sender<()>) {
         sleep(Duration::from_millis(20)).await;
     }
 
-    (port, shutdown_tx)
+    (port, shutdown_tx, gateway)
 }
 
 /// Build a tonic `GatewayClient` with optional mTLS client identity.
-async fn connect(
+pub(super) async fn connect(
     port: u16,
     ca_cert_pem: &str,
     client_identity: Option<(&str, &str)>,
@@ -217,7 +219,7 @@ async fn test_start_errors_without_tls_config() {
 async fn test_valid_mtls_client_accepted() {
     init_crypto();
     let certs = TestCerts::generate();
-    let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
+    let (port, shutdown_tx, _) = spawn_test_gateway(&certs).await;
 
     let mut client = connect(
         port,
@@ -246,7 +248,7 @@ async fn test_valid_mtls_client_accepted() {
 async fn test_no_client_cert_rejected() {
     init_crypto();
     let certs = TestCerts::generate();
-    let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
+    let (port, shutdown_tx, _) = spawn_test_gateway(&certs).await;
 
     // spawn_test_gateway guarantees the server is ready, so a connect() failure
     // here is a genuine TLS rejection rather than a startup race.
@@ -275,7 +277,7 @@ async fn test_no_client_cert_rejected() {
 async fn test_wrong_serial_rejected() {
     init_crypto();
     let certs = TestCerts::generate();
-    let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
+    let (port, shutdown_tx, _) = spawn_test_gateway(&certs).await;
 
     // This cert is valid (signed by the CA the server trusts) but has a different serial.
     let mut client = connect(
@@ -308,7 +310,7 @@ async fn test_wrong_serial_rejected() {
 async fn test_rogue_ca_client_rejected() {
     init_crypto();
     let certs = TestCerts::generate();
-    let (port, shutdown_tx) = spawn_test_gateway(&certs).await;
+    let (port, shutdown_tx, _) = spawn_test_gateway(&certs).await;
 
     // spawn_test_gateway guarantees the server is ready, so a connect() failure
     // here is a genuine TLS rejection rather than a startup race.

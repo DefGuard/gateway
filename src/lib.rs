@@ -95,6 +95,29 @@ pub fn init_syslog(config: &Config, pid: u32) -> Result<(), GatewayError> {
     Ok(())
 }
 
+fn command_execution_error(command: &str, err: std::io::Error) -> GatewayError {
+    error!("Failed to execute command {command}. Error: {err}");
+    GatewayError::CommandExecutionFailed {
+        command: command.to_string(),
+        error: err.to_string(),
+    }
+}
+
+fn log_command_output(command: &str, output: &std::process::Output) {
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        info!("Command {command} executed successfully. Stdout: {stdout}");
+        if !stderr.is_empty() {
+            error!("Stderr:\n{stderr}");
+        }
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        error!("Error executing command {command}. Stderr:\n{stderr}");
+    }
+}
+
 /// Execute command passed as argument.
 pub fn execute_command(command: &str) -> Result<(), GatewayError> {
     let mut command_parts = command.split_whitespace();
@@ -103,26 +126,25 @@ pub fn execute_command(command: &str) -> Result<(), GatewayError> {
         let output = Command::new(command)
             .args(command_parts)
             .output()
-            .map_err(|err| {
-                error!("Failed to execute command {command}. Error: {err}");
-                GatewayError::CommandExecutionFailed {
-                    command: command.to_string(),
-                    error: err.to_string(),
-                }
-            })?;
+            .map_err(|err| command_execution_error(command, err))?;
+        log_command_output(command, &output);
+    }
+    Ok(())
+}
 
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
+/// Kill the direct child process if this future is cancelled.
+// ponytail: descendants survive; use process-group termination if hooks need it.
+pub(crate) async fn execute_command_cancellable(command: &str) -> Result<(), GatewayError> {
+    let mut command_parts = command.split_whitespace();
 
-            info!("Command {command} executed successfully. Stdout: {stdout}");
-            if !stderr.is_empty() {
-                error!("Stderr:\n{stderr}");
-            }
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("Error executing command {command}. Stderr:\n{stderr}");
-        }
+    if let Some(command) = command_parts.next() {
+        let output = tokio::process::Command::new(command)
+            .args(command_parts)
+            .kill_on_drop(true)
+            .output()
+            .await
+            .map_err(|err| command_execution_error(command, err))?;
+        log_command_output(command, &output);
     }
     Ok(())
 }

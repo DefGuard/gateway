@@ -13,8 +13,8 @@ use std::{
 
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use tokio::{
-    signal,
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, watch},
+    task::JoinSet,
     time::interval,
 };
 use tonic::Status;
@@ -35,44 +35,76 @@ use crate::{
     setup::run_setup,
 };
 
-/// Keeps the gRPC server running, but allows it to be stopped and
-/// restarted in setup mode when a purge request arrives.
+fn cleanup_on_quit(config: &Config, gateway: &Arc<Mutex<Gateway>>) {
+    if config.clean_on_quit {
+        gateway.lock().unwrap().purge();
+    }
+}
+
+/// Runs initial setup and keeps the gRPC server available until shutdown.
 pub async fn run_gateway_loop(
     config: Config,
     gateway: Arc<Mutex<Gateway>>,
     logs_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<LogEntry>>>,
-    mut tls_config: TlsConfig,
+    tls_config: Option<TlsConfig>,
+    mut shutdown: watch::Receiver<bool>,
 ) {
+    let mut tls_config = match tls_config {
+        Some(tls_config) => {
+            log::info!(
+                "Using existing gRPC TLS certificates from {}",
+                config.cert_dir.display()
+            );
+            tls_config
+        }
+        None => {
+            log::info!(
+                "gRPC TLS certificates not found in {}. They will be generated during setup.",
+                config.cert_dir.display()
+            );
+            tokio::select! {
+                biased;
+                _ = shutdown.changed() => {
+                    cleanup_on_quit(&config, &gateway);
+                    return;
+                }
+                result = run_setup(&config, Arc::clone(&logs_rx)) => match result {
+                    Ok(tls_config) => tls_config,
+                    Err(err) => {
+                        error!("Failed to run setup: {err}");
+                        return;
+                    }
+                }
+            }
+        }
+    };
+
     loop {
-        // Channel used by the gRPC service to request entering setup mode.
-        // The purge RPC sends on this channel.
         let (reset_tx, mut reset_rx) = oneshot::channel();
-        // Build and start a gRPC server instance wired with the reset signal.
         let mut gateway_server =
             GatewayServer::new(Arc::clone(&gateway), config.cert_dir.clone(), reset_tx);
         gateway_server.set_tls_config(tls_config.clone());
-        let mut server_handle = tokio::spawn(gateway_server.start(config.clone()));
+        let mut server_tasks = JoinSet::new();
+        server_tasks.spawn(gateway_server.start(config.clone()));
 
         tokio::select! {
             biased;
-            // Handle Ctrl-C
-            _ = signal::ctrl_c() => {
-                if config.clean_on_quit {
-                    gateway.lock().unwrap().purge();
-                }
-                break;
+            _ = shutdown.changed() => {
+                server_tasks.abort_all();
+                while server_tasks.join_next().await.is_some() {}
+                cleanup_on_quit(&config, &gateway);
+                return;
             }
             // The purge RPC requested setup mode.
-            signal = &mut reset_rx => {
-                // Handle channel closed event.
-                if signal.is_err() {
-                    match server_handle.await {
-                        Ok(Ok(())) => (),
-                        Ok(Err(err)) => {
+            reset = &mut reset_rx => {
+                if reset.is_err() {
+                    match server_tasks.join_next().await {
+                        Some(Ok(Ok(()))) | None => (),
+                        Some(Ok(Err(err))) => {
                             error!("gRPC server task failed: {err}");
                             return;
                         }
-                        Err(err) => {
+                        Some(Err(err)) => {
                             error!("gRPC server task failed: {err}");
                             return;
                         }
@@ -80,29 +112,33 @@ pub async fn run_gateway_loop(
                     break;
                 }
 
-                // Entering setup mode - stop current gRPC server.
-                server_handle.abort();
-                let _ = server_handle.await;
+                server_tasks.abort_all();
+                while server_tasks.join_next().await.is_some() {}
 
-                // Run setup server to obtain new TLS certs, then loop to restart gRPC.
                 log::info!("Restarting setup server after purge request");
-                tls_config = match run_setup(&config, Arc::clone(&logs_rx)).await {
-                    Ok(config) => config,
-                    Err(err) => {
-                        error!("Failed to run setup {err}");
+                tls_config = tokio::select! {
+                    biased;
+                    _ = shutdown.changed() => {
+                        cleanup_on_quit(&config, &gateway);
                         return;
                     }
-                }
+                    result = run_setup(&config, Arc::clone(&logs_rx)) => match result {
+                        Ok(tls_config) => tls_config,
+                        Err(err) => {
+                            error!("Failed to run setup {err}");
+                            return;
+                        }
+                    }
+                };
             }
-            // Server exited on its own (error or normal shutdown).
-            result = &mut server_handle => {
+            result = server_tasks.join_next() => {
                 match result {
-                    Ok(Ok(())) => (),
-                    Ok(Err(err)) => {
+                    Some(Ok(Ok(()))) | None => (),
+                    Some(Ok(Err(err))) => {
                         error!("gRPC server task failed: {err}");
                         return;
                     }
-                    Err(err) => {
+                    Some(Err(err)) => {
                         error!("gRPC server task failed: {err}");
                         return;
                     }
