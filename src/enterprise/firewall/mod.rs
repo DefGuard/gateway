@@ -1,5 +1,6 @@
 pub mod api;
 mod iprange;
+pub mod monitor;
 #[cfg(target_os = "linux")]
 mod nftables;
 #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
@@ -17,6 +18,9 @@ use thiserror::Error;
 use tracing::error;
 
 use crate::proto;
+
+#[cfg(target_os = "linux")]
+pub use nftables::ConnectionMonitor;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Address {

@@ -49,31 +49,28 @@ pub async fn run_gateway_loop(
     tls_config: Option<TlsConfig>,
     mut shutdown: watch::Receiver<bool>,
 ) {
-    let mut tls_config = match tls_config {
-        Some(tls_config) => {
-            log::info!(
-                "Using existing gRPC TLS certificates from {}",
-                config.cert_dir.display()
-            );
-            tls_config
-        }
-        None => {
-            log::info!(
-                "gRPC TLS certificates not found in {}. They will be generated during setup.",
-                config.cert_dir.display()
-            );
-            tokio::select! {
-                biased;
-                _ = shutdown.changed() => {
-                    cleanup_on_quit(&config, &gateway);
+    let mut tls_config = if let Some(tls_config) = tls_config {
+        log::info!(
+            "Using existing gRPC TLS certificates from {}",
+            config.cert_dir.display()
+        );
+        tls_config
+    } else {
+        log::info!(
+            "gRPC TLS certificates not found in {}. They will be generated during setup.",
+            config.cert_dir.display()
+        );
+        tokio::select! {
+            biased;
+            _ = shutdown.changed() => {
+                cleanup_on_quit(&config, &gateway);
+                return;
+            }
+            result = run_setup(&config, Arc::clone(&logs_rx)) => match result {
+                Ok(tls_config) => tls_config,
+                Err(err) => {
+                    error!("Failed to run setup: {err}");
                     return;
-                }
-                result = run_setup(&config, Arc::clone(&logs_rx)) => match result {
-                    Ok(tls_config) => tls_config,
-                    Err(err) => {
-                        error!("Failed to run setup: {err}");
-                        return;
-                    }
                 }
             }
         }

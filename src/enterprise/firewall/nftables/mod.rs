@@ -1,3 +1,4 @@
+mod monitor;
 mod netfilter;
 
 use std::{
@@ -5,9 +6,11 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
+pub use monitor::ConnectionMonitor;
+use monitor::LogTag;
 use netfilter::{
-    allow_established_traffic, apply_filter_rules, drop_table, ignore_unrelated_traffic,
-    init_firewall, send_batch, set_nat_rules,
+    Log, allow_established_traffic, apply_filter_rules, drop_table, ignore_unrelated_traffic,
+    init_firewall, log_inbound_traffic, send_batch, set_nat_rules,
 };
 use nftnl::Batch;
 
@@ -15,6 +18,7 @@ use super::{
     Address, FirewallError, FirewallRule, Policy, Port, Protocol, SnatBinding,
     api::{FirewallApi, FirewallManagementApi},
     iprange::IpAddrRangeError,
+    monitor::TrafficDirection,
 };
 use crate::enterprise::firewall::iprange::IpAddrRange;
 
@@ -54,6 +58,8 @@ struct FilterRule<'a> {
     comment: Option<String>,
     negated_oifname: bool,
     negated_iifname: bool,
+    // Send matching packets to the connection monitor.
+    log: Option<Log>,
 }
 
 /// Merges any contiguous subets or addres ranges into an address range.
@@ -145,6 +151,14 @@ impl FirewallApi {
 
         let source_addrs = merge_addrs(rule.source_addrs.clone())?;
         let dest_addrs = merge_addrs(rule.destination_addrs.clone())?;
+        let log = Log::new(
+            &self.ifname,
+            LogTag {
+                direction: TrafficDirection::Outbound,
+                verdict: rule.verdict,
+                rule_id: Some(rule.id),
+            },
+        );
 
         if rule.destination_ports.is_empty() {
             debug!(
@@ -160,6 +174,7 @@ impl FirewallApi {
                 defguard_rule_id: rule.id,
                 v4: rule.ipv4,
                 comment: rule.comment.clone(),
+                log: Some(log.clone()),
                 ..Default::default()
             };
             filter_rules.push(rule);
@@ -179,6 +194,7 @@ impl FirewallApi {
                     defguard_rule_id: rule.id,
                     v4: rule.ipv4,
                     comment: rule.comment.clone(),
+                    log: Some(log.clone()),
                     ..Default::default()
                 };
                 if protocol.supports_ports() {
@@ -209,6 +225,7 @@ impl FirewallApi {
                     defguard_rule_id: rule.id,
                     v4: rule.ipv4,
                     comment: rule.comment.clone(),
+                    log: Some(log.clone()),
                     ..Default::default()
                 };
                 filter_rules.push(rule);
@@ -233,10 +250,12 @@ impl FirewallManagementApi for FirewallApi {
         priority: Option<i32>,
     ) -> Result<(), FirewallError> {
         debug!("Initializing firewall, VPN interface: {}", self.ifname);
+        self.default_policy = default_policy;
         let mut batch = Batch::new();
         drop_table(&mut batch, &self.ifname);
         init_firewall(default_policy, priority, &mut batch, &self.ifname);
         debug!("Allowing all established traffic");
+        log_inbound_traffic(&mut batch, &self.ifname)?;
         ignore_unrelated_traffic(&mut batch, &self.ifname)?;
         allow_established_traffic(&mut batch, &self.ifname)?;
         send_batch(&batch.finalize(), &self.socket)?;
@@ -280,6 +299,23 @@ impl FirewallManagementApi for FirewallApi {
         for rule in rules {
             self.add_rule(rule)?;
         }
+        // Explicitly apply the default policy at the end of the chain, so connections which did
+        // not match any rule are reported to the connection monitor.
+        let default_rule = FilterRule {
+            action: self.default_policy,
+            counter: true,
+            comment: Some("Default policy".to_string()),
+            log: Some(Log::new(
+                &self.ifname,
+                LogTag {
+                    direction: TrafficDirection::Outbound,
+                    verdict: self.default_policy,
+                    rule_id: None,
+                },
+            )),
+            ..Default::default()
+        };
+        apply_filter_rules(&[default_rule], &self.ifname, &self.socket)?;
         debug!("Applied all Defguard ACL rules");
         Ok(())
     }
