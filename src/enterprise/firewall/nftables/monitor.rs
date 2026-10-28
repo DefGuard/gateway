@@ -15,6 +15,7 @@ use std::{
     fs, io, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     os::fd::{AsRawFd, FromRawFd, OwnedFd},
+    sync::mpsc,
     thread::{self, JoinHandle},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -180,48 +181,13 @@ impl ConnectionMonitor {
         debug!("Registering connection monitor for interface {ifname}");
         enable_conntrack_accounting();
 
-        // Subscribing to conntrack events loads ctnetlink, which NFLOG needs to attach conntrack
-        // information to logged packets.
-        let conntrack = NetlinkSocket::new(1 << (NFNLGRP_CONNTRACK_DESTROY - 1))?;
-        conntrack.set_recv_buffer(SOCKET_BUFFER_SIZE);
-
-        let group = nflog_group(ifname);
-        let mut nflog = NetlinkSocket::new(0)?;
-        nflog.set_recv_buffer(SOCKET_BUFFER_SIZE);
-        nflog
-            .request(
-                NFULNL_MSG_CONFIG,
-                group,
-                &[(NFULA_CFG_CMD, &[NFULNL_CFG_CMD_BIND])],
-            )
-            .map_err(|err| {
-                FirewallError::NetlinkError(format!("Failed to bind to NFLOG group {group}: {err}"))
-            })?;
-        // struct nfulnl_msg_config_mode
-        let mut mode = NFLOG_COPY_RANGE.to_be_bytes().to_vec();
-        mode.extend_from_slice(&[NFULNL_COPY_PACKET, 0]);
-        nflog
-            .request(
-                NFULNL_MSG_CONFIG,
-                group,
-                &[
-                    (NFULA_CFG_MODE, &mode),
-                    (NFULA_CFG_QTHRESH, &NFLOG_QUEUE_THRESHOLD.to_be_bytes()),
-                    (NFULA_CFG_FLAGS, &NFULNL_CFG_F_CONNTRACK.to_be_bytes()),
-                ],
-            )
-            .map_err(|err| {
-                FirewallError::NetlinkError(format!(
-                    "Failed to configure NFLOG group {group}: {err}"
-                ))
-            })?;
-
         let wakeup = unsafe { libc::eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK) };
         if wakeup < 0 {
             return Err(io::Error::last_os_error().into());
         }
         let wakeup = unsafe { OwnedFd::from_raw_fd(wakeup) };
 
+        let group = nflog_group(ifname);
         let worker = Worker {
             ifname: ifname.to_string(),
             events,
@@ -229,9 +195,28 @@ impl ConnectionMonitor {
             pending_count: 0,
         };
         let worker_wakeup = wakeup.try_clone()?;
+        // `mnl::Socket` can't be sent between threads, so sockets are opened by the worker thread.
+        let (setup_tx, setup_rx) = mpsc::sync_channel(1);
         let thread = thread::Builder::new()
             .name(format!("monitor-{ifname}"))
-            .spawn(move || worker.run(&nflog, &conntrack, &worker_wakeup))?;
+            .spawn(move || match open_sockets(group) {
+                Ok((nflog, conntrack)) => {
+                    let _ = setup_tx.send(Ok(()));
+                    worker.run(&nflog, &conntrack, &worker_wakeup);
+                }
+                Err(err) => {
+                    let _ = setup_tx.send(Err(err));
+                }
+            })?;
+        let setup = setup_rx.recv().unwrap_or_else(|_| {
+            Err(FirewallError::NetlinkError(
+                "Connection monitor thread exited unexpectedly".to_string(),
+            ))
+        });
+        if let Err(err) = setup {
+            let _ = thread.join();
+            return Err(err);
+        }
 
         info!("Registered connection monitor for interface {ifname} (NFLOG group {group})");
 
@@ -281,6 +266,40 @@ impl Drop for ConnectionMonitor {
     }
 }
 
+/// Open and configure the NFLOG and conntrack sockets.
+fn open_sockets(group: u16) -> Result<(mnl::Socket, mnl::Socket), FirewallError> {
+    // Subscribing to conntrack events loads ctnetlink, which NFLOG needs to attach conntrack
+    // information to logged packets.
+    let conntrack = open_socket(1 << (NFNLGRP_CONNTRACK_DESTROY - 1))?;
+
+    let nflog = open_socket(0)?;
+    nflog_request(&nflog, 1, group, &[(NFULA_CFG_CMD, &[NFULNL_CFG_CMD_BIND])]).map_err(|err| {
+        FirewallError::NetlinkError(format!("Failed to bind to NFLOG group {group}: {err}"))
+    })?;
+    // struct nfulnl_msg_config_mode
+    let mut mode = NFLOG_COPY_RANGE.to_be_bytes().to_vec();
+    mode.extend_from_slice(&[NFULNL_COPY_PACKET, 0]);
+    nflog_request(
+        &nflog,
+        2,
+        group,
+        &[
+            (NFULA_CFG_MODE, &mode),
+            (NFULA_CFG_QTHRESH, &NFLOG_QUEUE_THRESHOLD.to_be_bytes()),
+            (NFULA_CFG_FLAGS, &NFULNL_CFG_F_CONNTRACK.to_be_bytes()),
+        ],
+    )
+    .map_err(|err| {
+        FirewallError::NetlinkError(format!("Failed to configure NFLOG group {group}: {err}"))
+    })?;
+
+    // From now on, sockets are only read after polling.
+    set_nonblocking(&nflog)?;
+    set_nonblocking(&conntrack)?;
+
+    Ok((nflog, conntrack))
+}
+
 /// Traffic counters are only gathered by conntrack when accounting is enabled.
 fn enable_conntrack_accounting() {
     if fs::read_to_string(CONNTRACK_ACCT_SYSCTL).is_ok_and(|value| value.trim() == "1") {
@@ -316,20 +335,18 @@ struct Worker {
 }
 
 impl Worker {
-    fn run(mut self, nflog: &NetlinkSocket, conntrack: &NetlinkSocket, wakeup: &OwnedFd) {
-        let mut nflog_buf = vec![0; 65536];
-        let mut conntrack_buf = vec![0; 65536];
+    fn run(mut self, nflog: &mnl::Socket, conntrack: &mnl::Socket, wakeup: &OwnedFd) {
+        let mut nflog_buf = RecvBuffer::new();
+        let mut conntrack_buf = RecvBuffer::new();
         'poll: loop {
-            let mut fds = [
-                nflog.fd.as_raw_fd(),
-                conntrack.fd.as_raw_fd(),
-                wakeup.as_raw_fd(),
-            ]
-            .map(|fd| libc::pollfd {
-                fd,
-                events: libc::POLLIN,
-                revents: 0,
-            });
+            let mut fds =
+                [nflog.as_raw_fd(), conntrack.as_raw_fd(), wakeup.as_raw_fd()].map(|fd| {
+                    libc::pollfd {
+                        fd,
+                        events: libc::POLLIN,
+                        revents: 0,
+                    }
+                });
             if unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, -1) } < 0 {
                 let err = io::Error::last_os_error();
                 if err.kind() == io::ErrorKind::Interrupted {
@@ -365,7 +382,7 @@ impl Worker {
     }
 
     /// Process all logged packets waiting on `nflog`. Returns `false` if monitoring should stop.
-    fn drain(&mut self, nflog: &NetlinkSocket, buf: &mut [u8]) -> bool {
+    fn drain(&mut self, nflog: &mnl::Socket, buf: &mut RecvBuffer) -> bool {
         loop {
             match self.receive(nflog, buf, Self::handle_nflog) {
                 Some(true) => {}
@@ -379,13 +396,13 @@ impl Worker {
     /// or `None` if monitoring should stop.
     fn receive(
         &mut self,
-        socket: &NetlinkSocket,
-        buf: &mut [u8],
+        socket: &mnl::Socket,
+        buf: &mut RecvBuffer,
         handle: fn(&mut Self, NetlinkMessage) -> bool,
     ) -> Option<bool> {
         loop {
-            let len = match socket.recv(buf, libc::MSG_DONTWAIT) {
-                Ok(len) => len,
+            let messages = match socket.recv(&mut buf.0) {
+                Ok(messages) => messages,
                 Err(err) if err.kind() == io::ErrorKind::WouldBlock => return Some(false),
                 Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
                 Err(err) if err.raw_os_error() == Some(libc::ENOBUFS) => {
@@ -403,7 +420,15 @@ impl Worker {
                     return None;
                 }
             };
-            for message in netlink_messages(&buf[..len]) {
+            for message in messages {
+                let message = match message.map(NetlinkMessage::parse) {
+                    Ok(Some(message)) => message,
+                    Ok(None) => continue,
+                    Err(err) => {
+                        warn!("Received invalid netlink message: {err}");
+                        break;
+                    }
+                };
                 if !handle(self, message) {
                     return None;
                 }
@@ -731,26 +756,31 @@ const fn nl_align(len: usize) -> usize {
     (len + 3) & !3
 }
 
+/// Receive buffer aligned to `nlmsghdr`, as required by `mnl`.
+#[repr(C, align(4))]
+struct RecvBuffer([u8; 65536]);
+
+impl RecvBuffer {
+    fn new() -> Box<Self> {
+        Box::new(Self([0; 65536]))
+    }
+}
+
 struct NetlinkMessage<'a> {
     msg_type: u16,
     seq: u32,
     payload: &'a [u8],
 }
 
-fn netlink_messages(mut buf: &[u8]) -> impl Iterator<Item = NetlinkMessage<'_>> {
-    std::iter::from_fn(move || {
-        let len = u32::from_ne_bytes(buf.get(..4)?.try_into().ok()?) as usize;
-        if !(NLMSG_HDRLEN..=buf.len()).contains(&len) {
-            return None;
-        }
-        let message = NetlinkMessage {
-            msg_type: u16::from_ne_bytes([buf[4], buf[5]]),
-            seq: u32::from_ne_bytes(buf[8..12].try_into().ok()?),
-            payload: &buf[NLMSG_HDRLEN..len],
-        };
-        buf = buf.get(nl_align(len)..).unwrap_or_default();
-        Some(message)
-    })
+impl<'a> NetlinkMessage<'a> {
+    /// Parse a single message, as returned by `mnl::NlMessages`.
+    fn parse(message: &'a [u8]) -> Option<Self> {
+        Some(Self {
+            msg_type: u16::from_ne_bytes(message.get(4..6)?.try_into().ok()?),
+            seq: u32::from_ne_bytes(message.get(8..12)?.try_into().ok()?),
+            payload: message.get(NLMSG_HDRLEN..)?,
+        })
+    }
 }
 
 fn attributes(mut buf: &[u8]) -> impl Iterator<Item = (u16, &[u8])> {
@@ -767,142 +797,82 @@ fn attributes(mut buf: &[u8]) -> impl Iterator<Item = (u16, &[u8])> {
     })
 }
 
-/// Raw `NETLINK_NETFILTER` socket.
-struct NetlinkSocket {
-    fd: OwnedFd,
-    seq: u32,
+/// Open a `NETLINK_NETFILTER` socket subscribed to multicast `groups` (bitmask).
+fn open_socket(groups: u32) -> io::Result<mnl::Socket> {
+    let socket = mnl::Socket::open(mnl::Bus::Netfilter)?;
+    // Don't leak the socket into child processes.
+    if unsafe { libc::fcntl(socket.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    socket.bind(groups, mnl::mnl_sys::MNL_SOCKET_AUTOPID)?;
+
+    // Enlarge the receive buffer to avoid losing events during bursts.
+    // SO_RCVBUFFORCE exceeds the `rmem_max` limit, but requires CAP_NET_ADMIN.
+    let size = libc::c_int::try_from(SOCKET_BUFFER_SIZE).unwrap_or(libc::c_int::MAX);
+    let set = |option| unsafe {
+        libc::setsockopt(
+            socket.as_raw_fd(),
+            libc::SOL_SOCKET,
+            option,
+            (&raw const size).cast(),
+            mem::size_of::<libc::c_int>() as libc::socklen_t,
+        ) == 0
+    };
+    if !set(libc::SO_RCVBUFFORCE) && !set(libc::SO_RCVBUF) {
+        warn!(
+            "Failed to set netlink socket receive buffer size: {}",
+            io::Error::last_os_error()
+        );
+    }
+
+    Ok(socket)
 }
 
-impl NetlinkSocket {
-    /// Open a socket subscribed to multicast `groups` (bitmask).
-    fn new(groups: u32) -> io::Result<Self> {
-        let fd = unsafe {
-            libc::socket(
-                libc::AF_NETLINK,
-                libc::SOCK_RAW | libc::SOCK_CLOEXEC,
-                libc::NETLINK_NETFILTER,
-            )
-        };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-
-        let mut addr: libc::sockaddr_nl = unsafe { mem::zeroed() };
-        addr.nl_family = libc::AF_NETLINK as libc::sa_family_t;
-        addr.nl_groups = groups;
-        let ret = unsafe {
-            libc::bind(
-                fd.as_raw_fd(),
-                (&raw const addr).cast(),
-                mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
-            )
-        };
-        if ret < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        Ok(Self { fd, seq: 0 })
+fn set_nonblocking(socket: &mnl::Socket) -> io::Result<()> {
+    let fd = socket.as_raw_fd();
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+        return Err(io::Error::last_os_error());
     }
+    Ok(())
+}
 
-    /// Enlarge the receive buffer to avoid losing events during bursts.
-    fn set_recv_buffer(&self, size: usize) {
-        let size = libc::c_int::try_from(size).unwrap_or(libc::c_int::MAX);
-        let set = |option| unsafe {
-            libc::setsockopt(
-                self.fd.as_raw_fd(),
-                libc::SOL_SOCKET,
-                option,
-                (&raw const size).cast(),
-                mem::size_of::<libc::c_int>() as libc::socklen_t,
-            ) == 0
-        };
-        // SO_RCVBUFFORCE exceeds the `rmem_max` limit, but requires CAP_NET_ADMIN.
-        if !set(libc::SO_RCVBUFFORCE) && !set(libc::SO_RCVBUF) {
-            warn!(
-                "Failed to set netlink socket receive buffer size: {}",
-                io::Error::last_os_error()
-            );
-        }
+/// Send NFLOG configuration message and wait for acknowledgement.
+fn nflog_request(
+    socket: &mnl::Socket,
+    seq: u32,
+    res_id: u16,
+    attrs: &[(u16, &[u8])],
+) -> io::Result<()> {
+    let mut message = vec![0; NLMSG_HDRLEN];
+    // struct nfgenmsg
+    message.extend_from_slice(&[libc::AF_UNSPEC as u8, NFNETLINK_V0]);
+    message.extend_from_slice(&res_id.to_be_bytes());
+    for (attr_type, data) in attrs {
+        let len = (NLA_HDRLEN + data.len()) as u16;
+        message.extend_from_slice(&len.to_ne_bytes());
+        message.extend_from_slice(&attr_type.to_ne_bytes());
+        message.extend_from_slice(data);
+        message.resize(nl_align(message.len()), 0);
     }
+    // struct nlmsghdr
+    let len = message.len() as u32;
+    let flags = (libc::NLM_F_REQUEST | libc::NLM_F_ACK) as u16;
+    message[0..4].copy_from_slice(&len.to_ne_bytes());
+    message[4..6].copy_from_slice(&(NFNL_SUBSYS_ULOG << 8 | NFULNL_MSG_CONFIG).to_ne_bytes());
+    message[6..8].copy_from_slice(&flags.to_ne_bytes());
+    message[8..12].copy_from_slice(&seq.to_ne_bytes());
+    socket.send(&message)?;
 
-    fn recv(&self, buf: &mut [u8], flags: libc::c_int) -> io::Result<usize> {
-        let ret = unsafe {
-            libc::recv(
-                self.fd.as_raw_fd(),
-                buf.as_mut_ptr().cast(),
-                buf.len(),
-                flags,
-            )
-        };
-        if ret < 0 {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(ret as usize)
-        }
-    }
-
-    /// Send NFLOG configuration message and wait for acknowledgement.
-    fn request(&mut self, msg_type: u16, res_id: u16, attrs: &[(u16, &[u8])]) -> io::Result<()> {
-        self.seq = self.seq.wrapping_add(1);
-
-        let mut message = vec![0; NLMSG_HDRLEN];
-        // struct nfgenmsg
-        message.extend_from_slice(&[libc::AF_UNSPEC as u8, NFNETLINK_V0]);
-        message.extend_from_slice(&res_id.to_be_bytes());
-        for (attr_type, data) in attrs {
-            let len = (NLA_HDRLEN + data.len()) as u16;
-            message.extend_from_slice(&len.to_ne_bytes());
-            message.extend_from_slice(&attr_type.to_ne_bytes());
-            message.extend_from_slice(data);
-            message.resize(nl_align(message.len()), 0);
-        }
-        // struct nlmsghdr
-        let len = message.len() as u32;
-        let flags = (libc::NLM_F_REQUEST | libc::NLM_F_ACK) as u16;
-        message[0..4].copy_from_slice(&len.to_ne_bytes());
-        message[4..6].copy_from_slice(&(NFNL_SUBSYS_ULOG << 8 | msg_type).to_ne_bytes());
-        message[6..8].copy_from_slice(&flags.to_ne_bytes());
-        message[8..12].copy_from_slice(&self.seq.to_ne_bytes());
-
-        // Destination address is the kernel.
-        let mut addr: libc::sockaddr_nl = unsafe { mem::zeroed() };
-        addr.nl_family = libc::AF_NETLINK as libc::sa_family_t;
-        let ret = unsafe {
-            libc::sendto(
-                self.fd.as_raw_fd(),
-                message.as_ptr().cast(),
-                message.len(),
-                0,
-                (&raw const addr).cast(),
-                mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
-            )
-        };
-        if ret < 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        // Skip other messages (e.g. logged packets) until the acknowledgement arrives.
-        let mut buf = vec![0; 8192];
-        loop {
-            let len = self.recv(&mut buf, 0)?;
-            for message in netlink_messages(&buf[..len]) {
-                if message.seq != self.seq || message.msg_type != libc::NLMSG_ERROR as u16 {
-                    continue;
-                }
-                // struct nlmsgerr
-                let error = i32::from_ne_bytes(
-                    message
-                        .payload
-                        .get(..4)
-                        .and_then(|error| error.try_into().ok())
-                        .ok_or_else(|| io::Error::other("Truncated netlink error message"))?,
-                );
-                return if error == 0 {
-                    Ok(())
-                } else {
-                    Err(io::Error::from_raw_os_error(-error))
-                };
+    // Skip other messages (e.g. logged packets) until the acknowledgement arrives.
+    let mut buf = RecvBuffer::new();
+    loop {
+        for message in socket.recv(&mut buf.0)? {
+            let message = message?;
+            if NetlinkMessage::parse(message).is_some_and(|parsed| {
+                parsed.seq == seq && parsed.msg_type == libc::NLMSG_ERROR as u16
+            }) {
+                return mnl::cb_run(message, seq, socket.portid()).map(|_| ());
             }
         }
     }
