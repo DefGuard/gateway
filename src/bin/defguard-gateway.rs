@@ -12,6 +12,8 @@ use tokio::signal;
 #[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal as unix_signal};
 
+#[cfg(unix)]
+use defguard_gateway::connection_events::run_connection_events_server;
 use defguard_gateway::{
     CORE_CLIENT_CERT_NAME, GRPC_CA_CERT_NAME, GRPC_CERT_NAME, GRPC_KEY_NAME, VERSION,
     config::get_config,
@@ -171,6 +173,17 @@ async fn main() -> Result<(), GatewayError> {
             health_port,
             config.http_bind_address,
             Arc::clone(&gateway.connected),
+        ));
+    }
+
+    // Optionally, stream connection monitoring events to local clients.
+    #[cfg(unix)]
+    if let Some(path) = &config.connection_events_socket {
+        #[cfg(not(target_os = "linux"))]
+        log::warn!("Connection monitoring is only supported on Linux, no events will be sent");
+        tasks.spawn(run_connection_events_server(
+            path.clone(),
+            gateway.connection_events(),
         ));
     }
 

@@ -20,7 +20,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use tokio::sync::mpsc::{Sender, error::TrySendError};
+use tokio::sync::broadcast::Sender;
 
 use super::Policy;
 use crate::enterprise::firewall::{
@@ -164,8 +164,7 @@ impl LogTag {
 
 /// Monitors connections handled by the Defguard firewall on a WireGuard interface.
 ///
-/// Monitoring stops when [`ConnectionMonitor::unregister`] is called, the monitor is dropped, or
-/// the event receiver is closed.
+/// Monitoring stops when [`ConnectionMonitor::unregister`] is called or the monitor is dropped.
 pub struct ConnectionMonitor {
     ifname: String,
     wakeup: OwnedFd,
@@ -173,8 +172,8 @@ pub struct ConnectionMonitor {
 }
 
 impl ConnectionMonitor {
-    /// Register for connection monitoring on interface `ifname`. Connection events are delivered
-    /// through `events`; if the channel is full, events are dropped.
+    /// Register for connection monitoring on interface `ifname`. Connection events are published
+    /// to `events`; events are dropped while there are no subscribers.
     ///
     /// Only one monitor can be registered for a given interface at a time.
     pub fn register(ifname: &str, events: Sender<ConnectionEvent>) -> Result<Self, FirewallError> {
@@ -381,7 +380,7 @@ impl Worker {
         debug!("Connection monitor for interface {} stopped", self.ifname);
     }
 
-    /// Process all logged packets waiting on `nflog`. Returns `false` if monitoring should stop.
+    /// Process all logged packets waiting on `nflog`. Returns `false` if the socket failed.
     fn drain(&mut self, nflog: &mnl::Socket, buf: &mut RecvBuffer) -> bool {
         loop {
             match self.receive(nflog, buf, Self::handle_nflog) {
@@ -393,12 +392,12 @@ impl Worker {
     }
 
     /// Process one batch of messages waiting on `socket`. Returns whether there were any messages,
-    /// or `None` if monitoring should stop.
+    /// or `None` if the socket failed.
     fn receive(
         &mut self,
         socket: &mnl::Socket,
         buf: &mut RecvBuffer,
-        handle: fn(&mut Self, NetlinkMessage) -> bool,
+        handle: fn(&mut Self, NetlinkMessage),
     ) -> Option<bool> {
         loop {
             let messages = match socket.recv(&mut buf.0) {
@@ -429,17 +428,15 @@ impl Worker {
                         break;
                     }
                 };
-                if !handle(self, message) {
-                    return None;
-                }
+                handle(self, message);
             }
             return Some(true);
         }
     }
 
-    fn handle_nflog(&mut self, message: NetlinkMessage) -> bool {
+    fn handle_nflog(&mut self, message: NetlinkMessage) {
         if message.msg_type != (NFNL_SUBSYS_ULOG << 8 | NFULNL_MSG_PACKET) {
-            return true;
+            return;
         }
         let mut tag = None;
         let mut key = None;
@@ -462,7 +459,7 @@ impl Worker {
         }
         let (Some(tag), Some(key)) = (tag, key) else {
             debug!("Ignoring unrecognized NFLOG packet");
-            return true;
+            return;
         };
 
         let has_ports = protocol_has_ports(key.protocol);
@@ -484,15 +481,17 @@ impl Worker {
         };
 
         if event.status == ConnectionStatus::Blocked {
-            return self.emit(event);
+            self.emit(event);
+            return;
         }
         // Without conntrack, traffic counters can't be determined.
         let Some((conntrack_key, status)) = conntrack else {
-            return self.emit(event);
+            self.emit(event);
+            return;
         };
         // A packet of an already confirmed connection is a retransmission of its first packet.
         if status & IPS_CONFIRMED != 0 {
-            return true;
+            return;
         }
         if self.pending_count >= MAX_PENDING_CONNECTIONS {
             self.forget_oldest();
@@ -503,7 +502,6 @@ impl Worker {
             .or_default()
             .push_back(event);
         self.pending_count += 1;
-        true
     }
 
     /// Stop tracking the oldest allowed connection; its destruction was likely missed.
@@ -533,41 +531,30 @@ impl Worker {
         event
     }
 
-    fn handle_conntrack(&mut self, message: NetlinkMessage) -> bool {
+    fn handle_conntrack(&mut self, message: NetlinkMessage) {
         if message.msg_type != (NFNL_SUBSYS_CTNETLINK << 8 | IPCTNL_MSG_CT_DELETE) {
-            return true;
+            return;
         }
         let Some(destroyed) = parse_conntrack_destroy(message.payload) else {
             debug!("Ignoring unrecognized conntrack message");
-            return true;
+            return;
         };
         let Some(mut event) = self.take_pending(&destroyed.key) else {
             trace!("Ignoring untracked connection {:?}", destroyed.key);
-            return true;
+            return;
         };
         // The original direction is the one in which the connection was initiated.
         (event.upload_bytes, event.download_bytes) = match event.direction {
             TrafficDirection::Outbound => (destroyed.orig_bytes, destroyed.reply_bytes),
             TrafficDirection::Inbound => (destroyed.reply_bytes, destroyed.orig_bytes),
         };
-        self.emit(event)
+        self.emit(event);
     }
 
-    /// Returns `false` if the receiver is gone.
-    fn emit(&self, event: ConnectionEvent) -> bool {
-        match self.events.try_send(event) {
-            Ok(()) => true,
-            Err(TrySendError::Full(event)) => {
-                warn!("Connection event queue is full, dropping {event:?}");
-                true
-            }
-            Err(TrySendError::Closed(_)) => {
-                debug!(
-                    "Connection event receiver for interface {} closed",
-                    self.ifname
-                );
-                false
-            }
+    fn emit(&self, event: ConnectionEvent) {
+        // Sending fails only if there are no subscribers at the moment.
+        if self.events.send(event).is_err() {
+            trace!("No subscribers for connection events");
         }
     }
 }

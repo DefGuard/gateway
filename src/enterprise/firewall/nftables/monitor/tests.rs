@@ -143,7 +143,7 @@ fn test_parse_conntrack_destroy() {
 
 #[test]
 fn test_worker_matches_connections() {
-    let (events, mut receiver) = tokio::sync::mpsc::channel(10);
+    let (events, mut receiver) = tokio::sync::broadcast::channel(10);
     let mut worker = Worker {
         ifname: "wg0".to_string(),
         events,
@@ -166,36 +166,36 @@ fn test_worker_matches_connections() {
     }
 
     // Blocked connections are reported immediately.
-    assert!(worker.handle_nflog(nflog(&nflog_packet("DG:o:d:-", 0))));
+    worker.handle_nflog(nflog(&nflog_packet("DG:o:d:-", 0)));
     let event = receiver.try_recv().unwrap();
     assert_eq!(event.status, ConnectionStatus::Blocked);
     assert_eq!(event.rule_id, None);
     assert_eq!(event.destination_port, Some(443));
 
     // Two connections reusing a tuple, with a retransmission of the first packet.
-    assert!(worker.handle_nflog(nflog(&nflog_packet("DG:o:a:1", 0))));
-    assert!(worker.handle_nflog(nflog(&nflog_packet("DG:o:a:1", IPS_CONFIRMED))));
-    assert!(worker.handle_nflog(nflog(&nflog_packet("DG:o:a:2", 0))));
+    worker.handle_nflog(nflog(&nflog_packet("DG:o:a:1", 0)));
+    worker.handle_nflog(nflog(&nflog_packet("DG:o:a:1", IPS_CONFIRMED)));
+    worker.handle_nflog(nflog(&nflog_packet("DG:o:a:2", 0)));
     assert!(receiver.try_recv().is_err());
     assert_eq!(worker.pending_count, 2);
 
-    assert!(worker.handle_conntrack(conntrack(&conntrack_destroy(100, 2048))));
+    worker.handle_conntrack(conntrack(&conntrack_destroy(100, 2048)));
     let event = receiver.try_recv().unwrap();
     assert_eq!(event.status, ConnectionStatus::Allowed);
     assert_eq!(event.rule_id, Some(1));
     assert_eq!((event.upload_bytes, event.download_bytes), (100, 2048));
     assert_eq!(event.download_kb(), 2);
 
-    assert!(worker.handle_conntrack(conntrack(&conntrack_destroy(1, 2))));
+    worker.handle_conntrack(conntrack(&conntrack_destroy(1, 2)));
     assert_eq!(receiver.try_recv().unwrap().rule_id, Some(2));
     assert!(worker.pending.is_empty());
     assert_eq!(worker.pending_count, 0);
 
     // Untracked connections are ignored.
-    assert!(worker.handle_conntrack(conntrack(&conntrack_destroy(1, 2))));
+    worker.handle_conntrack(conntrack(&conntrack_destroy(1, 2)));
     assert!(receiver.try_recv().is_err());
 
-    // Stop once the receiver is gone.
+    // Events are dropped while there are no subscribers.
     drop(receiver);
-    assert!(!worker.handle_nflog(nflog(&nflog_packet("DG:o:d:-", 0))));
+    worker.handle_nflog(nflog(&nflog_packet("DG:o:d:-", 0)));
 }
