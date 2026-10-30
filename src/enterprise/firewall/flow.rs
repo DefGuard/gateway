@@ -8,7 +8,7 @@ const IPPROTO_SCTP: u8 = 132;
 const IPPROTO_UDPLITE: u8 = 136;
 
 /// Uniquely identifies a connection, as seen in its original direction.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct FlowKey {
     pub(crate) protocol: u8,
     pub(crate) source: IpAddr,

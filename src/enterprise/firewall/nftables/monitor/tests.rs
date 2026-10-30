@@ -1,6 +1,7 @@
 use std::net::{IpAddr, Ipv4Addr};
 
-use super::*;
+use super::{worker::*, *};
+use crate::enterprise::firewall::{flow::FlowKey, monitor::ConnectionStatus};
 
 #[test]
 fn test_log_tag_roundtrip() {
@@ -123,12 +124,7 @@ fn test_parse_conntrack_destroy() {
 #[test]
 fn test_worker_matches_connections() {
     let (events, mut receiver) = tokio::sync::broadcast::channel(10);
-    let mut worker = Worker {
-        ifname: "wg0".to_string(),
-        events,
-        pending: HashMap::new(),
-        pending_count: 0,
-    };
+    let mut worker = Worker::new("wg0", events);
     fn nflog(payload: &[u8]) -> NetlinkMessage<'_> {
         NetlinkMessage {
             msg_type: NFNL_SUBSYS_ULOG << 8 | NFULNL_MSG_PACKET,

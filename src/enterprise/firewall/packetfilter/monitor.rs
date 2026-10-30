@@ -419,7 +419,7 @@ impl Worker {
             .pending
             .iter()
             .filter(|(_, pending)| pending.generation != self.generation)
-            .map(|(key, _)| *key)
+            .map(|(key, _)| key.clone())
             .collect();
         for key in ended {
             if let Some(pending) = self.pending.remove(&key) {
@@ -434,7 +434,7 @@ impl Worker {
             .pending
             .iter()
             .min_by_key(|(_, pending)| pending.event.timestamp)
-            .map(|(key, _)| *key)
+            .map(|(key, _)| key.clone())
         else {
             return;
         };

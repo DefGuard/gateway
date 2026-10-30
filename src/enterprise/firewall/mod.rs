@@ -197,6 +197,16 @@ pub(crate) enum Policy {
     Deny,
 }
 
+#[cfg(target_os = "linux")]
+impl Policy {
+    pub(crate) fn as_str(&self) -> &str {
+        match self {
+            Self::Allow => "a",
+            Self::Deny => "d",
+        }
+    }
+}
+
 impl From<bool> for Policy {
     fn from(allow: bool) -> Self {
         if allow { Self::Allow } else { Self::Deny }

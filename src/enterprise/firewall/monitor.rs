@@ -5,17 +5,28 @@ use std::{net::IpAddr, time::SystemTime};
 use serde::{Deserialize, Serialize};
 
 /// Direction of traffic, relative to the VPN interface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TrafficDirection {
-    /// Connection initiated by a VPN device to an external network (or another VPN device).
-    Outbound,
     /// Connection initiated from an external network towards a VPN device.
     Inbound,
+    /// Connection initiated by a VPN device to an external network.
+    Outbound,
+}
+
+#[cfg(target_os = "linux")]
+
+impl TrafficDirection {
+    pub(crate) fn as_str(&self) -> &str {
+        match self {
+            Self::Inbound => "i",
+            Self::Outbound => "o",
+        }
+    }
 }
 
 /// Firewall verdict for a connection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConnectionStatus {
     Allowed,
