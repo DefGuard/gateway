@@ -1,5 +1,8 @@
 pub mod api;
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+mod flow;
 mod iprange;
+pub mod monitor;
 #[cfg(target_os = "linux")]
 mod nftables;
 #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
@@ -17,6 +20,11 @@ use thiserror::Error;
 use tracing::error;
 
 use crate::proto;
+
+#[cfg(target_os = "linux")]
+pub use nftables::ConnectionMonitor;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+pub use packetfilter::ConnectionMonitor;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Address {
@@ -187,6 +195,16 @@ pub(crate) enum Policy {
     #[default]
     Allow,
     Deny,
+}
+
+#[cfg(target_os = "linux")]
+impl Policy {
+    pub(crate) fn as_str(&self) -> &str {
+        match self {
+            Self::Allow => "a",
+            Self::Deny => "d",
+        }
+    }
 }
 
 impl From<bool> for Policy {

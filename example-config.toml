@@ -51,3 +51,6 @@ syslog_socket = "/var/run/log"
 
 # Optional: Clean the network interface and VPN configuration on quit.
 #clean_on_quit = true
+
+# Optional: Unix socket on which connection monitoring events are streamed as JSON lines (Linux, FreeBSD and macOS)
+#connection_events_socket = "/run/defguard-gateway/connection-events.sock"

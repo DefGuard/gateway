@@ -9,15 +9,21 @@ use nftnl::{
     expr::{Expression, Immediate, InterfaceName, Nat, NatType, Register},
     nft_expr, nft_nlmsg_maxsize,
     nftnl_sys::{
-        NFTNL_SET_ELEM_FLAGS, NFTNL_SET_ELEM_KEY, NFTNL_SET_FLAGS, NFTNL_UDATA_COMMENT_MAXLEN,
-        nftnl_set, nftnl_set_elem_add, nftnl_set_elem_alloc, nftnl_set_elem_set,
-        nftnl_set_elem_set_u32, nftnl_set_set_u32,
+        NFTNL_EXPR_LOG_GROUP, NFTNL_EXPR_LOG_PREFIX, NFTNL_SET_ELEM_FLAGS, NFTNL_SET_ELEM_KEY,
+        NFTNL_SET_FLAGS, NFTNL_UDATA_COMMENT_MAXLEN, nftnl_expr, nftnl_expr_alloc,
+        nftnl_expr_set_str, nftnl_expr_set_u16, nftnl_set, nftnl_set_elem_add,
+        nftnl_set_elem_alloc, nftnl_set_elem_set, nftnl_set_elem_set_u32, nftnl_set_set_u32,
     },
     set::{Set, SetKey},
 };
 
-use super::{Address, FilterRule, Policy, Port, Protocol, State, get_set_id};
-use crate::enterprise::firewall::{FirewallError, SnatBinding, iprange::IpAddrRange, max_address};
+use super::{
+    Address, FilterRule, Policy, Port, Protocol, State, get_set_id,
+    monitor::{LogTag, nflog_group},
+};
+use crate::enterprise::firewall::{
+    FirewallError, SnatBinding, iprange::IpAddrRange, max_address, monitor::TrafficDirection,
+};
 
 const FILTER_TABLE: &str = "filter";
 const NAT_TABLE: &str = "nat";
@@ -77,6 +83,39 @@ impl SetKey for Protocol {
 
     fn data(&self) -> Box<[u8]> {
         Box::new([*self as u8])
+    }
+}
+
+/// `log group <group> prefix <tag>` statement, passing packets to the connection monitor.
+#[derive(Clone, Debug)]
+pub(super) struct Log {
+    group: u16,
+    prefix: CString,
+}
+
+impl Log {
+    pub(super) fn new(ifname: &str, tag: LogTag) -> Self {
+        Self {
+            group: nflog_group(ifname),
+            prefix: CString::new(tag.to_prefix()).expect("Log prefix contains a nul byte"),
+        }
+    }
+}
+
+impl Expression for Log {
+    fn to_expr(&self, _rule: &Rule) -> NonNull<nftnl_expr> {
+        let expr = NonNull::new(unsafe { nftnl_expr_alloc(c"log".as_ptr()) })
+            .expect("Failed to allocate memory for log expression");
+        unsafe {
+            nftnl_expr_set_u16(expr.as_ptr(), NFTNL_EXPR_LOG_GROUP as u16, self.group);
+            // The prefix is copied by libnftnl.
+            nftnl_expr_set_str(
+                expr.as_ptr(),
+                NFTNL_EXPR_LOG_PREFIX as u16,
+                self.prefix.as_ptr(),
+            );
+        }
+        expr
     }
 }
 
@@ -405,6 +444,12 @@ impl FirewallRule for FilterRule<'_> {
                 self.states
             );
             matches.push(format!("ANY CT STATES: {:?}", self.states));
+        }
+
+        if let Some(log) = &self.log {
+            // log group <group> prefix <tag>
+            rule.add_expr(log);
+            debug!("Added log expression to rule: {log:?}");
         }
 
         if self.counter {
@@ -742,6 +787,39 @@ pub(super) fn allow_established_traffic(
     }
     .to_chain_rule(&forward_chain, batch)?;
     batch.add(&established_rule, MsgType::Add);
+
+    Ok(())
+}
+
+/// Reports new connections coming into the VPN to the connection monitor.
+/// Inbound traffic is not subject to ACL rules, so it is accepted here as well.
+pub(super) fn log_inbound_traffic(batch: &mut Batch, ifname: &str) -> Result<(), FirewallError> {
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
+    batch.add(&table, MsgType::Add);
+
+    let forward_chain = Chains::Forward.to_chain(&table);
+    batch.add(&forward_chain, MsgType::Add);
+
+    let inbound_rule = FilterRule {
+        iifname: Some(ifname.to_string()),
+        negated_iifname: true,
+        oifname: Some(ifname.to_string()),
+        states: vec![State::New],
+        action: Policy::Allow,
+        counter: true,
+        comment: Some("Log new inbound VPN connections".to_string()),
+        log: Some(Log::new(
+            ifname,
+            LogTag {
+                direction: TrafficDirection::Inbound,
+                verdict: Policy::Allow,
+                rule_id: None,
+            },
+        )),
+        ..Default::default()
+    }
+    .to_chain_rule(&forward_chain, batch)?;
+    batch.add(&inbound_rule, MsgType::Add);
 
     Ok(())
 }

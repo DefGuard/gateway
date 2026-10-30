@@ -19,7 +19,6 @@ pub(crate) struct FirewallApi {
     pub(crate) ifname: String,
     #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
     pub(crate) file: File,
-    #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
     pub(crate) default_policy: Policy,
     #[cfg(target_os = "linux")]
     pub(crate) socket: mnl::Socket,
@@ -34,7 +33,6 @@ impl FirewallApi {
             ifname: ifname.into(),
             #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
             file: OpenOptions::new().read(true).write(true).open(DEV_PF)?,
-            #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
             default_policy: Policy::Deny,
             #[cfg(target_os = "linux")]
             socket: mnl::Socket::new(mnl::Bus::Netfilter).map_err(|err| {

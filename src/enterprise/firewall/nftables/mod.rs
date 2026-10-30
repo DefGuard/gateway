@@ -1,3 +1,4 @@
+mod monitor;
 mod netfilter;
 
 use std::{
@@ -5,9 +6,11 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
+pub use monitor::ConnectionMonitor;
+use monitor::LogTag;
 use netfilter::{
-    allow_established_traffic, apply_filter_rules, drop_table, ignore_unrelated_traffic,
-    init_firewall, send_batch, set_nat_rules,
+    Log, allow_established_traffic, apply_filter_rules, drop_table, ignore_unrelated_traffic,
+    init_firewall, log_inbound_traffic, send_batch, set_nat_rules,
 };
 use nftnl::Batch;
 
@@ -15,6 +18,7 @@ use super::{
     Address, FirewallError, FirewallRule, Policy, Port, Protocol, SnatBinding,
     api::{FirewallApi, FirewallManagementApi},
     iprange::IpAddrRangeError,
+    monitor::TrafficDirection,
 };
 use crate::enterprise::firewall::iprange::IpAddrRange;
 
@@ -54,6 +58,8 @@ struct FilterRule<'a> {
     comment: Option<String>,
     negated_oifname: bool,
     negated_iifname: bool,
+    // Send matching packets to the connection monitor.
+    log: Option<Log>,
 }
 
 /// Merges any contiguous subets or addres ranges into an address range.
@@ -145,6 +151,14 @@ impl FirewallApi {
 
         let source_addrs = merge_addrs(rule.source_addrs.clone())?;
         let dest_addrs = merge_addrs(rule.destination_addrs.clone())?;
+        let log = Log::new(
+            &self.ifname,
+            LogTag {
+                direction: TrafficDirection::Outbound,
+                verdict: rule.verdict,
+                rule_id: Some(rule.id),
+            },
+        );
 
         if rule.destination_ports.is_empty() {
             debug!(
@@ -160,6 +174,7 @@ impl FirewallApi {
                 defguard_rule_id: rule.id,
                 v4: rule.ipv4,
                 comment: rule.comment.clone(),
+                log: Some(log.clone()),
                 ..Default::default()
             };
             filter_rules.push(rule);
@@ -179,6 +194,7 @@ impl FirewallApi {
                     defguard_rule_id: rule.id,
                     v4: rule.ipv4,
                     comment: rule.comment.clone(),
+                    log: Some(log.clone()),
                     ..Default::default()
                 };
                 if protocol.supports_ports() {
@@ -209,6 +225,7 @@ impl FirewallApi {
                     defguard_rule_id: rule.id,
                     v4: rule.ipv4,
                     comment: rule.comment.clone(),
+                    log: Some(log.clone()),
                     ..Default::default()
                 };
                 filter_rules.push(rule);
@@ -233,10 +250,12 @@ impl FirewallManagementApi for FirewallApi {
         priority: Option<i32>,
     ) -> Result<(), FirewallError> {
         debug!("Initializing firewall, VPN interface: {}", self.ifname);
+        self.default_policy = default_policy;
         let mut batch = Batch::new();
         drop_table(&mut batch, &self.ifname);
         init_firewall(default_policy, priority, &mut batch, &self.ifname);
         debug!("Allowing all established traffic");
+        log_inbound_traffic(&mut batch, &self.ifname)?;
         ignore_unrelated_traffic(&mut batch, &self.ifname)?;
         allow_established_traffic(&mut batch, &self.ifname)?;
         send_batch(&batch.finalize(), &self.socket)?;
@@ -280,269 +299,27 @@ impl FirewallManagementApi for FirewallApi {
         for rule in rules {
             self.add_rule(rule)?;
         }
+        // Explicitly apply the default policy at the end of the chain, so connections which did
+        // not match any rule are reported to the connection monitor.
+        let default_rule = FilterRule {
+            action: self.default_policy,
+            counter: true,
+            comment: Some("Default policy".to_string()),
+            log: Some(Log::new(
+                &self.ifname,
+                LogTag {
+                    direction: TrafficDirection::Outbound,
+                    verdict: self.default_policy,
+                    rule_id: None,
+                },
+            )),
+            ..Default::default()
+        };
+        apply_filter_rules(&[default_rule], &self.ifname, &self.socket)?;
         debug!("Applied all Defguard ACL rules");
         Ok(())
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::str::FromStr;
-
-    use ipnetwork::IpNetwork;
-
-    use super::*;
-
-    #[test]
-    fn test_sorting() {
-        let mut addrs = vec![
-            Address::Network(IpNetwork::from_str("10.10.10.11/24").unwrap()),
-            Address::Network(IpNetwork::from_str("10.10.10.12/24").unwrap()),
-            Address::Network(IpNetwork::from_str("10.10.11.10/32").unwrap()),
-            Address::Network(IpNetwork::from_str("10.10.11.11/32").unwrap()),
-            Address::Network(IpNetwork::from_str("10.10.10.10/24").unwrap()),
-            Address::Network(IpNetwork::from_str("10.10.11.12/32").unwrap()),
-        ];
-
-        addrs.sort_by(|a, b| {
-            a.first()
-                .partial_cmp(&b.first())
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        assert_eq!(
-            addrs,
-            vec![
-                Address::Network(IpNetwork::from_str("10.10.10.10/24").unwrap()),
-                Address::Network(IpNetwork::from_str("10.10.10.11/24").unwrap()),
-                Address::Network(IpNetwork::from_str("10.10.10.12/24").unwrap()),
-                Address::Network(IpNetwork::from_str("10.10.11.10/32").unwrap()),
-                Address::Network(IpNetwork::from_str("10.10.11.11/32").unwrap()),
-                Address::Network(IpNetwork::from_str("10.10.11.12/32").unwrap()),
-            ]
-        );
-
-        let _prepared_addrs = merge_addrs(addrs).unwrap();
-    }
-
-    #[test]
-    fn test_merge_addrs_empty() {
-        let addrs = Vec::new();
-        let result = merge_addrs(addrs).unwrap();
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_merge_addrs_single_address() {
-        let addrs = vec![Address::Network(
-            IpNetwork::from_str("192.168.1.10/32").unwrap(),
-        )];
-        let result = merge_addrs(addrs.clone()).unwrap();
-
-        assert_eq!(result, addrs);
-    }
-
-    #[test]
-    fn test_merge_addrs_adjacent_ranges() {
-        let addrs = vec![
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.10").unwrap(),
-                    IpAddr::from_str("192.168.1.20").unwrap(),
-                )
-                .unwrap(),
-            ),
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.21").unwrap(),
-                    IpAddr::from_str("192.168.1.30").unwrap(),
-                )
-                .unwrap(),
-            ),
-        ];
-        let result = merge_addrs(addrs).unwrap();
-
-        assert_eq!(result.len(), 1);
-        if let Address::Range(range) = &result[0] {
-            assert_eq!(range.start(), IpAddr::from_str("192.168.1.10").unwrap());
-            assert_eq!(range.end(), IpAddr::from_str("192.168.1.30").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-    }
-
-    #[test]
-    fn test_merge_addrs_adjacent_single_addresses() {
-        let addrs = vec![
-            Address::Network(IpNetwork::from_str("192.168.1.10/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.11/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.12/32").unwrap()),
-        ];
-        let result = merge_addrs(addrs).unwrap();
-
-        assert_eq!(result.len(), 1);
-        if let Address::Range(range) = &result[0] {
-            assert_eq!(range.start(), IpAddr::from_str("192.168.1.10").unwrap());
-            assert_eq!(range.end(), IpAddr::from_str("192.168.1.12").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-    }
-
-    #[test]
-    fn test_merge_addrs_non_adjacent_ranges() {
-        let addrs = vec![
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.10").unwrap(),
-                    IpAddr::from_str("192.168.1.20").unwrap(),
-                )
-                .unwrap(),
-            ),
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.30").unwrap(),
-                    IpAddr::from_str("192.168.1.40").unwrap(),
-                )
-                .unwrap(),
-            ),
-        ];
-        let result = merge_addrs(addrs).unwrap();
-
-        assert_eq!(result.len(), 2);
-        if let Address::Range(range1) = &result[0] {
-            assert_eq!(range1.start(), IpAddr::from_str("192.168.1.10").unwrap());
-            assert_eq!(range1.end(), IpAddr::from_str("192.168.1.20").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-        if let Address::Range(range2) = &result[1] {
-            assert_eq!(range2.start(), IpAddr::from_str("192.168.1.30").unwrap());
-            assert_eq!(range2.end(), IpAddr::from_str("192.168.1.40").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-    }
-
-    #[test]
-    fn test_merge_addrs_mixed_networks_and_ranges() {
-        let addrs = vec![
-            Address::Network(IpNetwork::from_str("192.168.1.10/32").unwrap()),
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.11").unwrap(),
-                    IpAddr::from_str("192.168.1.15").unwrap(),
-                )
-                .unwrap(),
-            ),
-            Address::Network(IpNetwork::from_str("192.168.1.16/32").unwrap()),
-        ];
-        let result = merge_addrs(addrs).unwrap();
-
-        assert_eq!(result.len(), 1);
-        if let Address::Range(range) = &result[0] {
-            assert_eq!(range.start(), IpAddr::from_str("192.168.1.10").unwrap());
-            assert_eq!(range.end(), IpAddr::from_str("192.168.1.16").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-    }
-
-    #[test]
-    fn test_merge_addrs_non_adjacent_singles() {
-        let addrs = vec![
-            Address::Network(IpNetwork::from_str("192.168.1.10/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.11/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.15/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.20/32").unwrap()),
-        ];
-        let result = merge_addrs(addrs).unwrap();
-
-        // These should result in 3 separate ranges: 10-11, 15, 20
-        let expected_addrs = vec![
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.10").unwrap(),
-                    IpAddr::from_str("192.168.1.11").unwrap(),
-                )
-                .unwrap(),
-            ),
-            Address::Network(IpNetwork::from_str("192.168.1.15/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.20/32").unwrap()),
-        ];
-        assert_eq!(result, expected_addrs);
-    }
-
-    #[test]
-    fn test_merge_addrs_ipv6() {
-        let addrs = vec![
-            Address::Network(IpNetwork::from_str("2001:db8::1/128").unwrap()),
-            Address::Network(IpNetwork::from_str("2001:db8::2/128").unwrap()),
-            Address::Network(IpNetwork::from_str("2001:db8::3/128").unwrap()),
-        ];
-        let result = merge_addrs(addrs).unwrap();
-
-        assert_eq!(result.len(), 1);
-        if let Address::Range(range) = &result[0] {
-            assert_eq!(range.start(), IpAddr::from_str("2001:db8::1").unwrap());
-            assert_eq!(range.end(), IpAddr::from_str("2001:db8::3").unwrap());
-        } else {
-            panic!("Expected Address::Range");
-        }
-    }
-
-    #[test]
-    fn test_next_ip_ipv4() {
-        assert_eq!(
-            next_ip(IpAddr::from_str("192.168.1.10").unwrap()),
-            IpAddr::from_str("192.168.1.11").unwrap()
-        );
-
-        // Test overflow
-        assert_eq!(
-            next_ip(IpAddr::from_str("255.255.255.255").unwrap()),
-            IpAddr::from_str("0.0.0.0").unwrap()
-        );
-    }
-
-    #[test]
-    fn test_next_ip_ipv6() {
-        assert_eq!(
-            next_ip(IpAddr::from_str("2001:db8::1").unwrap()),
-            IpAddr::from_str("2001:db8::2").unwrap()
-        );
-
-        // Test overflow
-        assert_eq!(
-            next_ip(IpAddr::from_str("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff").unwrap()),
-            IpAddr::from_str("::").unwrap()
-        );
-    }
-
-    #[test]
-    fn test_merge_addrs_gap() {
-        let addrs = vec![
-            Address::Network(IpNetwork::from_str("192.168.1.1/32").unwrap()),
-            Address::Network(IpNetwork::from_str("192.168.1.100/32").unwrap()),
-        ];
-        let result = merge_addrs(addrs.clone()).unwrap();
-
-        // Should not merge since there's a gap
-        assert_eq!(result, addrs);
-
-        let addrs = vec![
-            Address::Range(
-                IpAddrRange::new(
-                    IpAddr::from_str("192.168.1.10").unwrap(),
-                    IpAddr::from_str("192.168.1.20").unwrap(),
-                )
-                .unwrap(),
-            ),
-            Address::Network(IpNetwork::from_str("192.168.1.100/32").unwrap()),
-        ];
-        let result = merge_addrs(addrs.clone()).unwrap();
-
-        // Should not merge since there's a gap
-        assert_eq!(result, addrs);
-    }
-}
+mod tests;
