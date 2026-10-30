@@ -61,7 +61,7 @@ async fn test_configuration_comparison() {
         client_tx: None,
         tls_config: None,
         connection_events: broadcast::channel(1).0,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
         connection_monitor: None,
     };
 
@@ -249,7 +249,7 @@ async fn test_firewall_rules_comparison() {
         client_tx: None,
         tls_config: None,
         connection_events: broadcast::channel(1).0,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
         connection_monitor: None,
     };
 
@@ -318,7 +318,7 @@ async fn test_firewall_config_comparison() {
         client_tx: None,
         tls_config: None,
         connection_events: broadcast::channel(1).0,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
         connection_monitor: None,
     };
     // Gateway has no config

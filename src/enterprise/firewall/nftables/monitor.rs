@@ -13,7 +13,6 @@ use std::{
     collections::{HashMap, VecDeque},
     ffi::CStr,
     fs, io, mem,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     os::fd::{AsRawFd, FromRawFd, OwnedFd},
     sync::mpsc,
     thread::{self, JoinHandle},
@@ -24,7 +23,8 @@ use tokio::sync::broadcast::Sender;
 
 use super::Policy;
 use crate::enterprise::firewall::{
-    FirewallError,
+    FirewallError, FirewallRule,
+    flow::{FlowKey, be_u16, ipv4, ipv6, parse_packet, protocol_has_ports},
     monitor::{ConnectionEvent, ConnectionStatus, TrafficDirection},
 };
 
@@ -75,11 +75,6 @@ const CTA_PROTO_ICMPV6_ID: u16 = 7;
 const CTA_COUNTERS_BYTES: u16 = 2;
 // linux/netfilter/nf_conntrack_common.h
 const IPS_CONFIRMED: u32 = 1 << 3;
-
-// IANA protocol numbers not exposed by `libc`.
-const IPPROTO_DCCP: u8 = 33;
-const IPPROTO_SCTP: u8 = 132;
-const IPPROTO_UDPLITE: u8 = 136;
 
 const LOG_PREFIX: &str = "DG";
 /// Number of packet bytes copied to userspace; enough for IP (with IPv6 extension headers) and
@@ -231,6 +226,10 @@ impl ConnectionMonitor {
         self.stop();
     }
 
+    /// Inform the monitor about the current firewall rules. Rule IDs are carried in NFLOG
+    /// prefixes, so there's nothing to do.
+    pub(crate) fn update_rules(&self, _rules: &[FirewallRule]) {}
+
     fn stop(&mut self) {
         let Some(thread) = self.thread.take() else {
             return;
@@ -311,17 +310,6 @@ fn enable_conntrack_accounting() {
             counters will not be available."
         ),
     }
-}
-
-/// Uniquely identifies a connection, as seen in its original direction.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-struct FlowKey {
-    protocol: u8,
-    source: IpAddr,
-    destination: IpAddr,
-    /// Source port, or ICMP identifier.
-    source_port: u16,
-    destination_port: u16,
 }
 
 struct Worker {
@@ -559,29 +547,8 @@ impl Worker {
     }
 }
 
-fn protocol_has_ports(protocol: u8) -> bool {
-    matches!(i32::from(protocol), libc::IPPROTO_TCP | libc::IPPROTO_UDP)
-        || matches!(protocol, IPPROTO_DCCP | IPPROTO_SCTP | IPPROTO_UDPLITE)
-}
-
-fn be_u16(data: &[u8]) -> Option<u16> {
-    Some(u16::from_be_bytes(data.get(..2)?.try_into().ok()?))
-}
-
 fn be_u64(data: &[u8]) -> Option<u64> {
     Some(u64::from_be_bytes(data.get(..8)?.try_into().ok()?))
-}
-
-fn ipv4(data: &[u8]) -> Option<IpAddr> {
-    Some(IpAddr::V4(Ipv4Addr::from(
-        <[u8; 4]>::try_from(data.get(..4)?).ok()?,
-    )))
-}
-
-fn ipv6(data: &[u8]) -> Option<IpAddr> {
-    Some(IpAddr::V6(Ipv6Addr::from(
-        <[u8; 16]>::try_from(data.get(..16)?).ok()?,
-    )))
 }
 
 /// Parse `struct nfulnl_msg_packet_timestamp`.
@@ -589,61 +556,6 @@ fn parse_timestamp(data: &[u8]) -> Option<SystemTime> {
     let secs = be_u64(data)?;
     let usecs = be_u64(data.get(8..)?)?;
     UNIX_EPOCH.checked_add(Duration::from_secs(secs) + Duration::from_micros(usecs))
-}
-
-/// Extract connection details from a packet, starting at the network header.
-fn parse_packet(packet: &[u8]) -> Option<FlowKey> {
-    let (protocol, source, destination, transport) = match packet.first()? >> 4 {
-        4 => {
-            let header_len = usize::from(packet[0] & 0x0f) * 4;
-            (
-                *packet.get(9)?,
-                ipv4(packet.get(12..)?)?,
-                ipv4(packet.get(16..)?)?,
-                packet.get(header_len..)?,
-            )
-        }
-        6 => {
-            let mut next_header = *packet.get(6)?;
-            let mut offset = 40;
-            loop {
-                match i32::from(next_header) {
-                    libc::IPPROTO_HOPOPTS | libc::IPPROTO_ROUTING | libc::IPPROTO_DSTOPTS => {
-                        let header = packet.get(offset..offset + 2)?;
-                        next_header = header[0];
-                        offset += (usize::from(header[1]) + 1) * 8;
-                    }
-                    libc::IPPROTO_FRAGMENT => {
-                        next_header = *packet.get(offset)?;
-                        offset += 8;
-                    }
-                    _ => break,
-                }
-            }
-            (
-                next_header,
-                ipv6(packet.get(8..)?)?,
-                ipv6(packet.get(24..)?)?,
-                packet.get(offset..)?,
-            )
-        }
-        _ => return None,
-    };
-
-    // Match the way conntrack identifies connections.
-    let (source_port, destination_port) = match i32::from(protocol) {
-        libc::IPPROTO_ICMP | libc::IPPROTO_ICMPV6 => (be_u16(transport.get(4..)?)?, 0),
-        _ if protocol_has_ports(protocol) => (be_u16(transport)?, be_u16(transport.get(2..)?)?),
-        _ => (0, 0),
-    };
-
-    Some(FlowKey {
-        protocol,
-        source,
-        destination,
-        source_port,
-        destination_port,
-    })
 }
 
 struct DestroyedConnection {

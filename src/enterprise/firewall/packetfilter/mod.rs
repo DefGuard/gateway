@@ -14,6 +14,8 @@
 //! https://man.openbsd.org/pf.4
 
 mod calls;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+mod monitor;
 mod rule;
 
 use std::os::fd::{AsRawFd, RawFd};
@@ -21,6 +23,8 @@ use std::os::fd::{AsRawFd, RawFd};
 use defguard_wireguard_rs::bsd::c_int_to_error;
 use libc::ioctl;
 
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+pub use self::monitor::ConnectionMonitor;
 use self::{
     calls::{Change, DIOCADDRULE, DIOCBEGINADDRS, IocPoolAddr, IocRule, Rule},
     rule::PacketFilterRule,

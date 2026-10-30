@@ -1,4 +1,6 @@
 pub mod api;
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+mod flow;
 mod iprange;
 pub mod monitor;
 #[cfg(target_os = "linux")]
@@ -21,6 +23,8 @@ use crate::proto;
 
 #[cfg(target_os = "linux")]
 pub use nftables::ConnectionMonitor;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+pub use packetfilter::ConnectionMonitor;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Address {

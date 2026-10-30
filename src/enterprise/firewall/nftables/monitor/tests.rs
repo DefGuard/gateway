@@ -1,3 +1,5 @@
+use std::net::{IpAddr, Ipv4Addr};
+
 use super::*;
 
 #[test]
@@ -53,29 +55,6 @@ fn tcp_key() -> FlowKey {
         source_port: 51000,
         destination_port: 443,
     }
-}
-
-#[test]
-fn test_parse_ipv4_tcp_packet() {
-    assert_eq!(parse_packet(&tcp_packet()), Some(tcp_key()));
-}
-
-#[test]
-fn test_parse_ipv6_udp_packet_with_extension_header() {
-    let mut packet = vec![0u8; 56];
-    packet[0] = 0x60;
-    packet[6] = libc::IPPROTO_DSTOPTS as u8;
-    packet[8..24].copy_from_slice(&Ipv6Addr::LOCALHOST.octets());
-    packet[24..40].copy_from_slice(&Ipv6Addr::LOCALHOST.octets());
-    // Destination options header, 8 bytes long.
-    packet[40] = libc::IPPROTO_UDP as u8;
-    packet[48..50].copy_from_slice(&5353u16.to_be_bytes());
-    packet[50..52].copy_from_slice(&53u16.to_be_bytes());
-
-    let key = parse_packet(&packet).unwrap();
-    assert_eq!(key.protocol, libc::IPPROTO_UDP as u8);
-    assert_eq!(key.source_port, 5353);
-    assert_eq!(key.destination_port, 53);
 }
 
 fn attr(attr_type: u16, data: &[u8]) -> Vec<u8> {

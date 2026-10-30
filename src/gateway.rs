@@ -20,7 +20,7 @@ use tokio::{
 use tonic::Status;
 use tracing::instrument;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 use crate::enterprise::firewall::ConnectionMonitor;
 use crate::{
     config::Config,
@@ -206,7 +206,7 @@ pub struct Gateway {
     pub(crate) tls_config: Option<TlsConfig>,
     /// Connection monitoring events, published while the firewall is active.
     connection_events: broadcast::Sender<ConnectionEvent>,
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
     connection_monitor: Option<ConnectionMonitor>,
 }
 
@@ -225,7 +225,7 @@ impl Gateway {
             client_tx: None,
             tls_config: None,
             connection_events: broadcast::channel(CONNECTION_EVENTS_CAPACITY).0,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
             connection_monitor: None,
         })
     }
@@ -233,14 +233,14 @@ impl Gateway {
     /// Sender of connection monitoring events; call `subscribe()` on it to listen to them.
     ///
     /// Events are only published when connection monitoring is enabled with
-    /// `connection_events_socket` (Linux only) and the firewall is managed by the Gateway.
+    /// `connection_events_socket` (Linux, FreeBSD and macOS) and the firewall is managed by the Gateway.
     #[must_use]
     pub fn connection_events(&self) -> broadcast::Sender<ConnectionEvent> {
         self.connection_events.clone()
     }
 
     /// Start monitoring connections on the VPN interface, unless it's already running or disabled.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
     fn start_connection_monitor(&mut self) {
         if self.connection_monitor.is_some() || self.config.connection_events_socket.is_none() {
             return;
@@ -434,8 +434,13 @@ impl Gateway {
                 firewall_api.add_rules(&fw_config.rules)?;
                 self.firewall_config = Some(fw_config.clone());
                 info!("Reconfigured firewall with new configuration");
-                #[cfg(target_os = "linux")]
-                self.start_connection_monitor();
+                #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+                {
+                    self.start_connection_monitor();
+                    if let Some(monitor) = &self.connection_monitor {
+                        monitor.update_rules(&fw_config.rules);
+                    }
+                }
             } else {
                 debug!(
                     "Received firewall configuration is the same as current one. Skipping \
@@ -452,7 +457,7 @@ impl Gateway {
     }
 
     fn cleanup_firewall(&mut self) -> Result<(), FirewallError> {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
         {
             // Dropping the monitor unregisters it.
             self.connection_monitor = None;

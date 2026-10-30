@@ -207,7 +207,7 @@ pub struct Config {
     pub clean_on_quit: bool,
 
     /// Unix socket path on which connection monitoring events are streamed as JSON lines.
-    /// Enables connection monitoring (Linux only).
+    /// Enables connection monitoring (Linux, FreeBSD and macOS).
     #[arg(long, env = "DEFGUARD_CONNECTION_EVENTS_SOCKET")]
     pub connection_events_socket: Option<PathBuf>,
 }
