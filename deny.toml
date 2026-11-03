@@ -71,7 +71,7 @@ feature-depth = 1
 # output a note when they are encountered.
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "https://github.com/RustCrypto/RSA/issues/19" },
-    { id = "RUSTSEC-2024-0436", reason = "Unmaintained" },
+    { id = "RUSTSEC-2026-0387", reason = "Transitive dependency of jsonwebtoken" },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
@@ -94,14 +94,11 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "Unicode-3.0",
-    "Unicode-DFS-2016",               # unicode-ident
     "Zlib",
     "ISC",
     "BSL-1.0",
     "0BSD",
     "CC0-1.0",
-    "OpenSSL",
-    "CDLA-Permissive-2.0",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -255,7 +252,7 @@ unknown-git = "warn"
 # if not specified. If it is specified but empty, no registries are allowed.
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # List of URLs for allowed Git repositories
-allow-git = []
+allow-git = ["https://github.com/DefGuard/defguard.git"]
 
 [sources.allow-org]
 # github.com organizations to allow git sources for
