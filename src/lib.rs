@@ -28,6 +28,11 @@ pub mod generated {
                     tonic::include_proto!("defguard.enterprise.firewall.v2");
                 }
             }
+            pub mod monitor {
+                pub mod v2 {
+                    tonic::include_proto!("defguard.enterprise.monitor.v2");
+                }
+            }
         }
     }
 }
@@ -42,6 +47,9 @@ pub mod proto {
     pub mod enterprise {
         pub mod firewall {
             pub use crate::generated::defguard::enterprise::firewall::v2::*;
+        }
+        pub mod monitor {
+            pub use crate::generated::defguard::enterprise::monitor::v2::*;
         }
     }
 }

@@ -716,3 +716,60 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) {
         }
     }
 }
+
+/// Collect connection monitoring events and periodically send them to Core through gRPC.
+///
+/// Events are buffered between ticks of `period`; events observed while Core is disconnected
+/// are discarded.
+pub async fn run_connection_events(gateway: Arc<Mutex<Gateway>>, period: Duration) {
+    let (mut events, connected) = {
+        let gateway = gateway.lock().expect("gateway mutex poison");
+        (
+            gateway.connection_events().subscribe(),
+            Arc::clone(&gateway.connected),
+        )
+    };
+    let mut buffer = Vec::new();
+    let mut interval = interval(period);
+    let mut id = 1;
+    loop {
+        tokio::select! {
+            result = events.recv() => match result {
+                Ok(event) => {
+                    if connected.load(Ordering::Relaxed) {
+                        buffer.push(event);
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(count)) => {
+                    warn!("Dropped {count} connection events that were not sent to Core in time");
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            },
+            _ = interval.tick() => {
+                let batch = std::mem::take(&mut buffer);
+                if batch.is_empty() {
+                    continue;
+                }
+                // Hold the gateway lock only to obtain the sender.
+                let Some(tx) = gateway.lock().expect("gateway mutex poison").client_tx.clone()
+                else {
+                    debug!("Core disconnected, discarding {} connection events", batch.len());
+                    continue;
+                };
+                let count = batch.len();
+                for event in &batch {
+                    let message = CoreRequest {
+                        id,
+                        payload: Some(core_request::Payload::ConnectionEvent(event.into())),
+                    };
+                    id += 1;
+                    if tx.send(Ok(message)).is_err() {
+                        warn!("Failed to send connection events to Core");
+                        break;
+                    }
+                }
+                debug!("Sent {count} connection events to Core");
+            }
+        }
+    }
+}

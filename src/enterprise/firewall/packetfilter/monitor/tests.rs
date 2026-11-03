@@ -184,7 +184,7 @@ fn test_worker_tracks_connections() {
     // Blocked connections are reported immediately.
     worker.handle_pflog(&pflog_packet(PF_DROP, 2), timestamp);
     let event = receiver.try_recv().unwrap();
-    assert_eq!(event.status, ConnectionStatus::Blocked);
+    assert_eq!(event.status, Status::Blocked);
     assert_eq!(event.rule_id, Some(8));
     assert_eq!(event.destination_port, Some(443));
 
@@ -201,8 +201,8 @@ fn test_worker_tracks_connections() {
     assert!(receiver.try_recv().is_err());
     worker.update_states(&[]);
     let event = receiver.try_recv().unwrap();
-    assert_eq!(event.status, ConnectionStatus::Allowed);
-    assert_eq!(event.direction, TrafficDirection::Outbound);
+    assert_eq!(event.status, Status::Allowed);
+    assert_eq!(event.direction, Direction::Outbound);
     assert_eq!(event.rule_id, Some(7));
     assert_eq!((event.upload_bytes, event.download_bytes), (100, 2048));
     assert!(worker.pending.is_empty());

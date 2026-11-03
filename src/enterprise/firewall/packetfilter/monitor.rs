@@ -39,7 +39,7 @@ use super::rule::PacketFilterRule;
 use crate::enterprise::firewall::{
     FirewallError, FirewallRule,
     flow::{FlowKey, parse_packet, protocol_has_ports},
-    monitor::{ConnectionEvent, ConnectionStatus, TrafficDirection},
+    monitor::{ConnectionEvent, Direction, Status},
 };
 
 const DEV_PF: &str = "/dev/pf";
@@ -330,13 +330,13 @@ impl Worker {
             return;
         }
         let status = match log.action {
-            PF_PASS => ConnectionStatus::Allowed,
-            PF_DROP => ConnectionStatus::Blocked,
+            PF_PASS => Status::Allowed,
+            PF_DROP => Status::Blocked,
             _ => return,
         };
         let direction = match log.dir {
-            PF_IN => TrafficDirection::Outbound,
-            PF_OUT => TrafficDirection::Inbound,
+            PF_IN => Direction::Outbound,
+            PF_OUT => Direction::Inbound,
             _ => return,
         };
         let Some(key) = packet.get(log.length..).and_then(parse_packet) else {
@@ -366,7 +366,7 @@ impl Worker {
             download_bytes: 0,
         };
 
-        if status == ConnectionStatus::Blocked {
+        if status == Status::Blocked {
             self.emit(event);
             return;
         }
@@ -449,8 +449,8 @@ impl Worker {
         let mut event = pending.event;
         let (initiator, responder) = pending.bytes;
         (event.upload_bytes, event.download_bytes) = match event.direction {
-            TrafficDirection::Outbound => (initiator, responder),
-            TrafficDirection::Inbound => (responder, initiator),
+            Direction::Outbound => (initiator, responder),
+            Direction::Inbound => (responder, initiator),
         };
         self.emit(event);
     }

@@ -7,9 +7,7 @@
 use std::{env, os::unix::net::UnixStream, process::ExitCode};
 
 use chrono::{DateTime, Local};
-use defguard_gateway::enterprise::firewall::monitor::{
-    ConnectionEvent, ConnectionStatus, TrafficDirection,
-};
+use defguard_gateway::enterprise::firewall::monitor::{ConnectionEvent, Direction, Status};
 use serde_json::Deserializer;
 
 fn protocol_name(protocol: u8) -> String {
@@ -36,14 +34,14 @@ fn endpoint(event: &ConnectionEvent, source: bool) -> String {
 }
 
 fn print_event(event: &ConnectionEvent) {
-    let timestamp = DateTime::<Local>::from(event.timestamp).format("%Y-%m-%d %H:%M:%S%.3f");
+    let timestamp = DateTime::<Local>::from(event.timestamp).format("%Y-%m-%d %H:%M:%S");
     let direction = match event.direction {
-        TrafficDirection::Outbound => "outbound",
-        TrafficDirection::Inbound => "inbound",
+        Direction::Outbound => "outbound",
+        Direction::Inbound => "inbound",
     };
     let status = match event.status {
-        ConnectionStatus::Allowed => "ALLOWED",
-        ConnectionStatus::Blocked => "BLOCKED",
+        Status::Allowed => "ALLOWED",
+        Status::Blocked => "BLOCKED",
     };
     let rule = event
         .rule_id
