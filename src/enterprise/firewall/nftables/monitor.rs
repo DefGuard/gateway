@@ -24,7 +24,7 @@ use self::worker::Worker;
 use super::Policy;
 use crate::enterprise::firewall::{
     FirewallError, FirewallRule,
-    monitor::{ConnectionEvent, TrafficDirection},
+    monitor::{ConnectionEvent, Direction},
 };
 
 // linux/netlink.h
@@ -81,7 +81,7 @@ pub(super) fn nflog_group(ifname: &str) -> u16 {
 /// Information attached to logged packets through the NFLOG prefix.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct LogTag {
-    pub direction: TrafficDirection,
+    pub direction: Direction,
     pub verdict: Policy,
     /// Defguard ACL rule ID; `None` for the default policy and inbound traffic.
     pub rule_id: Option<i64>,
@@ -107,8 +107,8 @@ impl LogTag {
             return None;
         }
         let direction = match parts.next()? {
-            "o" => TrafficDirection::Outbound,
-            "i" => TrafficDirection::Inbound,
+            "o" => Direction::Outbound,
+            "i" => Direction::Inbound,
             _ => return None,
         };
         let verdict = match parts.next()? {

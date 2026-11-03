@@ -18,7 +18,7 @@ use super::{
     Address, FirewallError, FirewallRule, Policy, Port, Protocol, SnatBinding,
     api::{FirewallApi, FirewallManagementApi},
     iprange::IpAddrRangeError,
-    monitor::TrafficDirection,
+    monitor::Direction,
 };
 use crate::enterprise::firewall::iprange::IpAddrRange;
 
@@ -154,7 +154,7 @@ impl FirewallApi {
         let log = Log::new(
             &self.ifname,
             LogTag {
-                direction: TrafficDirection::Outbound,
+                direction: Direction::Outbound,
                 verdict: rule.verdict,
                 rule_id: Some(rule.id),
             },
@@ -308,7 +308,7 @@ impl FirewallManagementApi for FirewallApi {
             log: Some(Log::new(
                 &self.ifname,
                 LogTag {
-                    direction: TrafficDirection::Outbound,
+                    direction: Direction::Outbound,
                     verdict: self.default_policy,
                     rule_id: None,
                 },

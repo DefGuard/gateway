@@ -22,7 +22,7 @@ use super::{
     monitor::{LogTag, nflog_group},
 };
 use crate::enterprise::firewall::{
-    FirewallError, SnatBinding, iprange::IpAddrRange, max_address, monitor::TrafficDirection,
+    FirewallError, SnatBinding, iprange::IpAddrRange, max_address, monitor::Direction,
 };
 
 const FILTER_TABLE: &str = "filter";
@@ -811,7 +811,7 @@ pub(super) fn log_inbound_traffic(batch: &mut Batch, ifname: &str) -> Result<(),
         log: Some(Log::new(
             ifname,
             LogTag {
-                direction: TrafficDirection::Inbound,
+                direction: Direction::Inbound,
                 verdict: Policy::Allow,
                 rule_id: None,
             },

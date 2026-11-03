@@ -15,7 +15,7 @@ use super::{
 };
 use crate::enterprise::firewall::{
     flow::{FlowKey, be_u16, ipv4, ipv6, parse_packet, protocol_has_ports},
-    monitor::{ConnectionEvent, ConnectionStatus, TrafficDirection},
+    monitor::{ConnectionEvent, Direction, Status},
     nftables::LogTag,
 };
 
@@ -307,8 +307,8 @@ impl Worker {
             timestamp: timestamp.unwrap_or_else(SystemTime::now),
             direction: tag.direction,
             status: match tag.verdict {
-                Policy::Allow => ConnectionStatus::Allowed,
-                Policy::Deny => ConnectionStatus::Blocked,
+                Policy::Allow => Status::Allowed,
+                Policy::Deny => Status::Blocked,
             },
             protocol: key.protocol,
             source: key.source,
@@ -320,7 +320,7 @@ impl Worker {
             download_bytes: 0,
         };
 
-        if event.status == ConnectionStatus::Blocked {
+        if event.status == Status::Blocked {
             self.emit(event);
             return;
         }
@@ -385,8 +385,8 @@ impl Worker {
         };
         // The original direction is the one in which the connection was initiated.
         (event.upload_bytes, event.download_bytes) = match event.direction {
-            TrafficDirection::Outbound => (destroyed.orig_bytes, destroyed.reply_bytes),
-            TrafficDirection::Inbound => (destroyed.reply_bytes, destroyed.orig_bytes),
+            Direction::Outbound => (destroyed.orig_bytes, destroyed.reply_bytes),
+            Direction::Inbound => (destroyed.reply_bytes, destroyed.orig_bytes),
         };
         self.emit(event);
     }

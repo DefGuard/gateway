@@ -1,23 +1,23 @@
 use std::net::{IpAddr, Ipv4Addr};
 
 use super::{worker::*, *};
-use crate::enterprise::firewall::{flow::FlowKey, monitor::ConnectionStatus};
+use crate::enterprise::firewall::{flow::FlowKey, monitor::Status};
 
 #[test]
 fn test_log_tag_roundtrip() {
     for tag in [
         LogTag {
-            direction: TrafficDirection::Outbound,
+            direction: Direction::Outbound,
             verdict: Policy::Allow,
             rule_id: Some(42),
         },
         LogTag {
-            direction: TrafficDirection::Outbound,
+            direction: Direction::Outbound,
             verdict: Policy::Deny,
             rule_id: None,
         },
         LogTag {
-            direction: TrafficDirection::Inbound,
+            direction: Direction::Inbound,
             verdict: Policy::Allow,
             rule_id: None,
         },
@@ -143,7 +143,7 @@ fn test_worker_matches_connections() {
     // Blocked connections are reported immediately.
     worker.handle_nflog(nflog(&nflog_packet("DG:o:d:-", 0)));
     let event = receiver.try_recv().unwrap();
-    assert_eq!(event.status, ConnectionStatus::Blocked);
+    assert_eq!(event.status, Status::Blocked);
     assert_eq!(event.rule_id, None);
     assert_eq!(event.destination_port, Some(443));
 
@@ -156,7 +156,7 @@ fn test_worker_matches_connections() {
 
     worker.handle_conntrack(conntrack(&conntrack_destroy(100, 2048)));
     let event = receiver.try_recv().unwrap();
-    assert_eq!(event.status, ConnectionStatus::Allowed);
+    assert_eq!(event.status, Status::Allowed);
     assert_eq!(event.rule_id, Some(1));
     assert_eq!((event.upload_bytes, event.download_bytes), (100, 2048));
     assert_eq!(event.download_kb(), 2);
