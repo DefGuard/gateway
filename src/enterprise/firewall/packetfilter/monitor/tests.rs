@@ -162,7 +162,7 @@ fn test_rule_map() {
         rule(9, Vec::new()),
     ];
     assert_eq!(
-        rule_map(IFNAME, &rules),
+        rule_map(IFNAME, Policy::Deny, &rules),
         vec![None, Some(7), Some(7), Some(9)]
     );
 }

@@ -35,9 +35,9 @@ use self::freebsd as platform;
 #[cfg(target_os = "macos")]
 use self::macos as platform;
 use self::platform::{STATE_SIZE, open_bpf, parse_bpf_header, parse_state, read_states};
-use super::rule::PacketFilterRule;
+use super::anchor_rules;
 use crate::enterprise::firewall::{
-    FirewallError, FirewallRule,
+    FirewallConfig, FirewallError, FirewallRule, Policy,
     flow::{FlowKey, parse_packet, protocol_has_ports},
     monitor::{ConnectionEvent, Direction, Status},
 };
@@ -124,10 +124,10 @@ impl ConnectionMonitor {
         self.stop();
     }
 
-    /// Inform the monitor about the current firewall rules, so logged packets can be attributed to
-    /// Defguard rules. Must be called whenever the rules are applied.
-    pub(crate) fn update_rules(&self, rules: &[FirewallRule]) {
-        *self.rules.lock().expect("Failed to lock rule map") = rule_map(&self.ifname, rules);
+    /// Update the rule map. Must be called whenever the firewall configuration is applied.
+    pub(crate) fn update_rules(&self, config: &FirewallConfig) {
+        *self.rules.lock().expect("Failed to lock rule map") =
+            rule_map(&self.ifname, config.default_policy, &config.rules);
     }
 
     fn stop(&mut self) {
@@ -162,16 +162,12 @@ impl Drop for ConnectionMonitor {
     }
 }
 
-/// Map rule numbers within the Defguard anchor to Defguard rule IDs. Follows the order in which
-/// `FirewallApi::add_rules` adds rules: the default policy first, then each Defguard rule expanded
-/// into Packet Filter rules.
-fn rule_map(ifname: &str, rules: &[FirewallRule]) -> Vec<Option<i64>> {
-    let mut map = vec![None];
-    for rule in rules {
-        let count = PacketFilterRule::from_firewall_rule(ifname, rule).len();
-        map.extend(std::iter::repeat_n(Some(rule.id), count));
-    }
-    map
+/// Map rule numbers within the Defguard anchor to Defguard rule IDs.
+fn rule_map(ifname: &str, default_policy: Policy, rules: &[FirewallRule]) -> Vec<Option<i64>> {
+    anchor_rules(ifname, default_policy, rules)
+        .into_iter()
+        .map(|(_, rule_id)| rule_id)
+        .collect()
 }
 
 /// Open a BPF device listening on `pflog0`.

@@ -23,7 +23,7 @@ use tokio::sync::broadcast::Sender;
 use self::worker::Worker;
 use super::Policy;
 use crate::enterprise::firewall::{
-    FirewallError, FirewallRule,
+    FirewallConfig, FirewallError,
     monitor::{ConnectionEvent, Direction},
 };
 
@@ -198,7 +198,7 @@ impl ConnectionMonitor {
 
     /// Inform the monitor about the current firewall rules. Rule IDs are carried in NFLOG
     /// prefixes, so there's nothing to do.
-    pub(crate) fn update_rules(&self, _rules: &[FirewallRule]) {}
+    pub(crate) fn update_rules(&self, _config: &FirewallConfig) {}
 
     fn stop(&mut self) {
         let Some(thread) = self.thread.take() else {

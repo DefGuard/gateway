@@ -438,7 +438,7 @@ impl Gateway {
                 {
                     self.start_connection_monitor();
                     if let Some(monitor) = &self.connection_monitor {
-                        monitor.update_rules(&fw_config.rules);
+                        monitor.update_rules(fw_config);
                     }
                 }
             } else {
