@@ -26,7 +26,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use defguard_wireguard_rs::bsd::ioctl::iow;
+use defguard_wireguard_rs::bsd::ioctl::{ior, iow};
 use libc::{c_int, c_uint, c_ulong};
 use tokio::sync::broadcast::Sender;
 
@@ -46,8 +46,7 @@ const DEV_PF: &str = "/dev/pf";
 const PFLOG_IFNAME: &str = "pflog0";
 
 // net/bpf.h
-// `_IOR('B', 102, u_int)`; not using `ior()`, which encodes the direction as `IOC_IN`.
-const BIOCGBLEN: c_ulong = 0x4000_0000 | (4 << 16) | ((b'B' as c_ulong) << 8) | 102;
+const BIOCGBLEN: c_ulong = ior::<c_uint>(b'B', 102);
 const BIOCSETIF: c_ulong = iow::<libc::ifreq>(b'B', 108);
 const BIOCIMMEDIATE: c_ulong = iow::<c_uint>(b'B', 112);
 
@@ -170,8 +169,32 @@ fn rule_map(ifname: &str, default_policy: Policy, rules: &[FirewallRule]) -> Vec
         .collect()
 }
 
+#[cfg(target_os = "freebsd")]
+#[link(name = "c")]
+unsafe extern "C" {
+    // Note: libc crate doesn't export kldload.
+    fn kldload(file: *const libc::c_char) -> libc::c_int;
+}
+
+#[cfg(target_os = "freebsd")]
+pub fn load_pflog_kernel_module() -> Result<(), io::Error> {
+    // Prefer kldload(2) to kld_load(3).
+    // The latter needs libutil, which differs between FreeBSD 14 and 15.
+    let retval = unsafe { kldload(c"pflog".as_ptr()) };
+    // Based on https://github.com/freebsd/freebsd-src/blob/main/lib/libutil/kld.c#L70
+    if retval == -1 {
+        let err = io::Error::last_os_error();
+        if err.raw_os_error() != Some(libc::EEXIST) {
+            return Err(err);
+        }
+    }
+    Ok(())
+}
+
 /// Open a BPF device listening on `pflog0`.
 fn open_pflog() -> Result<File, FirewallError> {
+    #[cfg(target_os = "freebsd")]
+    let _ = load_pflog_kernel_module();
     let bpf = open_bpf()?;
 
     let mut ifreq: libc::ifreq = unsafe { mem::zeroed() };
@@ -339,6 +362,15 @@ impl Worker {
             debug!("Ignoring unrecognized packet logged by pf");
             return;
         };
+        // VPN-to-VPN traffic is logged both ways; report it only as outbound.
+        if direction == Direction::Inbound
+            && self
+                .pending
+                .get(&key)
+                .is_some_and(|pending| pending.event.direction == Direction::Outbound)
+        {
+            return;
+        }
         let rule_id = self
             .rules
             .lock()

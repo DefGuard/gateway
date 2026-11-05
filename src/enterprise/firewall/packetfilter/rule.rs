@@ -223,6 +223,16 @@ impl PacketFilterRule {
         }
     }
 
+    /// Pass and log new connections towards VPN devices, for the connection monitor.
+    #[must_use]
+    pub(super) fn for_inbound(ifname: &str) -> Self {
+        Self {
+            direction: Direction::Out,
+            quick: true,
+            ..Self::for_policy(Policy::Allow, ifname)
+        }
+    }
+
     /// Determine address family.
     pub(super) fn address_family(&self) -> AddressFamily {
         match self.to {
@@ -359,6 +369,14 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
     use super::*;
+
+    #[test]
+    fn inbound_rule() {
+        assert_eq!(
+            PacketFilterRule::for_inbound("lo0").to_string(),
+            "pass out quick on lo0 from any  to any  keep state"
+        );
+    }
 
     #[test]
     fn unroll_firewall_rule() {

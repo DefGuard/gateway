@@ -83,7 +83,10 @@ fn anchor_rules(
     default_policy: Policy,
     rules: &[FirewallRule],
 ) -> Vec<(PacketFilterRule, Option<i64>)> {
-    let mut anchor_rules = vec![(PacketFilterRule::for_policy(default_policy, ifname), None)];
+    let mut anchor_rules = vec![
+        (PacketFilterRule::for_policy(default_policy, ifname), None),
+        (PacketFilterRule::for_inbound(ifname), None),
+    ];
     for rule in rules {
         anchor_rules.extend(
             PacketFilterRule::from_firewall_rule(ifname, rule)
