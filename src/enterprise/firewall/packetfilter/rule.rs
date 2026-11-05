@@ -91,7 +91,7 @@ impl fmt::Display for Direction {
     }
 }
 
-const PF_LOG: u8 = 0x01;
+pub(super) const PF_LOG: u8 = 0x01;
 // const PF_LOG_ALL: u8 = 0x02;
 // const PF_LOG_SOCKET_LOOKUP: u8 = 0x04;
 // #[cfg(target_os = "freebsd")]
@@ -187,8 +187,8 @@ pub(super) struct PacketFilterRule {
     pub(super) action: Action,
     pub(super) direction: Direction,
     pub(super) quick: bool,
-    /// See `PF_LOG`.
-    pub(super) log: u8,
+    /// pflog unit to log to; `None` disables logging.
+    pub(super) log: Option<u8>,
     pub(super) state: State,
     pub(super) interface: Option<String>,
     pub(super) proto: Protocol,
@@ -200,7 +200,7 @@ pub(super) struct PacketFilterRule {
 impl PacketFilterRule {
     /// Default rule for policy.
     #[must_use]
-    pub(super) fn for_policy(policy: Policy, ifname: &str) -> Self {
+    pub(super) fn for_policy(policy: Policy, ifname: &str, log: Option<u8>) -> Self {
         let (action, state) = match policy {
             Policy::Allow => (Action::Pass, State::Normal),
             Policy::Deny => (Action::Drop, State::None),
@@ -213,13 +213,23 @@ impl PacketFilterRule {
             action,
             direction: Direction::In,
             quick: false,
-            log: PF_LOG,
+            log,
             state,
             interface: Some(ifname.to_owned()),
             proto: Protocol::Any,
             tcp_flags: TH_SYN,
             tcp_flags_set: TH_SYN | TH_ACK,
             label: None,
+        }
+    }
+
+    /// Pass and log new connections towards VPN devices, for the connection monitor.
+    #[must_use]
+    pub(super) fn for_inbound(ifname: &str, log: Option<u8>) -> Self {
+        Self {
+            direction: Direction::Out,
+            quick: true,
+            ..Self::for_policy(Policy::Allow, ifname, log)
         }
     }
 
@@ -237,7 +247,11 @@ impl PacketFilterRule {
     }
 
     /// Expand `FirewallRule` into a set of `PacketFilterRule`s.
-    pub(super) fn from_firewall_rule(ifname: &str, fr: &FirewallRule) -> Vec<Self> {
+    pub(super) fn from_firewall_rule(
+        ifname: &str,
+        fr: &FirewallRule,
+        log: Option<u8>,
+    ) -> Vec<Self> {
         let mut rules = Vec::new();
         let (action, state) = match fr.verdict {
             Policy::Allow => (Action::Pass, State::Normal),
@@ -302,7 +316,7 @@ impl PacketFilterRule {
                             direction: Direction::In,
                             // Enable "quick" to match NFTables behaviour.
                             quick: true,
-                            log: PF_LOG,
+                            log,
                             state,
                             interface: Some(ifname.to_owned()),
                             proto: *proto,
@@ -325,7 +339,9 @@ impl fmt::Display for PacketFilterRule {
     // Display `PacketFilterRule` in similar format to rules in pf.conf.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.action, self.direction)?;
-        // TODO: log
+        if let Some(logif) = self.log {
+            write!(f, " log (to pflog{logif})")?;
+        }
         if self.quick {
             f.write_str(" quick")?;
         }
@@ -361,6 +377,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn inbound_rule() {
+        assert_eq!(
+            PacketFilterRule::for_inbound("lo0", Some(0)).to_string(),
+            "pass out log (to pflog0) quick on lo0 from any  to any  keep state"
+        );
+    }
+
+    #[test]
     fn unroll_firewall_rule() {
         // Empty rule
         let fr = FirewallRule {
@@ -374,7 +398,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr, None);
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),
@@ -396,7 +420,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr, None);
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),
@@ -421,7 +445,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr, None);
         assert_eq!(4, rules.len());
         assert_eq!(
             rules[0].to_string(),
@@ -455,7 +479,7 @@ mod tests {
             ipv4: true,
         };
 
-        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr);
+        let rules = PacketFilterRule::from_firewall_rule("lo0", &fr, None);
         assert_eq!(1, rules.len());
         assert_eq!(
             rules[0].to_string(),

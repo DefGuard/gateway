@@ -13,18 +13,21 @@ use std::{
 
 use defguard_wireguard_rs::{WireguardInterfaceApi, net::IpAddrMask};
 use tokio::{
-    sync::{mpsc, oneshot, watch},
+    sync::{broadcast, mpsc, oneshot, watch},
     task::JoinSet,
     time::interval,
 };
 use tonic::Status;
 use tracing::instrument;
 
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+use crate::enterprise::firewall::ConnectionMonitor;
 use crate::{
     config::Config,
     enterprise::firewall::{
         FirewallConfig, FirewallError, FirewallRule, SnatBinding,
         api::{FirewallApi, FirewallManagementApi},
+        monitor::ConnectionEvent,
     },
     error::GatewayError,
     gateway_server::GatewayServer,
@@ -49,31 +52,28 @@ pub async fn run_gateway_loop(
     tls_config: Option<TlsConfig>,
     mut shutdown: watch::Receiver<bool>,
 ) {
-    let mut tls_config = match tls_config {
-        Some(tls_config) => {
-            log::info!(
-                "Using existing gRPC TLS certificates from {}",
-                config.cert_dir.display()
-            );
-            tls_config
-        }
-        None => {
-            log::info!(
-                "gRPC TLS certificates not found in {}. They will be generated during setup.",
-                config.cert_dir.display()
-            );
-            tokio::select! {
-                biased;
-                _ = shutdown.changed() => {
-                    cleanup_on_quit(&config, &gateway);
+    let mut tls_config = if let Some(tls_config) = tls_config {
+        log::info!(
+            "Using existing gRPC TLS certificates from {}",
+            config.cert_dir.display()
+        );
+        tls_config
+    } else {
+        log::info!(
+            "gRPC TLS certificates not found in {}. They will be generated during setup.",
+            config.cert_dir.display()
+        );
+        tokio::select! {
+            biased;
+            _ = shutdown.changed() => {
+                cleanup_on_quit(&config, &gateway);
+                return;
+            }
+            result = run_setup(&config, Arc::clone(&logs_rx)) => match result {
+                Ok(tls_config) => tls_config,
+                Err(err) => {
+                    error!("Failed to run setup: {err}");
                     return;
-                }
-                result = run_setup(&config, Arc::clone(&logs_rx)) => match result {
-                    Ok(tls_config) => tls_config,
-                    Err(err) => {
-                        error!("Failed to run setup: {err}");
-                        return;
-                    }
                 }
             }
         }
@@ -181,6 +181,9 @@ impl From<Configuration> for InterfaceConfiguration {
 
 type PubKey = String;
 
+/// Number of connection events buffered for each subscriber.
+const CONNECTION_EVENTS_CAPACITY: usize = 1024;
+
 #[derive(Clone, Debug)]
 pub struct TlsConfig {
     pub grpc_cert_pem: String,
@@ -201,6 +204,10 @@ pub struct Gateway {
     // Transmission channel. Important: allows only one connected client.
     pub(crate) client_tx: Option<mpsc::UnboundedSender<Result<CoreRequest, Status>>>,
     pub(crate) tls_config: Option<TlsConfig>,
+    /// Connection monitoring events, published while the firewall is active.
+    connection_events: broadcast::Sender<ConnectionEvent>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+    connection_monitor: Option<ConnectionMonitor>,
 }
 
 impl Gateway {
@@ -217,7 +224,35 @@ impl Gateway {
             connected: Arc::new(AtomicBool::new(false)),
             client_tx: None,
             tls_config: None,
+            connection_events: broadcast::channel(CONNECTION_EVENTS_CAPACITY).0,
+            #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+            connection_monitor: None,
         })
+    }
+
+    /// Sender of connection monitoring events; call `subscribe()` on it to listen to them.
+    ///
+    /// Events are only published when connection monitoring is enabled with `connection_monitor`
+    /// (Linux, FreeBSD and macOS) and the firewall is managed by the Gateway.
+    #[must_use]
+    pub fn connection_events(&self) -> broadcast::Sender<ConnectionEvent> {
+        self.connection_events.clone()
+    }
+
+    /// Start monitoring connections on the VPN interface, unless it's already running or disabled.
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+    fn start_connection_monitor(&mut self) {
+        if self.connection_monitor.is_some() || !self.config.connection_monitor {
+            return;
+        }
+        match ConnectionMonitor::register(
+            &self.config.ifname,
+            self.config.pflog_ifname,
+            self.connection_events.clone(),
+        ) {
+            Ok(monitor) => self.connection_monitor = Some(monitor),
+            Err(err) => error!("Failed to start connection monitoring: {err}"),
+        }
     }
 
     /// Purge the `Gateway` and prepare to enter setup mode.
@@ -397,12 +432,26 @@ impl Gateway {
                     "Received firewall configuration is different than current one. \
                     Reconfiguring firewall..."
                 );
+                #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+                self.start_connection_monitor();
                 let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
+                // Log only while the monitor (which owns the pflog interface) is running.
+                #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+                {
+                    firewall_api.log_interface = self
+                        .connection_monitor
+                        .as_ref()
+                        .map(ConnectionMonitor::pflog_unit);
+                }
                 firewall_api.setup(fw_config.default_policy, self.config.fw_priority)?;
                 firewall_api.setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
                 firewall_api.add_rules(&fw_config.rules)?;
                 self.firewall_config = Some(fw_config.clone());
                 info!("Reconfigured firewall with new configuration");
+                #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+                if let Some(monitor) = &self.connection_monitor {
+                    monitor.update_rules(fw_config);
+                }
             } else {
                 debug!(
                     "Received firewall configuration is the same as current one. Skipping \
@@ -410,7 +459,7 @@ impl Gateway {
                 );
             }
         } else {
-            debug!("Received firewall configuration is empty, cleaning up firewall rules...");
+            debug!("Received firewall configuration is empty, cleaning up firewall rules");
             self.cleanup_firewall()?;
             debug!("Cleaned up firewall rules");
         }
@@ -419,6 +468,11 @@ impl Gateway {
     }
 
     fn cleanup_firewall(&mut self) -> Result<(), FirewallError> {
+        #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+        {
+            // Dropping the monitor unregisters it.
+            self.connection_monitor = None;
+        }
         let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
         firewall_api.cleanup()?;
         firewall_api.setup_nat(self.config.masquerade, &[])?;
@@ -670,6 +724,63 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) {
                 }
             }
             Err(err) => error!("Failed to retrieve WireGuard interface statistics: {err}"),
+        }
+    }
+}
+
+/// Collect connection monitoring events and periodically send them to Core through gRPC.
+///
+/// Events are buffered between ticks of `period`; events observed while Core is disconnected
+/// are discarded.
+pub async fn run_connection_events(gateway: Arc<Mutex<Gateway>>, period: Duration) {
+    let (mut events, connected) = {
+        let gateway = gateway.lock().expect("gateway mutex poison");
+        (
+            gateway.connection_events().subscribe(),
+            Arc::clone(&gateway.connected),
+        )
+    };
+    let mut buffer = Vec::new();
+    let mut interval = interval(period);
+    let mut id = 1;
+    loop {
+        tokio::select! {
+            result = events.recv() => match result {
+                Ok(event) => {
+                    if connected.load(Ordering::Relaxed) {
+                        buffer.push(event);
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(count)) => {
+                    warn!("Dropped {count} connection events that were not sent to Core in time");
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            },
+            _ = interval.tick() => {
+                let batch = std::mem::take(&mut buffer);
+                if batch.is_empty() {
+                    continue;
+                }
+                // Hold the gateway lock only to obtain the sender.
+                let Some(tx) = gateway.lock().expect("gateway mutex poison").client_tx.clone()
+                else {
+                    debug!("Core disconnected, discarding {} connection events", batch.len());
+                    continue;
+                };
+                let count = batch.len();
+                for event in &batch {
+                    let message = CoreRequest {
+                        id,
+                        payload: Some(core_request::Payload::ConnectionEvent(event.into())),
+                    };
+                    id += 1;
+                    if tx.send(Ok(message)).is_err() {
+                        warn!("Failed to send connection events to Core");
+                        break;
+                    }
+                }
+                debug!("Sent {count} connection events to Core");
+            }
         }
     }
 }

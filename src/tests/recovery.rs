@@ -38,7 +38,7 @@ fn test_purge_then_configure_recovers_interface() {
         name: "wg0".into(),
         private_key: "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abC=".into(),
         port: 51820,
-        peers: vec![],
+        peers: Vec::new(),
         addresses: vec!["10.0.0.1/24".into()],
         firewall_config: None,
         mtu: 1420,
