@@ -1,8 +1,9 @@
 use std::{
-    fs,
+    fmt, fs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     num::NonZeroU64,
     path::PathBuf,
+    str::FromStr,
     time::Duration,
 };
 
@@ -210,6 +211,11 @@ pub struct Config {
     #[arg(long, env = "DEFGUARD_CONNECTION_MONITOR")]
     #[serde(default)]
     pub connection_monitor: bool,
+
+    /// pflog interface for connection monitoring (FreeBSD and macOS); created if missing.
+    #[arg(long, env = "DEFGUARD_PFLOG_IFNAME", default_value = "pflog0")]
+    #[serde(default)]
+    pub pflog_ifname: PflogIfname,
 }
 
 impl Config {
@@ -269,6 +275,7 @@ impl Default for Config {
             adoption_timeout: 5,
             clean_on_quit: false,
             connection_monitor: false,
+            pflog_ifname: PflogIfname::default(),
         }
     }
 }
@@ -291,6 +298,39 @@ pub fn get_config() -> Result<Config, GatewayError> {
     Ok(cli_config)
 }
 
+/// pflog interface name, `pflog<unit>`.
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(try_from = "String")]
+pub struct PflogIfname(pub u8);
+
+impl FromStr for PflogIfname {
+    type Err = String;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        name.strip_prefix("pflog")
+            .and_then(|unit| unit.parse().ok())
+            .map(Self)
+            .filter(|ifname| ifname.to_string() == name)
+            .ok_or_else(|| {
+                format!("invalid pflog interface \"{name}\": expected pflog0 to pflog255")
+            })
+    }
+}
+
+impl TryFrom<String> for PflogIfname {
+    type Error = String;
+
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        name.parse()
+    }
+}
+
+impl fmt::Display for PflogIfname {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "pflog{}", self.0)
+    }
+}
+
 fn validate_ifname(ifname: &str) -> Result<(), GatewayError> {
     if ifname.len() > 15 {
         return Err(GatewayError::InvalidConfigFile(format!(
@@ -299,6 +339,19 @@ fn validate_ifname(ifname: &str) -> Result<(), GatewayError> {
         )));
     }
     Ok(())
+}
+
+#[test]
+fn test_pflog_ifname() {
+    let parse = |name: &str| name.parse::<PflogIfname>().ok().map(|ifname| ifname.0);
+    assert_eq!(parse("pflog0"), Some(0));
+    assert_eq!(parse("pflog12"), Some(12));
+    assert_eq!(parse("pflog255"), Some(255));
+    assert_eq!(parse("pflog256"), None);
+    assert_eq!(parse("pflog"), None);
+    assert_eq!(parse("pflog01"), None);
+    assert_eq!(parse("pflog+1"), None);
+    assert_eq!(parse("wg0"), None);
 }
 
 #[test]

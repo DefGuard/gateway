@@ -232,8 +232,8 @@ impl Gateway {
 
     /// Sender of connection monitoring events; call `subscribe()` on it to listen to them.
     ///
-    /// Events are only published when connection monitoring is enabled with
-    /// `connection_events_socket` (Linux, FreeBSD and macOS) and the firewall is managed by the Gateway.
+    /// Events are only published when connection monitoring is enabled with `connection_monitor`
+    /// (Linux, FreeBSD and macOS) and the firewall is managed by the Gateway.
     #[must_use]
     pub fn connection_events(&self) -> broadcast::Sender<ConnectionEvent> {
         self.connection_events.clone()
@@ -242,10 +242,14 @@ impl Gateway {
     /// Start monitoring connections on the VPN interface, unless it's already running or disabled.
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
     fn start_connection_monitor(&mut self) {
-        if self.connection_monitor.is_some() || self.config.connection_monitor {
+        if self.connection_monitor.is_some() || !self.config.connection_monitor {
             return;
         }
-        match ConnectionMonitor::register(&self.config.ifname, self.connection_events.clone()) {
+        match ConnectionMonitor::register(
+            &self.config.ifname,
+            self.config.pflog_ifname,
+            self.connection_events.clone(),
+        ) {
             Ok(monitor) => self.connection_monitor = Some(monitor),
             Err(err) => error!("Failed to start connection monitoring: {err}"),
         }
@@ -428,18 +432,25 @@ impl Gateway {
                     "Received firewall configuration is different than current one. \
                     Reconfiguring firewall..."
                 );
+                #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+                self.start_connection_monitor();
                 let mut firewall_api = FirewallApi::new(&self.config.ifname)?;
+                // Log only while the monitor (which owns the pflog interface) is running.
+                #[cfg(any(target_os = "freebsd", target_os = "macos"))]
+                {
+                    firewall_api.log_interface = self
+                        .connection_monitor
+                        .as_ref()
+                        .map(ConnectionMonitor::pflog_unit);
+                }
                 firewall_api.setup(fw_config.default_policy, self.config.fw_priority)?;
                 firewall_api.setup_nat(self.config.masquerade, &fw_config.snat_bindings)?;
                 firewall_api.add_rules(&fw_config.rules)?;
                 self.firewall_config = Some(fw_config.clone());
                 info!("Reconfigured firewall with new configuration");
                 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
-                {
-                    self.start_connection_monitor();
-                    if let Some(monitor) = &self.connection_monitor {
-                        monitor.update_rules(fw_config);
-                    }
+                if let Some(monitor) = &self.connection_monitor {
+                    monitor.update_rules(fw_config);
                 }
             } else {
                 debug!(
@@ -448,7 +459,7 @@ impl Gateway {
                 );
             }
         } else {
-            debug!("Received firewall configuration is empty, cleaning up firewall rules...");
+            debug!("Received firewall configuration is empty, cleaning up firewall rules");
             self.cleanup_firewall()?;
             debug!("Cleaned up firewall rules");
         }

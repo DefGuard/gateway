@@ -22,9 +22,12 @@ use tokio::sync::broadcast::Sender;
 
 use self::worker::Worker;
 use super::Policy;
-use crate::enterprise::firewall::{
-    FirewallConfig, FirewallError,
-    monitor::{ConnectionEvent, Direction},
+use crate::{
+    config::PflogIfname,
+    enterprise::firewall::{
+        FirewallConfig, FirewallError,
+        monitor::{ConnectionEvent, Direction},
+    },
 };
 
 // linux/netlink.h
@@ -145,8 +148,13 @@ impl ConnectionMonitor {
     /// Register for connection monitoring on interface `ifname`. Connection events are published
     /// to `events`; events are dropped while there are no subscribers.
     ///
-    /// Only one monitor can be registered for a given interface at a time.
-    pub fn register(ifname: &str, events: Sender<ConnectionEvent>) -> Result<Self, FirewallError> {
+    /// Only one monitor can be registered for a given interface at a time. `_pflog_ifname` is only
+    /// used with Packet Filter.
+    pub fn register(
+        ifname: &str,
+        _pflog_ifname: PflogIfname,
+        events: Sender<ConnectionEvent>,
+    ) -> Result<Self, FirewallError> {
         debug!("Registering connection monitor for interface {ifname}");
         enable_conntrack_accounting();
 

@@ -20,6 +20,9 @@ pub(crate) struct FirewallApi {
     #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
     pub(crate) file: File,
     pub(crate) default_policy: Policy,
+    /// pflog unit to log to; `None` disables logging.
+    #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
+    pub(crate) log_interface: Option<u8>,
     #[cfg(target_os = "linux")]
     pub(crate) socket: mnl::Socket,
 }
@@ -34,6 +37,8 @@ impl FirewallApi {
             #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
             file: OpenOptions::new().read(true).write(true).open(DEV_PF)?,
             default_policy: Policy::Deny,
+            #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
+            log_interface: None,
             #[cfg(target_os = "linux")]
             socket: mnl::Socket::new(mnl::Bus::Netfilter).map_err(|err| {
                 FirewallError::NetlinkError(format!("Failed to create socket: {err:?}"))

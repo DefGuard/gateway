@@ -54,3 +54,6 @@ syslog_socket = "/var/run/log"
 
 # Start connection monitoring (Linux, FreeBSD and macOS).
 #connection_monitor = true
+
+# pflog interface for connection monitoring (FreeBSD and macOS); created if missing.
+#pflog_ifname = "pflog0"

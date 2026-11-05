@@ -1,7 +1,7 @@
 //! Connection monitoring for the Packet Filter firewall on FreeBSD and macOS.
 //!
 //! Defguard rules are created with the `log` option, so pf passes the packet which creates a state
-//! (or is blocked) to the `pflog0` interface, which is read through BPF. Each logged packet carries
+//! (or is blocked) to a pflog interface, which is read through BPF. Each logged packet carries
 //! the number of the matching rule within the Defguard anchor, which is mapped back to the Defguard
 //! rule (see [`ConnectionMonitor::update_rules`]).
 //!
@@ -17,7 +17,7 @@ mod macos;
 
 use std::{
     collections::HashMap,
-    ffi::CStr,
+    ffi::{CStr, CString},
     fs::File,
     io, mem,
     os::fd::{AsRawFd, FromRawFd, OwnedFd},
@@ -36,14 +36,16 @@ use self::freebsd as platform;
 use self::macos as platform;
 use self::platform::{STATE_SIZE, open_bpf, parse_bpf_header, parse_state, read_states};
 use super::anchor_rules;
-use crate::enterprise::firewall::{
-    FirewallConfig, FirewallError, FirewallRule, Policy,
-    flow::{FlowKey, parse_packet, protocol_has_ports},
-    monitor::{ConnectionEvent, Direction, Status},
+use crate::{
+    config::PflogIfname,
+    enterprise::firewall::{
+        FirewallConfig, FirewallError, FirewallRule, Policy,
+        flow::{FlowKey, parse_packet, protocol_has_ports},
+        monitor::{ConnectionEvent, Direction, Status},
+    },
 };
 
 const DEV_PF: &str = "/dev/pf";
-const PFLOG_IFNAME: &str = "pflog0";
 
 // net/bpf.h
 const BIOCGBLEN: c_ulong = ior::<c_uint>(b'B', 102);
@@ -81,16 +83,23 @@ pub struct ConnectionMonitor {
     rules: RuleMap,
     wakeup: OwnedFd,
     thread: Option<JoinHandle<()>>,
+    /// Dropped after the thread stops.
+    pflog: PflogInterface,
 }
 
 impl ConnectionMonitor {
     /// Register for connection monitoring on interface `ifname`. Connection events are published
     /// to `events`; events are dropped while there are no subscribers.
     ///
-    /// Requires the `pflog0` interface.
-    pub fn register(ifname: &str, events: Sender<ConnectionEvent>) -> Result<Self, FirewallError> {
-        debug!("Registering connection monitor for interface {ifname}");
-        let bpf = open_pflog()?;
+    /// Creates `pflog_ifname` if missing.
+    pub fn register(
+        ifname: &str,
+        pflog_ifname: PflogIfname,
+        events: Sender<ConnectionEvent>,
+    ) -> Result<Self, FirewallError> {
+        debug!("Registering connection monitor for interface {ifname} using {pflog_ifname}");
+        let pflog = PflogInterface::create(pflog_ifname)?;
+        let bpf = open_pflog(&pflog.name)?;
         let pf = File::open(DEV_PF)?;
         let (wakeup_rx, wakeup) = pipe()?;
 
@@ -115,7 +124,14 @@ impl ConnectionMonitor {
             rules,
             wakeup,
             thread: Some(thread),
+            pflog,
         })
+    }
+
+    /// Unit of the pflog interface which rules must log to.
+    #[must_use]
+    pub fn pflog_unit(&self) -> u8 {
+        self.pflog.ifname.0
     }
 
     /// Unregister from connection monitoring. Connections still in progress are not reported.
@@ -163,7 +179,7 @@ impl Drop for ConnectionMonitor {
 
 /// Map rule numbers within the Defguard anchor to Defguard rule IDs.
 fn rule_map(ifname: &str, default_policy: Policy, rules: &[FirewallRule]) -> Vec<Option<i64>> {
-    anchor_rules(ifname, default_policy, rules)
+    anchor_rules(ifname, default_policy, rules, None)
         .into_iter()
         .map(|(_, rule_id)| rule_id)
         .collect()
@@ -191,19 +207,78 @@ pub fn load_pflog_kernel_module() -> Result<(), io::Error> {
     Ok(())
 }
 
-/// Open a BPF device listening on `pflog0`.
-fn open_pflog() -> Result<File, FirewallError> {
-    #[cfg(target_os = "freebsd")]
-    let _ = load_pflog_kernel_module();
+/// pflog interface; destroyed on drop if created here.
+struct PflogInterface {
+    ifname: PflogIfname,
+    name: String,
+    created: bool,
+}
+
+impl PflogInterface {
+    /// Create interface `ifname` if missing.
+    fn create(ifname: PflogIfname) -> Result<Self, FirewallError> {
+        #[cfg(target_os = "freebsd")]
+        if let Err(err) = load_pflog_kernel_module() {
+            warn!("Failed to load the pflog kernel module: {err}");
+        }
+        let name = ifname.to_string();
+        let created = match defguard_wireguard_rs::bsd::create_interface(&name) {
+            Ok(()) => {
+                info!("Created interface {name}");
+                true
+            }
+            Err(_) if interface_exists(&name) => {
+                debug!("Using existing interface {name}");
+                false
+            }
+            Err(err) => {
+                return Err(FirewallError::InvalidConfiguration(format!(
+                    "Failed to create {name}: {err}. {}",
+                    platform::PFLOG_HINT
+                )));
+            }
+        };
+        Ok(Self {
+            ifname,
+            name,
+            created,
+        })
+    }
+}
+
+impl Drop for PflogInterface {
+    fn drop(&mut self) {
+        if !self.created {
+            return;
+        }
+        match defguard_wireguard_rs::bsd::delete_interface(&self.name) {
+            Ok(()) => info!("Destroyed interface {}", self.name),
+            Err(err) => error!("Failed to destroy interface {}: {err}", self.name),
+        }
+    }
+}
+
+/// Check if network interface `name` exists.
+fn interface_exists(name: &str) -> bool {
+    CString::new(name).is_ok_and(|name| unsafe { libc::if_nametoindex(name.as_ptr()) } != 0)
+}
+
+/// Open a BPF device listening on `pflog_ifname`.
+fn open_pflog(pflog_ifname: &str) -> Result<File, FirewallError> {
     let bpf = open_bpf()?;
 
     let mut ifreq: libc::ifreq = unsafe { mem::zeroed() };
-    for (dst, src) in ifreq.ifr_name.iter_mut().zip(PFLOG_IFNAME.bytes()) {
+    for (dst, src) in ifreq
+        .ifr_name
+        .iter_mut()
+        .take(libc::IFNAMSIZ - 1)
+        .zip(pflog_ifname.bytes())
+    {
         *dst = src as libc::c_char;
     }
     if unsafe { libc::ioctl(bpf.as_raw_fd(), BIOCSETIF, &raw const ifreq) } < 0 {
         return Err(FirewallError::InvalidConfiguration(format!(
-            "Failed to listen on {PFLOG_IFNAME}: {}. {}",
+            "Failed to listen on {pflog_ifname}: {}. {}",
             io::Error::last_os_error(),
             platform::PFLOG_HINT
         )));

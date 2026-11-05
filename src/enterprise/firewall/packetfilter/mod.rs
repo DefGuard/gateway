@@ -78,18 +78,23 @@ impl FirewallApi {
 
 /// Rules in the Defguard anchor, in order, with the Defguard rule ID each one comes from.
 /// Also used by the connection monitor to map logged rule numbers to Defguard rules.
+/// Rules log to pflog unit `log`, if set.
 fn anchor_rules(
     ifname: &str,
     default_policy: Policy,
     rules: &[FirewallRule],
+    log: Option<u8>,
 ) -> Vec<(PacketFilterRule, Option<i64>)> {
     let mut anchor_rules = vec![
-        (PacketFilterRule::for_policy(default_policy, ifname), None),
-        (PacketFilterRule::for_inbound(ifname), None),
+        (
+            PacketFilterRule::for_policy(default_policy, ifname, log),
+            None,
+        ),
+        (PacketFilterRule::for_inbound(ifname, log), None),
     ];
     for rule in rules {
         anchor_rules.extend(
-            PacketFilterRule::from_firewall_rule(ifname, rule)
+            PacketFilterRule::from_firewall_rule(ifname, rule, log)
                 .into_iter()
                 .map(|pf_rule| (pf_rule, Some(rule.id))),
         );

@@ -19,7 +19,7 @@ use crate::enterprise::firewall::flow::{FlowKey, ipv4, ipv6, protocol_has_ports}
 /// BPF devices are `/dev/bpf0`, `/dev/bpf1`, and so on.
 const MAX_BPF_DEVICES: u32 = 256;
 
-pub(super) const PFLOG_HINT: &str = "Create it with `ifconfig pflog0 create`.";
+pub(super) const PFLOG_HINT: &str = "Make sure the Gateway runs with root privileges.";
 
 // net/bpf.h
 pub(super) const BPF_ALIGNMENT: usize = 4;

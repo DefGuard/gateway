@@ -42,7 +42,8 @@ impl FirewallManagementApi for FirewallApi {
         let ticket = elements[0].ticket;
         let pool_ticket = self.get_pool_ticket(anchor)?;
 
-        for (rule, _) in anchor_rules(&self.ifname, self.default_policy, rules) {
+        for (rule, _) in anchor_rules(&self.ifname, self.default_policy, rules, self.log_interface)
+        {
             if let Err(err) = self.add_rule(&rule, ticket, pool_ticket, anchor) {
                 debug!("Rollback pf transaction");
                 // Rule cannot be added, so rollback.
