@@ -1,6 +1,6 @@
-use std::{cmp::Ordering, str::FromStr};
+use std::cmp::Ordering;
 
-use ipnetwork::IpNetwork;
+use ipnetwork::{IpNetwork, Ipv4Network, Ipv6Network};
 
 use super::*;
 
@@ -65,9 +65,9 @@ fn test_merge_addrs_empty() {
 
 #[test]
 fn test_merge_addrs_single_address() {
-    let addrs = vec![Address::Network(
-        IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)), 32).unwrap(),
-    )];
+    let addrs = vec![Address::Network(IpNetwork::V4(
+        Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 10), 32).unwrap(),
+    ))];
     let result = merge_addrs(addrs.clone()).unwrap();
 
     assert_eq!(result, addrs);
@@ -105,9 +105,15 @@ fn test_merge_addrs_adjacent_ranges() {
 #[test]
 fn test_merge_addrs_adjacent_single_addresses() {
     let addrs = vec![
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)), 32).unwrap()),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 11)), 32).unwrap()),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 12)), 32).unwrap()),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 10), 32).unwrap(),
+        )),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 11), 32).unwrap(),
+        )),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 12), 32).unwrap(),
+        )),
     ];
     let result = merge_addrs(addrs).unwrap();
 
@@ -158,7 +164,9 @@ fn test_merge_addrs_non_adjacent_ranges() {
 #[test]
 fn test_merge_addrs_mixed_networks_and_ranges() {
     let addrs = vec![
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)), 32).unwrap()),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 10), 32).unwrap(),
+        )),
         Address::Range(
             IpAddrRange::new(
                 IpAddr::V4(Ipv4Addr::new(192, 168, 1, 11)),
@@ -166,7 +174,9 @@ fn test_merge_addrs_mixed_networks_and_ranges() {
             )
             .unwrap(),
         ),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 16)), 32).unwrap()),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 16), 32).unwrap(),
+        )),
     ];
     let result = merge_addrs(addrs).unwrap();
 
@@ -182,10 +192,18 @@ fn test_merge_addrs_mixed_networks_and_ranges() {
 #[test]
 fn test_merge_addrs_non_adjacent_singles() {
     let addrs = vec![
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)), 32).unwrap()),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 11)), 32).unwrap()),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 15)), 32).unwrap()),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)), 32).unwrap()),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 10), 32).unwrap(),
+        )),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 11), 32).unwrap(),
+        )),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 15), 32).unwrap(),
+        )),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 20), 32).unwrap(),
+        )),
     ];
     let result = merge_addrs(addrs).unwrap();
 
@@ -198,8 +216,12 @@ fn test_merge_addrs_non_adjacent_singles() {
             )
             .unwrap(),
         ),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 15)), 32).unwrap()),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)), 32).unwrap()),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 15), 32).unwrap(),
+        )),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 20), 32).unwrap(),
+        )),
     ];
     assert_eq!(result, expected_addrs);
 }
@@ -207,27 +229,15 @@ fn test_merge_addrs_non_adjacent_singles() {
 #[test]
 fn test_merge_addrs_ipv6() {
     let addrs = vec![
-        Address::Network(
-            IpNetwork::V6(
-                IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1)),
-                128,
-            )
-            .unwrap(),
-        ),
-        Address::Network(
-            IpNetwork::V6(
-                IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 2)),
-                128,
-            )
-            .unwrap(),
-        ),
-        Address::Network(
-            IpNetwork::V6(
-                IpAddr::V6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 3)),
-                128,
-            )
-            .unwrap(),
-        ),
+        Address::Network(IpNetwork::V6(
+            Ipv6Network::new(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 1), 128).unwrap(),
+        )),
+        Address::Network(IpNetwork::V6(
+            Ipv6Network::new(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 2), 128).unwrap(),
+        )),
+        Address::Network(IpNetwork::V6(
+            Ipv6Network::new(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 3), 128).unwrap(),
+        )),
     ];
     let result = merge_addrs(addrs).unwrap();
 
@@ -279,8 +289,12 @@ fn test_next_ip_ipv6() {
 #[test]
 fn test_merge_addrs_gap() {
     let addrs = vec![
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 32).unwrap()),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 32).unwrap()),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 1), 32).unwrap(),
+        )),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 100), 32).unwrap(),
+        )),
     ];
     let result = merge_addrs(addrs.clone()).unwrap();
 
@@ -295,7 +309,9 @@ fn test_merge_addrs_gap() {
             )
             .unwrap(),
         ),
-        Address::Network(IpNetwork::V4(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 32).unwrap()),
+        Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 100), 32).unwrap(),
+        )),
     ];
     let result = merge_addrs(addrs.clone()).unwrap();
 
