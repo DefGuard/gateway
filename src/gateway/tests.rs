@@ -8,7 +8,7 @@ use defguard_wireguard_rs::Kernel;
 #[cfg(any(target_os = "macos", target_os = "netbsd"))]
 use defguard_wireguard_rs::Userspace;
 use defguard_wireguard_rs::WGApi;
-use ipnetwork::IpNetwork;
+use ipnetwork::{IpNetwork, Ipv4Network};
 
 use super::*;
 use crate::enterprise::firewall::{Address, FirewallRule, Policy, Port, Protocol};
@@ -212,16 +212,16 @@ async fn test_firewall_rules_comparison() {
 
     let rule3 = FirewallRule {
         comment: Some("Rule 3".to_string()),
-        destination_addrs: vec![Address::Network(
-            IpNetwork::from_str("10.0.1.0/24").unwrap(),
-        )],
+        destination_addrs: vec![Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(10, 0, 1, 0), 24).unwrap(),
+        ))],
         destination_ports: vec![Port::Range(1000, 2000)],
         id: 3,
         verdict: Policy::Deny,
         protocols: vec![Protocol::Udp],
-        source_addrs: vec![Address::Network(
-            IpNetwork::from_str("192.168.0.0/16").unwrap(),
-        )],
+        source_addrs: vec![Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 0, 0), 16).unwrap(),
+        ))],
         ipv4: true,
     };
 

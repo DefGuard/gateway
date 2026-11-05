@@ -1,10 +1,9 @@
 use std::{
     net::{IpAddr, Ipv4Addr},
-    str::FromStr,
     time::UNIX_EPOCH,
 };
 
-use ipnetwork::IpNetwork;
+use ipnetwork::{IpNetwork, Ipv4Network};
 use tokio::sync::broadcast::Receiver;
 
 use super::*;
@@ -174,9 +173,9 @@ fn test_parse_bpf_header() {
 fn test_rule_map() {
     let rule = |id, destination_ports: Vec<Port>| FirewallRule {
         comment: None,
-        destination_addrs: vec![Address::Network(
-            IpNetwork::from_str("192.168.1.0/24").unwrap(),
-        )],
+        destination_addrs: vec![Address::Network(IpNetwork::V4(
+            Ipv4Network::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap(),
+        ))],
         destination_ports,
         id,
         verdict: Policy::Allow,
