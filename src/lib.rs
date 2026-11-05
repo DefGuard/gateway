@@ -1,6 +1,4 @@
 pub mod config;
-#[cfg(unix)]
-pub mod connection_events;
 pub mod error;
 pub mod gateway;
 mod gateway_server;

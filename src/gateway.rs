@@ -242,7 +242,7 @@ impl Gateway {
     /// Start monitoring connections on the VPN interface, unless it's already running or disabled.
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
     fn start_connection_monitor(&mut self) {
-        if self.connection_monitor.is_some() || self.config.connection_events_socket.is_none() {
+        if self.connection_monitor.is_some() || self.config.connection_monitor {
             return;
         }
         match ConnectionMonitor::register(&self.config.ifname, self.connection_events.clone()) {

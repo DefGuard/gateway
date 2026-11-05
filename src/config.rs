@@ -206,10 +206,10 @@ pub struct Config {
     #[serde(default)]
     pub clean_on_quit: bool,
 
-    /// Unix socket path on which connection monitoring events are streamed as JSON lines.
     /// Enables connection monitoring (Linux, FreeBSD and macOS).
-    #[arg(long, env = "DEFGUARD_CONNECTION_EVENTS_SOCKET")]
-    pub connection_events_socket: Option<PathBuf>,
+    #[arg(long, env = "DEFGUARD_CONNECTION_MONITOR")]
+    #[serde(default)]
+    pub connection_monitor: bool,
 }
 
 impl Config {
@@ -268,7 +268,7 @@ impl Default for Config {
             cert_dir: PathBuf::from("/etc/defguard/certs"),
             adoption_timeout: 5,
             clean_on_quit: false,
-            connection_events_socket: None,
+            connection_monitor: false,
         }
     }
 }
