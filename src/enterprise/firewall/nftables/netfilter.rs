@@ -30,11 +30,13 @@ const NAT_TABLE: &str = "nat";
 const DEFGUARD_TABLE: &str = "DEFGUARD-";
 const POSTROUTING_CHAIN: &str = "POSTROUTING";
 const FORWARD_CHAIN: &str = "FORWARD";
+const INPUT_CHAIN: &str = "INPUT";
 const ANON_SET_NAME: &CStr = c"__set%d";
 const LOOPBACK_IFACE: &str = "lo";
 
 const POSTROUTING_PRIORITY: i32 = 100;
 const FORWARD_PRIORITY: i32 = 0;
+const INPUT_PRIORITY: i32 = 0;
 
 struct InetService(u16);
 
@@ -684,6 +686,13 @@ pub(super) fn init_firewall(
     fw_chain.set_policy(initial_policy.into());
     fw_chain.set_type(ChainType::Filter);
     batch.add(&fw_chain, MsgType::Add);
+
+    // Traffic to the gateway is only monitored, not filtered.
+    let mut input_chain = Chains::Input.to_chain(&table);
+    input_chain.set_hook(Hook::In, INPUT_PRIORITY);
+    input_chain.set_policy(Policy::Allow.into());
+    input_chain.set_type(ChainType::Filter);
+    batch.add(&input_chain, MsgType::Add);
 }
 
 pub(super) fn drop_table(batch: &mut Batch, ifname: &str) {
@@ -824,6 +833,36 @@ pub(super) fn log_inbound_traffic(batch: &mut Batch, ifname: &str) -> Result<(),
     Ok(())
 }
 
+/// Reports new connections from VPN devices to the gateway to the connection monitor.
+pub(super) fn log_local_traffic(batch: &mut Batch, ifname: &str) -> Result<(), FirewallError> {
+    let table = Tables::Defguard(ProtoFamily::Inet).to_table(ifname);
+    batch.add(&table, MsgType::Add);
+
+    let input_chain = Chains::Input.to_chain(&table);
+    batch.add(&input_chain, MsgType::Add);
+
+    let local_rule = FilterRule {
+        iifname: Some(ifname.to_string()),
+        states: vec![State::New],
+        action: Policy::Allow,
+        counter: true,
+        comment: Some("Log new VPN connections to the gateway".to_string()),
+        log: Some(Log::new(
+            ifname,
+            LogTag {
+                direction: Direction::Outbound,
+                verdict: Policy::Allow,
+                rule_id: None,
+            },
+        )),
+        ..Default::default()
+    }
+    .to_chain_rule(&input_chain, batch)?;
+    batch.add(&local_rule, MsgType::Add);
+
+    Ok(())
+}
+
 pub(super) fn ignore_unrelated_traffic(
     batch: &mut Batch,
     ifname: &str,
@@ -878,6 +917,7 @@ impl Tables {
 
 pub(super) enum Chains {
     Forward,
+    Input,
     Postrouting,
 }
 
@@ -887,6 +927,11 @@ impl Chains {
             Self::Forward => Chain::new(
                 CString::new(FORWARD_CHAIN)
                     .expect("Failed to create CString from FORWARD_CHAIN constant."),
+                table,
+            ),
+            Self::Input => Chain::new(
+                CString::new(INPUT_CHAIN)
+                    .expect("Failed to create CString from INPUT_CHAIN constant."),
                 table,
             ),
             Self::Postrouting => Chain::new(

@@ -10,7 +10,7 @@ pub use monitor::ConnectionMonitor;
 use monitor::LogTag;
 use netfilter::{
     Log, allow_established_traffic, apply_filter_rules, drop_table, ignore_unrelated_traffic,
-    init_firewall, log_inbound_traffic, send_batch, set_nat_rules,
+    init_firewall, log_inbound_traffic, log_local_traffic, send_batch, set_nat_rules,
 };
 use nftnl::Batch;
 
@@ -256,6 +256,7 @@ impl FirewallManagementApi for FirewallApi {
         init_firewall(default_policy, priority, &mut batch, &self.ifname);
         debug!("Allowing all established traffic");
         log_inbound_traffic(&mut batch, &self.ifname)?;
+        log_local_traffic(&mut batch, &self.ifname)?;
         ignore_unrelated_traffic(&mut batch, &self.ifname)?;
         allow_established_traffic(&mut batch, &self.ifname)?;
         send_batch(&batch.finalize(), &self.socket)?;

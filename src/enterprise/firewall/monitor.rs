@@ -12,7 +12,7 @@ use crate::proto::enterprise::monitor as proto;
 pub enum Direction {
     /// Connection initiated from an external network towards a VPN device.
     Inbound,
-    /// Connection initiated by a VPN device to an external network.
+    /// Connection initiated by a VPN device.
     Outbound,
 }
 

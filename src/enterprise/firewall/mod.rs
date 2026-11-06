@@ -256,6 +256,15 @@ pub(crate) struct FirewallConfig {
 }
 
 impl FirewallConfig {
+    /// Allow all traffic.
+    pub fn allow_all() -> Self {
+        Self {
+            rules: Vec::new(),
+            default_policy: Policy::Allow,
+            snat_bindings: Vec::new(),
+        }
+    }
+
     pub fn from_proto(
         config: proto::enterprise::firewall::FirewallConfig,
     ) -> Result<Self, FirewallError> {

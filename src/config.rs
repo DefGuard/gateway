@@ -207,7 +207,7 @@ pub struct Config {
     #[serde(default)]
     pub clean_on_quit: bool,
 
-    /// Enables connection monitoring (Linux, FreeBSD and macOS).
+    /// Enables connection monitoring (Linux, FreeBSD and macOS). Requires firewall management.
     #[arg(long, env = "DEFGUARD_CONNECTION_MONITOR")]
     #[serde(default)]
     pub connection_monitor: bool,

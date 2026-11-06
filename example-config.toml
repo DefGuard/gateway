@@ -52,7 +52,7 @@ syslog_socket = "/var/run/log"
 # Optional: Clean the network interface and VPN configuration on quit.
 #clean_on_quit = true
 
-# Start connection monitoring (Linux, FreeBSD and macOS).
+# Start connection monitoring (Linux, FreeBSD and macOS). Requires firewall management.
 #connection_monitor = true
 
 # pflog interface for connection monitoring (FreeBSD and macOS); created if missing.
