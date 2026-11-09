@@ -318,6 +318,7 @@ impl Worker {
             rule_id: tag.rule_id,
             upload_bytes: 0,
             download_bytes: 0,
+            count: 1,
         };
 
         if event.status == Status::Blocked {

@@ -4,7 +4,7 @@ use std::{
 };
 
 use ipnetwork::{IpNetwork, Ipv4Network};
-use tokio::sync::broadcast::Receiver;
+use tokio::sync::broadcast;
 
 use super::*;
 use crate::enterprise::firewall::{Address, Policy, Port, Protocol};
@@ -88,8 +88,8 @@ fn state(direction: u8, initiator_bytes: u64, responder_bytes: u64) -> [u8; STAT
 }
 
 /// Worker for `IFNAME` with the given rule map, and a receiver of its events.
-fn worker(rules: Vec<Option<i64>>) -> (Worker, Receiver<ConnectionEvent>) {
-    let (events, receiver) = tokio::sync::broadcast::channel(10);
+fn worker(rules: Vec<Option<i64>>) -> (Worker, broadcast::Receiver<ConnectionEvent>) {
+    let (events, receiver) = broadcast::channel(10);
     let worker = Worker {
         ifname: IFNAME.to_string(),
         rules: Arc::new(Mutex::new(rules)),

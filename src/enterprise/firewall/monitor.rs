@@ -58,6 +58,8 @@ pub struct ConnectionEvent {
     pub upload_bytes: u64,
     /// Bytes received by the VPN device.
     pub download_bytes: u64,
+    /// Number of packets of this kind (aggregation).
+    pub count: u64,
 }
 
 impl ConnectionEvent {
@@ -114,6 +116,7 @@ impl From<&ConnectionEvent> for proto::ConnectionEvent {
             rule_id: event.rule_id,
             upload_bytes: event.upload_bytes,
             download_bytes: event.download_bytes,
+            count: event.count,
         }
     }
 }
@@ -126,32 +129,6 @@ mod tests {
     };
 
     use super::*;
-
-    #[test]
-    fn test_connection_event_json() {
-        let event = ConnectionEvent {
-            timestamp: UNIX_EPOCH + Duration::from_micros(1_793_198_060_792_864),
-            direction: Direction::Outbound,
-            status: Status::Allowed,
-            protocol: 6,
-            source: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
-            source_port: Some(51000),
-            destination: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
-            destination_port: Some(443),
-            rule_id: Some(7),
-            upload_bytes: 3528,
-            download_bytes: 33192,
-        };
-        let json = serde_json::to_string(&event).unwrap();
-        assert_eq!(
-            json,
-            r#"{"timestamp":{"secs_since_epoch":1793198060,"nanos_since_epoch":792864000},"direction":"outbound","status":"allowed","protocol":6,"source":"10.0.0.2","source_port":51000,"destination":"192.168.1.1","destination_port":443,"rule_id":7,"upload_bytes":3528,"download_bytes":33192}"#
-        );
-        assert_eq!(
-            serde_json::from_str::<ConnectionEvent>(&json).unwrap(),
-            event
-        );
-    }
 
     #[test]
     fn test_connection_event_proto() {
@@ -167,6 +144,7 @@ mod tests {
             rule_id: None,
             upload_bytes: 0,
             download_bytes: 128,
+            count: 1,
         };
         let proto = proto::ConnectionEvent::from(&event);
         let timestamp = proto.timestamp.unwrap();

@@ -467,6 +467,7 @@ impl Worker {
             rule_id,
             upload_bytes: 0,
             download_bytes: 0,
+            count: 1,
         };
 
         if status == Status::Blocked {
@@ -518,12 +519,12 @@ impl Worker {
             }
         }
 
-        let ended: Vec<_> = self
+        let ended = self
             .pending
             .iter()
             .filter(|(_, pending)| pending.generation != self.generation)
             .map(|(key, _)| key.clone())
-            .collect();
+            .collect::<Vec<_>>();
         for key in ended {
             if let Some(pending) = self.pending.remove(&key) {
                 self.finish(pending);
