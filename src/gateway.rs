@@ -27,7 +27,7 @@ use crate::{
     enterprise::firewall::{
         FirewallConfig, FirewallError, FirewallRule, SnatBinding,
         api::{FirewallApi, FirewallManagementApi},
-        monitor::ConnectionEvent,
+        monitor::{Aggregator, ConnectionEvent},
     },
     error::GatewayError,
     gateway_server::GatewayServer,
@@ -754,8 +754,8 @@ pub async fn run_stats(gateway: Arc<Mutex<Gateway>>, period: Duration) {
 
 /// Collect connection monitoring events and periodically send them to Core through gRPC.
 ///
-/// Events are buffered between ticks of `period`; events observed while Core is disconnected
-/// are discarded.
+/// Events are sent every `period`, with similar events observed within it merged into one; events
+/// observed while Core is disconnected are discarded.
 pub async fn run_connection_events(gateway: Arc<Mutex<Gateway>>, period: Duration) {
     let (mut events, connected) = {
         let gateway = gateway.lock().expect("gateway mutex poison");
@@ -764,7 +764,7 @@ pub async fn run_connection_events(gateway: Arc<Mutex<Gateway>>, period: Duratio
             Arc::clone(&gateway.connected),
         )
     };
-    let mut buffer = Vec::new();
+    let mut aggregator = Aggregator::default();
     let mut interval = interval(period);
     let mut id = 1;
     loop {
@@ -772,7 +772,7 @@ pub async fn run_connection_events(gateway: Arc<Mutex<Gateway>>, period: Duratio
             result = events.recv() => match result {
                 Ok(event) => {
                     if connected.load(Ordering::Relaxed) {
-                        buffer.push(event);
+                        aggregator.add(event);
                     }
                 }
                 Err(broadcast::error::RecvError::Lagged(count)) => {
@@ -781,7 +781,7 @@ pub async fn run_connection_events(gateway: Arc<Mutex<Gateway>>, period: Duratio
                 Err(broadcast::error::RecvError::Closed) => break,
             },
             _ = interval.tick() => {
-                let batch = std::mem::take(&mut buffer);
+                let batch = aggregator.take();
                 if batch.is_empty() {
                     continue;
                 }

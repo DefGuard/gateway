@@ -1,13 +1,16 @@
 //! Platform-agnostic types describing connections observed by the firewall.
 
-use std::{net::IpAddr, time::SystemTime};
+#[cfg(test)]
+mod tests;
+
+use std::{collections::HashMap, mem, net::IpAddr, time::SystemTime};
 
 use serde::{Deserialize, Serialize};
 
 use crate::proto::enterprise::monitor as proto;
 
 /// Direction of traffic, relative to the VPN interface.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Direction {
     /// Connection initiated from an external network towards a VPN device.
@@ -27,7 +30,7 @@ impl Direction {
 }
 
 /// Firewall verdict for a connection.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Allowed,
@@ -76,6 +79,122 @@ impl ConnectionEvent {
     }
 }
 
+/// Connection events which differ only in [`Merged`] fields are considered similar.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+struct AggregationKey {
+    direction: Direction,
+    status: Status,
+    protocol: u8,
+    source: IpAddr,
+    destination: IpAddr,
+    destination_port: Option<u16>,
+    rule_id: Option<i64>,
+}
+
+/// Fields of similar connection events which are merged.
+#[derive(Clone)]
+struct Merged {
+    timestamp: SystemTime,
+    source_port: Option<u16>,
+    upload_bytes: u64,
+    download_bytes: u64,
+    count: u64,
+}
+
+impl Merged {
+    fn merge(&mut self, other: &Self) {
+        self.timestamp = self.timestamp.min(other.timestamp);
+        if self.source_port != other.source_port {
+            self.source_port = None;
+        }
+        self.upload_bytes += other.upload_bytes;
+        self.download_bytes += other.download_bytes;
+        self.count += other.count;
+    }
+}
+
+impl ConnectionEvent {
+    /// Split into the aggregation key and the merged fields.
+    fn split(self) -> (AggregationKey, Merged) {
+        // Exhaustive, so new fields must be either part of the key or merged.
+        let Self {
+            timestamp,
+            direction,
+            status,
+            protocol,
+            source,
+            source_port,
+            destination,
+            destination_port,
+            rule_id,
+            upload_bytes,
+            download_bytes,
+            count,
+        } = self;
+        (
+            AggregationKey {
+                direction,
+                status,
+                protocol,
+                source,
+                destination,
+                destination_port,
+                rule_id,
+            },
+            Merged {
+                timestamp,
+                source_port,
+                upload_bytes,
+                download_bytes,
+                count,
+            },
+        )
+    }
+
+    fn join(key: AggregationKey, merged: Merged) -> Self {
+        Self {
+            timestamp: merged.timestamp,
+            direction: key.direction,
+            status: key.status,
+            protocol: key.protocol,
+            source: key.source,
+            source_port: merged.source_port,
+            destination: key.destination,
+            destination_port: key.destination_port,
+            rule_id: key.rule_id,
+            upload_bytes: merged.upload_bytes,
+            download_bytes: merged.download_bytes,
+            count: merged.count,
+        }
+    }
+}
+
+/// Merges similar connection events (e.g. many short UDP exchanges) observed between reports to
+/// Core into one event, with the earliest timestamp, summed traffic counters and `count`.
+#[derive(Default)]
+pub(crate) struct Aggregator {
+    events: HashMap<AggregationKey, Merged>,
+}
+
+impl Aggregator {
+    pub(crate) fn add(&mut self, event: ConnectionEvent) {
+        let (key, merged) = event.split();
+        self.events
+            .entry(key)
+            .and_modify(|existing| existing.merge(&merged))
+            .or_insert(merged);
+    }
+
+    /// Take the merged events and start a new time window.
+    pub(crate) fn take(&mut self) -> Vec<ConnectionEvent> {
+        // Replace the map, so memory used during a burst is released.
+        mem::take(&mut self.events)
+            .into_iter()
+            .map(|(key, merged)| ConnectionEvent::join(key, merged))
+            .collect()
+    }
+}
+
 impl From<Direction> for proto::Direction {
     fn from(direction: Direction) -> Self {
         match direction {
@@ -118,46 +237,5 @@ impl From<&ConnectionEvent> for proto::ConnectionEvent {
             download_bytes: event.download_bytes,
             count: event.count,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{
-        net::Ipv4Addr,
-        time::{Duration, UNIX_EPOCH},
-    };
-
-    use super::*;
-
-    #[test]
-    fn test_connection_event_proto() {
-        let event = ConnectionEvent {
-            timestamp: UNIX_EPOCH + Duration::from_micros(1_793_198_060_792_864),
-            direction: Direction::Inbound,
-            status: Status::Blocked,
-            protocol: 17,
-            source: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
-            source_port: Some(53),
-            destination: "fd00::2".parse().unwrap(),
-            destination_port: None,
-            rule_id: None,
-            upload_bytes: 0,
-            download_bytes: 128,
-            count: 1,
-        };
-        let proto = proto::ConnectionEvent::from(&event);
-        let timestamp = proto.timestamp.unwrap();
-        assert_eq!(timestamp.seconds, 1_793_198_060);
-        assert_eq!(timestamp.nanos, 792_864_000);
-        assert_eq!(proto.direction(), proto::Direction::Inbound);
-        assert_eq!(proto.status(), proto::Status::Blocked);
-        assert_eq!(proto.protocol, 17);
-        assert_eq!(proto.source_ip_addr, vec![192, 168, 1, 1]);
-        assert_eq!(proto.source_port, Some(53));
-        assert_eq!(proto.destination_ip_addr.len(), 16);
-        assert_eq!(proto.destination_port, None);
-        assert_eq!(proto.rule_id, None);
-        assert_eq!(proto.download_bytes, 128);
     }
 }
