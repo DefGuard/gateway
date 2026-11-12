@@ -1,5 +1,8 @@
 pub mod api;
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
+mod flow;
 mod iprange;
+pub mod monitor;
 #[cfg(target_os = "linux")]
 mod nftables;
 #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "netbsd"))]
@@ -17,6 +20,11 @@ use thiserror::Error;
 use tracing::error;
 
 use crate::proto;
+
+#[cfg(target_os = "linux")]
+pub use nftables::ConnectionMonitor;
+#[cfg(any(target_os = "freebsd", target_os = "macos"))]
+pub use packetfilter::ConnectionMonitor;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Address {
@@ -189,6 +197,16 @@ pub(crate) enum Policy {
     Deny,
 }
 
+#[cfg(target_os = "linux")]
+impl Policy {
+    pub(crate) fn as_str(&self) -> &str {
+        match self {
+            Self::Allow => "a",
+            Self::Deny => "d",
+        }
+    }
+}
+
 impl From<bool> for Policy {
     fn from(allow: bool) -> Self {
         if allow { Self::Allow } else { Self::Deny }
@@ -238,6 +256,15 @@ pub(crate) struct FirewallConfig {
 }
 
 impl FirewallConfig {
+    /// Allow all traffic.
+    pub fn allow_all() -> Self {
+        Self {
+            rules: Vec::new(),
+            default_policy: Policy::Allow,
+            snat_bindings: Vec::new(),
+        }
+    }
+
     pub fn from_proto(
         config: proto::enterprise::firewall::FirewallConfig,
     ) -> Result<Self, FirewallError> {

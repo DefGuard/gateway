@@ -4,7 +4,7 @@ use defguard_wireguard_rs::bsd::c_int_to_error;
 use libc::ioctl;
 
 use super::{
-    FirewallRule,
+    FirewallRule, anchor_rules,
     calls::{DIOCXBEGIN, DIOCXCOMMIT, DIOCXROLLBACK, IocTrans, IocTransElement},
     rule::RuleSet,
 };
@@ -42,20 +42,9 @@ impl FirewallManagementApi for FirewallApi {
         let ticket = elements[0].ticket;
         let pool_ticket = self.get_pool_ticket(anchor)?;
 
-        // Create first rule from the default policy.
-        if let Err(err) = self.add_rule_policy(ticket, pool_ticket, anchor) {
-            error!("Default policy rule can't be added");
-            debug!("Rollback pf transaction");
-            // Rule cannot be added, so rollback.
-            let result = unsafe { ioctl(self.fd(), DIOCXROLLBACK, &raw mut ioc_trans) };
-            c_int_to_error(result)?;
-
-            return Err(FirewallError::TransactionFailed(err.to_string()));
-        }
-
-        for rule in rules {
-            if let Err(err) = self.add_rule(rule, ticket, pool_ticket, anchor) {
-                error!("Firewall rule {} can't be added", rule.id);
+        for (rule, _) in anchor_rules(&self.ifname, self.default_policy, rules, self.log_interface)
+        {
+            if let Err(err) = self.add_rule(&rule, ticket, pool_ticket, anchor) {
                 debug!("Rollback pf transaction");
                 // Rule cannot be added, so rollback.
                 let result = unsafe { ioctl(self.fd(), DIOCXROLLBACK, &raw mut ioc_trans) };
