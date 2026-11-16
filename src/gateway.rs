@@ -33,6 +33,7 @@ use crate::{
     gateway_server::GatewayServer,
     proto::{
         common::LogEntry,
+        enterprise::monitor::ConnectionEvents,
         gateway::{Configuration, CoreRequest, Peer, Update, UpdateType, core_request, update},
     },
     setup::run_setup,
@@ -183,6 +184,9 @@ type PubKey = String;
 
 /// Number of connection events buffered for each subscriber.
 const CONNECTION_EVENTS_CAPACITY: usize = 1024;
+/// Maximum number of connection events sent to Core in a single message. A single encoded event
+/// takes at most ~100 bytes, so this keeps messages well under the default 4 MB gRPC limit.
+const CONNECTION_EVENTS_PER_MESSAGE: usize = 10_000;
 
 #[derive(Clone, Debug)]
 pub struct TlsConfig {
@@ -792,10 +796,12 @@ pub async fn run_connection_events(gateway: Arc<Mutex<Gateway>>, period: Duratio
                     continue;
                 };
                 let count = batch.len();
-                for event in &batch {
+                for chunk in batch.chunks(CONNECTION_EVENTS_PER_MESSAGE) {
                     let message = CoreRequest {
                         id,
-                        payload: Some(core_request::Payload::ConnectionEvent(event.into())),
+                        payload: Some(core_request::Payload::ConnectionEvents(ConnectionEvents {
+                            events: chunk.iter().map(Into::into).collect(),
+                        })),
                     };
                     id += 1;
                     if tx.send(Ok(message)).is_err() {
