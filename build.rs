@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &[
                 "proto/v2/gateway.proto",
                 "proto/enterprise/v2/firewall/firewall.proto",
+                "proto/enterprise/v2/monitor/monitor.proto",
             ],
             &["proto"],
         )?;

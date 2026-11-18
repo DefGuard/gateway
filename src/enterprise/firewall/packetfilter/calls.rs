@@ -11,7 +11,7 @@ use defguard_wireguard_rs::bsd::ioctl::iowr;
 use ipnetwork::IpNetwork;
 use libc::{IFNAMSIZ, c_ulong, pid_t, uid_t};
 
-use super::rule::{Action, AddressFamily, Direction, PacketFilterRule, RuleSet, State};
+use super::rule::{Action, AddressFamily, Direction, PF_LOG, PacketFilterRule, RuleSet, State};
 use crate::enterprise::firewall::Port;
 
 /// Equivalent to `struct pf_addr`: fits 128-bit address, either IPv4 or IPv6.
@@ -572,7 +572,10 @@ impl Rule {
 
             self_ptr.action = pf_rule.action;
             self_ptr.direction = pf_rule.direction;
-            self_ptr.log = pf_rule.log;
+            if let Some(logif) = pf_rule.log {
+                self_ptr.log = PF_LOG;
+                self_ptr.logif = logif;
+            }
             self_ptr.quick = pf_rule.quick;
 
             self_ptr.keep_state = pf_rule.state;

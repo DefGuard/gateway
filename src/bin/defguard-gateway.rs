@@ -17,7 +17,7 @@ use defguard_gateway::{
     config::get_config,
     error::GatewayError,
     execute_command,
-    gateway::{Gateway, TlsConfig, run_gateway_loop, run_stats},
+    gateway::{Gateway, TlsConfig, run_connection_events, run_gateway_loop, run_stats},
     init_syslog,
     logging::init_tracing,
     server::run_http_server,
@@ -177,6 +177,11 @@ async fn main() -> Result<(), GatewayError> {
     // Launch statistics gathering task.
     let gateway = Arc::new(Mutex::new(gateway));
     tasks.spawn(run_stats(Arc::clone(&gateway), config.stats_period()));
+    // Launch task sending connection monitoring events to Core.
+    tasks.spawn(run_connection_events(
+        Arc::clone(&gateway),
+        config.stats_period(),
+    ));
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let mut gateway_task = tokio::spawn(run_gateway_loop(
