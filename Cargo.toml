@@ -16,7 +16,6 @@ defguard_wireguard_rs = "0.12"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rustls-pki-types = "1"
 rustls-webpki = { version = "0.103", features = ["ring", "std"] }
-env_logger = "0.11"
 ipnetwork = "0.21"
 libc = { version = "0.2", default-features = false }
 log = "0.4"
