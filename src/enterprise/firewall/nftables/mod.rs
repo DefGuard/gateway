@@ -24,6 +24,74 @@ pub fn get_set_id() -> u32 {
     SET_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
+fn is_local_address(address: IpAddr, local_addresses: &[IpAddr]) -> bool {
+    local_addresses.contains(&address)
+}
+
+fn warn_on_non_local_snat_ips(bindings: &[SnatBinding]) {
+    if bindings.is_empty() {
+        return;
+    }
+
+    let mut interface_addresses = std::ptr::null_mut();
+    let result = unsafe { libc::getifaddrs(&mut interface_addresses) };
+    if result != 0 {
+        let err = std::io::Error::last_os_error();
+        debug!("Failed to read local interface addresses for SNAT bindings: {err}");
+        return;
+    }
+
+    struct IfAddrsGuard(*mut libc::ifaddrs);
+
+    impl Drop for IfAddrsGuard {
+        fn drop(&mut self) {
+            unsafe { libc::freeifaddrs(self.0) };
+        }
+    }
+
+    let _interface_addresses_guard = IfAddrsGuard(interface_addresses);
+    let mut local_addresses = Vec::new();
+    let mut current = interface_addresses;
+
+    while !current.is_null() {
+        let (next, address) = unsafe {
+            let interface = &*current;
+            (interface.ifa_next, interface.ifa_addr)
+        };
+
+        if !address.is_null() {
+            let address = match unsafe { (*address).sa_family as libc::c_int } {
+                libc::AF_INET => {
+                    let address = unsafe { &*address.cast::<libc::sockaddr_in>() };
+                    Some(IpAddr::V4(Ipv4Addr::from(
+                        address.sin_addr.s_addr.to_ne_bytes(),
+                    )))
+                }
+                libc::AF_INET6 => {
+                    let address = unsafe { &*address.cast::<libc::sockaddr_in6>() };
+                    Some(IpAddr::V6(Ipv6Addr::from(address.sin6_addr.s6_addr)))
+                }
+                _ => None,
+            };
+
+            if let Some(address) = address {
+                local_addresses.push(address);
+            }
+        }
+
+        current = next;
+    }
+
+    for binding in bindings {
+        if !is_local_address(binding.public_ip, &local_addresses) {
+            warn!(
+                "SNAT binding {:?} uses public IP {} which is not assigned to any local interface; replies will be lost unless it is routed to this host",
+                binding.comment, binding.public_ip
+            );
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Default)]
 enum State {
@@ -270,6 +338,7 @@ impl FirewallManagementApi for FirewallApi {
         let mut batch = Batch::new();
         set_nat_rules(&mut batch, &self.ifname, masquerade_enabled, snat_bindings)?;
         send_batch(&batch.finalize(), &self.socket)?;
+        warn_on_non_local_snat_ips(snat_bindings);
 
         debug!("Finished POSTROUTING chain rules setup");
         Ok(())
@@ -292,6 +361,34 @@ mod tests {
     use ipnetwork::IpNetwork;
 
     use super::*;
+
+    #[test]
+    fn test_is_local_address_for_ipv4_and_ipv6() {
+        let local_addresses = [
+            IpAddr::from_str("127.0.0.1").unwrap(),
+            IpAddr::from_str("::1").unwrap(),
+        ];
+
+        assert!(is_local_address(local_addresses[0], &local_addresses));
+        assert!(is_local_address(local_addresses[1], &local_addresses));
+    }
+
+    #[test]
+    fn test_is_non_local_address_for_ipv4_and_ipv6() {
+        let local_addresses = [
+            IpAddr::from_str("127.0.0.1").unwrap(),
+            IpAddr::from_str("::1").unwrap(),
+        ];
+
+        assert!(!is_local_address(
+            IpAddr::from_str("198.51.100.7").unwrap(),
+            &local_addresses
+        ));
+        assert!(!is_local_address(
+            IpAddr::from_str("2001:db8::1").unwrap(),
+            &local_addresses
+        ));
+    }
 
     #[test]
     fn test_sorting() {
