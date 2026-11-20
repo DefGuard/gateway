@@ -135,6 +135,19 @@
     <hint>Default value: /etc/defguard/certs</hint>
   </field>
   <field>
+    <id>defguardgateway.general.ConnectionMonitor</id>
+    <label>Enable traffic monitoring</label>
+    <type>checkbox</type>
+    <help>Monitor connections passing through the Defguard firewall rules. Requires firewall management.</help>
+  </field>
+  <field>
+    <id>defguardgateway.general.PflogIfName</id>
+    <label>pflog interface</label>
+    <type>text</type>
+    <help>pflog interface used for traffic monitoring; created if missing. Avoid pflog0, which OPNsense uses for its own firewall log.</help>
+    <hint>Default value: pflog1</hint>
+  </field>
+  <field>
     <id>defguardgateway.general.FwAnchorPlacement</id>
     <label>Firewall anchor placement</label>
     <type>dropdown</type>

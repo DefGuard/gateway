@@ -60,3 +60,11 @@ disable_firewall_management = false
 http_bind_address = "{{ OPNsense.defguardgateway.general.HttpBindAddress }}"
 {% endif %}
 cert_dir = "{{ OPNsense.defguardgateway.general.CertDir|default("/etc/defguard/certs") }}"
+# Monitor connections passing through Defguard firewall rules
+{% if OPNsense.defguardgateway.general.ConnectionMonitor == "1" %}
+connection_monitor = true
+{% else %}
+connection_monitor = false
+{% endif %}
+# pflog interface for connection monitoring
+pflog_ifname = "{{ OPNsense.defguardgateway.general.PflogIfName|default("pflog1") }}"

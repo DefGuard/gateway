@@ -102,6 +102,16 @@
         <default>0</default>
         <Required>Y</Required>
       </FwAnchorQuick>
+      <ConnectionMonitor type="BooleanField">
+        <default>0</default>
+        <Required>Y</Required>
+      </ConnectionMonitor>
+      <PflogIfName type="TextField">
+        <default>pflog1</default>
+        <Required>Y</Required>
+        <Mask>/^pflog([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/</Mask>
+        <ValidationMessage>please specify a valid pflog interface name (pflog0 to pflog255)</ValidationMessage>
+      </PflogIfName>
     </general>
   </items>
 </model>

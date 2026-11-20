@@ -2,12 +2,7 @@
 namespace OPNsense\DefguardGateway\Api;
 
 use OPNsense\Base\ApiMutableServiceControllerBase;
-use OPNsense\Core\Backend;
 
-/**
- * Class ServiceController
- * @package OPNsense\DefguardGateway
- */
 class ServiceController extends ApiMutableServiceControllerBase
 {
     protected static $internalServiceName = "defguardgateway";
@@ -15,10 +10,7 @@ class ServiceController extends ApiMutableServiceControllerBase
     protected static $internalServiceTemplate = "OPNsense/DefguardGateway";
     protected static $internalServiceEnabled = "general.Enabled";
 
-    /**
-     * The 'defguard/*' anchor is hooked into the ruleset by defguardgateway_firewall().
-     * Changes only take effect once the filter is reloaded.
-     */
+    // Anchor changes from defguardgateway_firewall() apply only after a filter reload.
     protected function invokeFirewallReload()
     {
         return true;
