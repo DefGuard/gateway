@@ -1,76 +1,64 @@
 <?php
-function defguardgateway_services()
+
+function defguardgateway_general()
 {
-    global $config;
-
-    $services = [];
-
-    $pidfile = (string) (new OPNsense\DefguardGateway\DefguardGateway())->general->PidFile;
-
-    if (isset($config['OPNsense']['defguardgateway']['general']['Enabled']) && $config['OPNsense']['defguardgateway']['general']['Enabled'] == 1) {
-        $services[] = [
-            "description" => "Defguard Gateway",
-            "configd" => [
-                "start" => ["defguardgateway start"],
-                "restart" => ["defguardgateway restart"],
-                "stop" => ["defguardgateway stop"],
-            ],
-            "pidfile" => empty($pidfile) ? "/var/run/defguard_gateway.pid" : $pidfile,
-            "name" => "defguardgateway",
-        ];
-    }
-
-    return $services;
-}
-
-function defguardgateway_interfaces()
-{
-    $interfaces = [];
-
-    $interfaces["defguard"] = [
-        "descr" => gettext("Defguard (Group)"),
-        "if" => "defguard",
-        "virtual" => true,
-        "enable" => true,
-        "type" => "group",
-        "networks" => [],
-    ];
-
-    return $interfaces;
-}
-
-function defguardgateway_devices()
-{
-    $interface = (new OPNsense\DefguardGateway\DefguardGateway())->general
-        ->IfName;
-    $interface = empty((string) $interface) ? 'wg0' : (string) $interface;
-
-    $devices[] = [
-        "configurable" => false,
-        "pattern" => sprintf("^%s$", preg_quote($interface, '/')),
-        "type" => "wireguard",
-        "volatile" => true,
-        "names" => [
-            $interface => [
-                "descr" => sprintf(
-                    "%s (Defguard Gateway)",
-                    $interface
-                ),
-                "ifdescr" => "WireGuard interface used by Defguard Gateway",
-                "name" => $interface,
-            ],
-        ],
-    ];
-
-    return $devices;
+    return (new OPNsense\DefguardGateway\DefguardGateway())->general;
 }
 
 function defguardgateway_enabled()
 {
-    global $config;
+    return (string) defguardgateway_general()->Enabled === '1';
+}
 
-    return isset($config['OPNsense']['defguardgateway']['general']['Enabled']) &&
-    $config['OPNsense']['defguardgateway']['general']['Enabled'] == 1;
+function defguardgateway_services()
+{
+    if (!defguardgateway_enabled()) {
+        return [];
+    }
+
+    return [[
+        'description' => 'Defguard Gateway',
+        'configd' => [
+            'start' => ['defguardgateway start'],
+            'restart' => ['defguardgateway restart'],
+            'stop' => ['defguardgateway stop'],
+        ],
+        'pidfile' => (string) defguardgateway_general()->PidFile ?: '/var/run/defguard_gateway.pid',
+        'name' => 'defguardgateway',
+    ]];
+}
+
+function defguardgateway_interfaces()
+{
+    return [
+        'defguard' => [
+            'descr' => gettext('Defguard (Group)'),
+            'if' => 'defguard',
+            'virtual' => true,
+            'enable' => true,
+            'type' => 'group',
+            'networks' => [],
+        ],
+    ];
+}
+
+function defguardgateway_devices()
+{
+    $interface = (string) defguardgateway_general()->IfName ?: 'wg0';
+
+    return [[
+        'configurable' => false,
+        'pattern' => '^' . preg_quote($interface, '/') . '$',
+        'type' => 'wireguard',
+        'volatile' => true,
+        'names' => [
+            $interface => [
+                'descr' => "{$interface} (Defguard Gateway)",
+                'ifdescr' => 'WireGuard interface used by Defguard Gateway',
+                'name' => $interface,
+            ],
+        ],
+    ]];
 }
 
 function defguardgateway_firewall($fw)
@@ -79,14 +67,9 @@ function defguardgateway_firewall($fw)
         return;
     }
 
-    // $fw->registerAnchor('defguard/*', 'nat', 1, 'head');
-    // $fw->registerAnchor('defguard/*', 'rdr', 1, 'head');
-    // IMPORTANT: never register this anchor as 'quick'. On FreeBSD 15+
-    // (OPNsense 26.7+), a 'quick' anchor short-circuits the parent ruleset
-    // even when no inner rule matches, silently skipping OPNsense's own
-    // firewall rules.
-    $model = new OPNsense\DefguardGateway\DefguardGateway();
-    $placement = (string) $model->general->FwAnchorPlacement ?: 'tail';
-    $quick = (string) $model->general->FwAnchorQuick === '1';
+    $general = defguardgateway_general();
+    $placement = (string) $general->FwAnchorPlacement ?: 'tail';
+    // On FreeBSD 15+ (OPNsense 26.7+) a quick anchor skips OPNsense rules even when no inner rule matches.
+    $quick = (string) $general->FwAnchorQuick === '1';
     $fw->registerAnchor('defguard/*', 'fw', 1, $placement, $quick);
 }
